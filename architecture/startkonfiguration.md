@@ -210,6 +210,85 @@ model_config (Tabelle oder Datei):
   model, quant, num_ctx, keep_alive, kv_cache_type, exclusive
 ```
 
+## 5b. Capacity-Profil (Plattform-Anpassung)
+
+Eine Schicht, die Stratum an die Zielmaschine anpasst. Einzige Datei,
+die sich pro Deployment aendert; Matrix, Templates, Kern bleiben gleich.
+Gelesen vom Lifecycle-Manager (S2) beim Start, gespeist vom
+Host-Metrik-Agent (gemessenes VRAM).
+
+Drei Ebenen, getrennt:
+
+```
+1. Hardware-Fakten (gemessen, nicht konfiguriert)
+   total_vram, GPU-Anzahl, GPU-Modell  <- Host-Metrik-Agent (nvidia-smi)
+
+2. Capacity-Policy (konfiguriert pro Deployment)
+   gpu_id          Default 0 (Single-GPU; Feld fuer spaeter vorgesehen)
+   vram_budget     wieviel VRAM Stratum nutzen darf (nicht alles)
+   max_parallel    Obergrenze gleichzeitiger Worker
+   resident_set    welche Modelle dauerhaft geladen
+   allowed_models  welche Modelle ueberhaupt erlaubt
+   reserve_mb      Sicherheitspuffer
+
+3. Modell-Kosten = model_config (Abschnitt 5)
+```
+
+Ableitung zur Laufzeit (nicht mehr hartkodiert):
+
+```
+vram_budget - resident_set-Verbrauch (aus model_config)
+   = freies VRAM fuer on-demand + parallele Worker
+   -> max_parallel real = min(Policy-Limit, was reinpasst)
+   -> einwechselbar: nur Modelle, die in den Rest passen
+```
+
+Beispiel-Profile:
+
+```
+Profil A: 8 GB
+  vram_budget 7000  resident [phi-4-mini]  max_parallel 1
+  allowed [phi, qwen-coder]
+
+Profil B: 12-16 GB (Standard)
+  vram_budget 13000 resident [phi-4-mini, qwen-coder] max_parallel 2
+  allowed [phi, qwen-coder, qwen3-8b, r1-distill, q8]
+
+Profil C: 48 GB Server
+  vram_budget 44000 resident [phi, qwen-coder, qwen3-8b, r1-distill]
+  max_parallel 4  allowed [*]
+```
+
+Auto-Detect + Override:
+
+```
+1. Host-Agent misst total_vram
+2. kein Profil gesetzt -> konservatives Default (z.B. 80% als budget,
+   resident_set nach Groesse)
+3. explizites Profil ueberschreibt Defaults
+-> laeuft auf neuer Hardware sofort vernuenftig, feinjustierbar
+```
+
+Startup-Validierung (nicht erst zur Laufzeit):
+
+```
+resident_set-Verbrauch <= vram_budget <= gemessenes total_vram ?
+alle allowed_models in model_config bekannt?
+-> sonst Abbruch mit klarer Meldung, kein stiller Fehlstart
+```
+
+Ablage:
+
+```
+capacity.toml (oder Tabelle, falls das Dashboard es zeigen soll)
+gelesen von  : Lifecycle-Manager (S2)
+gespeist von : Host-Metrik-Agent (Hardware-Fakten)
+validiert    : Startup gegen model_config + gemessenes VRAM
+```
+
+Damit wird der Lifecycle-Manager vom Verwalter eines fixen
+Resident-Sets zum Verwalter eines profil-definierten Budgets.
+
 ## 6. confidence- und Budget-Startwerte
 
 ```
@@ -279,6 +358,9 @@ Wissensstand und koennen ueberholt sein.
 4 Templates  | dynamische Auffaecherung + max_fanout, zweistufig
 5 Ollama     | Q4 Standard, Q8 nur crypto, num_ctx 8192/12288,
              | keep_alive gestaffelt, KV-Cache q8_0
+5b Capacity  | Hardware-Profil pro Deployment (vram_budget,
+             | resident_set, max_parallel, allowed_models),
+             | Auto-Detect + Override, Startup-Validierung
 6 Schwellen  | confidence 0.65 (crypto 0.85), Budgets,
              | r1-distill 180s Kappung
 7 Claude     | Messages-API, IDs gegen Doku pruefen, Caching+Batch,

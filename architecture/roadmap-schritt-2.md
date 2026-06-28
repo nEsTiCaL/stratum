@@ -142,6 +142,14 @@ Kopplung Router/Lifecycle: Modell-Lokalitaet wird zweites
 Optimierungsziel neben Faehigkeit. Tasks gleichen Modells werden
 gebatcht, um Swaps zu amortisieren.
 
+Capacity-Profil (Plattform-Anpassung, Detail in startkonfiguration.md):
+Der Lifecycle-Manager liest beim Start ein Hardware-Profil
+(vram_budget, resident_set, max_parallel, allowed_models) und leitet
+daraus ab, was die konkrete Maschine kann, statt das Resident-Set
+hartzukodieren. Gespeist vom Host-Metrik-Agent (gemessenes VRAM),
+validiert beim Startup. Macht das Deployment ueber verschiedene
+Hardware portabel: nur das Profil aendert sich.
+
 ```
 Konflikt: Lokalitaet (wenig Swaps) vs. Faehigkeit (bestes Modell)
 Aufloesung: Prioritaetsschwelle. Normale Tasks gebatcht.
