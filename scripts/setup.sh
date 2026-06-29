@@ -200,19 +200,37 @@ if want s2; then
         # ollama-CLI laeuft auf Windows, nicht in WSL2 -> Pull ueber HTTP-API.
         if confirm; then
           printf "          Pulling %s (kann mehrere Minuten dauern)...\n" "$m"
-          # Status-Updates streamen; gleiche Status-Zeilen zusammenfassen.
+          # Status-Updates streamen; Fortschritt fuer laufende Downloads anzeigen.
           pull_ok=false
           last_status=""
+          progress_line=false
           while IFS= read -r line; do
             status="$(printf '%s' "$line" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')"
-            if [ -n "$status" ] && [ "$status" != "$last_status" ]; then
-              printf "          -> %s\n" "$status"
-              last_status="$status"
+            if [ -n "$status" ]; then
+              # Laufender Download: completed/total extrahieren und Prozent zeigen.
+              if printf '%s' "$line" | grep -q '"total":[0-9]'; then
+                total="$(printf '%s' "$line" | grep -o '"total":[0-9]*' | sed 's/"total"://')"
+                completed="$(printf '%s' "$line" | grep -o '"completed":[0-9]*' | sed 's/"completed"://')"
+                if [ -n "$total" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+                  pct=$(( completed * 100 / total ))
+                  printf "\r          -> %s  %d%%   " "$status" "$pct"
+                  progress_line=true
+                fi
+              else
+                # Neue Nicht-Download-Statuszeile: vorherige Fortschrittszeile abschliessen.
+                $progress_line && printf "\n"
+                progress_line=false
+                if [ "$status" != "$last_status" ]; then
+                  printf "          -> %s\n" "$status"
+                  last_status="$status"
+                fi
+              fi
             fi
             printf '%s' "$line" | grep -q '"status":"success"' && pull_ok=true
           done < <(curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
             -H "Content-Type: application/json" \
             -d "{\"name\":\"${m}\"}" 2>/dev/null)
+          $progress_line && printf "\n"
           $pull_ok && ok "Modell $m geladen" || warn "Pull fehlgeschlagen: $m (Tag pruefen)"
         fi
       fi
