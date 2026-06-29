@@ -5,6 +5,7 @@ type: decision
 status: active
 created: 2026-06-29
 updated: 2026-06-29
+status: active
 tags: [indexer, tree-sitter, multilang]
 related: ["[[_core]]", "[[inkremente-schritt-1]]"]
 ---
@@ -116,6 +117,13 @@ import_resolution   | namespace_passthrough (default) | relative_path | relative
    namespace_passthrough (target = rohe Modul-/Namespace-Id, KEINE
    FS-Aufloesung) deckt Java/C#/C++/Go/Rust/PHP. relative_path = Python.
    relative_path_ext = JS/TS (./x -> x.js | x/index.js).
+const_strategy      | none (default) | uppercase_name
+   warum: const-Erkennung ist NICHT universell. Sprachen MIT const-Keyword
+   (Go, JS/TS, C#, Rust) druecken const strukturell in der .scm aus
+   (@definition.const) -> none. Nur Sprachen OHNE Keyword, die die
+   SCREAMING_SNAKE_CASE-Konvention nutzen (Python), brauchen uppercase_name
+   (kind var + name.isupper() -> const). name-basiert -> nicht .scm-faehig.
+   WICHTIG Go: dort heisst ALL_CAPS/Grossbuchstabe Export, NICHT const -> none.
 ```
 
 Regel: jeder neue Profil-Eintrag braucht eine dokumentierte Begruendung, warum
@@ -156,6 +164,33 @@ tests/fixtures/python/*                            Erwartungen UNVERAENDERT
 Die vorhandenen Golden-Erwartungen (symbols/imports/calls) sind der Vertrag: das
 Verhalten fuer Python muss byte-identisch bleiben. Aendert sich ein erwarteter
 Wert, ist das ein Bug im Refactor, kein erlaubter Output-Wechsel.
+
+## Umsetzung (I-1.85, erledigt 2026-06-29)
+
+Konkrete Entscheidungen beim Bau (alle Python-Golden byte-identisch, Kern
+grep-frei von Python-Knotentypen):
+
+- parent (symbols): von den zwei Optionen "@parent ODER Span-Containment" wurde
+  @parent gewaehlt. Die .scm setzt @parent in den Methoden-/Klassenattribut-
+  Pattern (Klassenname). Span-Containment bleibt fuer caller (call_graph)
+  reserviert - dort gibt es kein sauberes @parent. So exakte Python-Paritaet.
+- method-vs-function: ueber die .scm wie geplant. Catch-all `@definition.function`
+  fuer jede function_definition PLUS verfeinerndes `@definition.method`-Pattern
+  (Funktion im Klassenrumpf, direkt ODER dekoriert via Alternation). Der Kern
+  dedupt nach Definitionsknoten; hoeherer Pattern-Index gewinnt -> Methode
+  schlaegt Funktion. Dekorierte/async Methoden landen so korrekt als method.
+- const-vs-var: 4. Profil-Achse const_strategy (none | uppercase_name), NICHT
+  generisch im Kern. Korrigiert die fruehere Planungsannahme "genau 3 Achsen":
+  Go zwingt dazu. Go hat ein const-Keyword (echte const aus der .scm) UND
+  Grossbuchstabe = Export -> eine universelle ALL_CAPS->const-Regel wuerde
+  exportierte Go-Vars (z.B. `var X`) falsch zu const machen. Daher: Keyword-
+  Sprachen const_strategy=none (const strukturell in .scm), Python=uppercase_name
+  (name.isupper(), weil kein Keyword). Belegt im JS-Mini-Smoke: JS unterscheidet
+  const/let/var strukturell (kind-Feld), const_strategy bleibt none.
+- docstring: generischer Delimiter-Stripper auf dem @doc-Text (String-Praefix
+  r/b/f/u, Quote-Paare """/'''/"/' , Kommentar-Delimiter /* */ // /// #).
+- visibility: @visibility-Capture hat Vorrang (Modifier-Sprachen), sonst
+  Profil-Strategie. Python nutzt underscore_prefix.
 
 ## Reihenfolge-Abhaengigkeit (wichtig fuer den Bau)
 

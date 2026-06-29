@@ -146,10 +146,13 @@ Modul   : (a) Capture-Konvention tags.scm-Stil: @name, @definition.<kind>
               kind/role aus dem Capture, nicht aus Knotentypen
           (b) caller/parent ueber SPAN-CONTAINMENT gegen symbol_index (innerstes
               Symbol, dessen Span die Zeile enthaelt) -> kein Vorfahren-Walk
-          (c) Sprachprofil core/indexer/profiles.py mit genau 3 Achsen:
+          (c) Sprachprofil core/indexer/profiles.py mit schmalen Achsen:
               visibility_strategy (none|underscore_prefix|uppercase_export),
               self_keyword (self|this|$this|None), import_resolution
-              (namespace_passthrough|relative_path|relative_path_ext).
+              (namespace_passthrough|relative_path|relative_path_ext) und
+              const_strategy (none|uppercase_name; 4. Achse, weil Go eine
+              universelle ALL_CAPS->const-Regel verbietet -> Grossschreibung ist
+              dort Export; Keyword-Sprachen=none, Python=uppercase_name).
               Doc = generischer Delimiter-Stripper (KEINE Profil-Achse).
               LEITLINIE: Profil so schmal wie moeglich; Modifier-Sprachen ohne
               Eintrag; jeder Eintrag mit Begruendung "warum nicht .scm"

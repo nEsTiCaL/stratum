@@ -1,38 +1,46 @@
-"""call_graph (Python, approx.) - I-1.6.
+"""call_graph (approx.) - I-1.6, sprachagnostisch I-1.85.
 
 Einziges det-Artefakt mit Kanten-confidence: die Extraktion der Aufrufstelle ist
 deterministisch, die Aufloesung des Ziels ist heuristisch. Ohne LSP bleibt
 callee_ref oft NULL (akzeptiert, R1).
 
+Agnostik: der Kern liest die Capture-Konvention (@reference.call, @callee) und
+das symbol_index. caller loest sich ueber SPAN-CONTAINMENT gegen das symbol_index
+auf (innerstes umschliessendes Funktions-/Methodensymbol), KEIN Vorfahren-Walk
+per Knotentyp. Selbst-Methoden ueber die Profil-Achse self_keyword.
+
 Heuristik (rein dateilokal, deterministisch):
-  - bare Name `foo()`     -> foo, wenn foo in dieser Datei als Funktion/Klasse
-                             definiert ist (LOCAL_DEF).
-  - `self.m()` in Klasse  -> Klasse.m, wenn m Methode dieser Klasse ist
-                             (SELF_METHOD).
+  - bare Name `foo()`     -> foo, wenn foo top-level Funktion/Klasse ist (LOCAL_DEF).
+  - `<self>.m()` in Klasse -> Klasse.m, wenn m Methode dieser Klasse ist (SELF_METHOD).
   - sonst                 -> callee_ref NULL, confidence 0.
-Cross-File/Dispatch/Imports bleiben unaufgeloest (LSP/Graph spaeter).
 """
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version
 from typing import Any
 
-from tree_sitter import Node, QueryCursor
+from tree_sitter import QueryCursor
 
-from core.indexer.registry import get_parser, get_query
+from core.indexer.profiles import LanguageProfile
+from core.indexer.registry import get_parser, get_profile, get_query, producer_name
 from core.indexer.symbols import extract_symbols
 from core.models.provenance_schema import Provenance
 from core.models.result_det_schema import ResultDet
 
-PRODUCER = "tree-sitter-py"
 _TS_VERSION = version("tree-sitter")
 
 _CONF_SELF_METHOD = 0.6
 _CONF_LOCAL_DEF = 0.5
 _CONF_UNRESOLVED = 0.0
+
+_BARE_NAME = re.compile(r"[A-Za-z_]\w*\Z")
+# Symbolarten, die als caller in Frage kommen bzw. als top-level Ziel zaehlen.
+_CALLABLE = ("function", "method")
+_TOP_LEVEL_REF = ("function", "class")
 
 
 @dataclass(frozen=True)
@@ -42,16 +50,48 @@ class CallExtraction:
 
 
 def extract_calls(source: str | bytes, language: str = "python") -> CallExtraction:
+    profile = get_profile(language)
     src = source.encode("utf-8") if isinstance(source, str) else source
     root = get_parser(language).parse(src).root_node
     query = get_query(language, "calls")
 
-    module_defs, class_methods = _symbol_table(src, language)
+    symbols = extract_symbols(src, language).symbols
+    module_defs = {
+        s["name"] for s in symbols if s["parent"] is None and s["kind"] in _TOP_LEVEL_REF
+    }
+    class_methods: dict[str, set[str]] = {}
+    for s in symbols:
+        if s["kind"] == "method" and s["parent"]:
+            class_methods.setdefault(s["parent"], set()).add(s["name"])
+    enclosers = [s for s in symbols if s["kind"] in _CALLABLE]
 
     rows: list[dict[str, Any]] = []
     for _pattern, caps in QueryCursor(query).matches(root):
-        for node in caps.get("call", []):
-            rows.append(_build(node, module_defs, class_methods))
+        call_nodes = caps.get("reference.call")
+        if not call_nodes:
+            continue
+        call_node = call_nodes[0]
+        callee_nodes = caps.get("callee")
+        callee_raw = (
+            callee_nodes[0].text.decode() if callee_nodes else call_node.text.decode()
+        )
+        line = call_node.start_point[0] + 1
+        enclosing = _innermost(enclosers, line)
+        enclosing_class = (
+            enclosing["parent"] if enclosing and enclosing["kind"] == "method" else None
+        )
+        callee_ref, confidence = _resolve(
+            callee_raw, enclosing_class, module_defs, class_methods, profile
+        )
+        rows.append(
+            {
+                "caller": _qualified(enclosing),
+                "callee_raw": callee_raw,
+                "callee_ref": callee_ref,
+                "span": [line, call_node.end_point[0] + 1],
+                "confidence": confidence,
+            }
+        )
 
     rows.sort(key=lambda r: (r["span"][0], r["span"][1], r["callee_raw"]))
     return CallExtraction(calls=rows, partial=root.has_error)
@@ -71,7 +111,7 @@ def call_graph_result(
         schema_version="1",
         source_hash=source_hash,
         input_hash=hashlib.sha256(src).hexdigest(),
-        producer=PRODUCER,
+        producer=producer_name(language),
         producer_version=_TS_VERSION,
         producer_class="det",
         timestamp=timestamp or datetime.now(timezone.utc),
@@ -86,85 +126,40 @@ def call_graph_result(
     )
 
 
-def _symbol_table(src: bytes, language: str) -> tuple[set[str], dict[str, set[str]]]:
-    symbols = extract_symbols(src, language).symbols
-    module_defs = {
-        s["name"]
-        for s in symbols
-        if s["parent"] is None and s["kind"] in ("function", "class")
-    }
-    class_methods: dict[str, set[str]] = {}
-    for s in symbols:
-        if s["kind"] == "method" and s["parent"]:
-            class_methods.setdefault(s["parent"], set()).add(s["name"])
-    return module_defs, class_methods
+def _innermost(enclosers: list[dict[str, Any]], line: int) -> dict[str, Any] | None:
+    """Innerstes Funktions-/Methodensymbol, dessen Span die Zeile enthaelt
+    (groesster Startwert, bei Gleichstand engster Span)."""
+    best: dict[str, Any] | None = None
+    for s in enclosers:
+        if s["span"][0] <= line <= s["span"][1]:
+            if best is None or (s["span"][0], -s["span"][1]) > (
+                best["span"][0],
+                -best["span"][1],
+            ):
+                best = s
+    return best
 
 
-def _build(
-    call_node: Node, module_defs: set[str], class_methods: dict[str, set[str]]
-) -> dict[str, Any]:
-    func = call_node.child_by_field_name("function")
-    callee_raw = func.text.decode() if func is not None else call_node.text.decode()
-    enclosing_class = _name_of(_ancestor(call_node, "class_definition"))
-    callee_ref, confidence = _resolve(func, enclosing_class, module_defs, class_methods)
-    return {
-        "caller": _caller_name(call_node),
-        "callee_raw": callee_raw,
-        "callee_ref": callee_ref,
-        "span": [call_node.start_point[0] + 1, call_node.end_point[0] + 1],
-        "confidence": confidence,
-    }
+def _qualified(symbol: dict[str, Any] | None) -> str | None:
+    if symbol is None:
+        return None
+    return f"{symbol['parent']}.{symbol['name']}" if symbol["parent"] else symbol["name"]
 
 
 def _resolve(
-    func: Node | None,
+    callee_raw: str,
     enclosing_class: str | None,
     module_defs: set[str],
     class_methods: dict[str, set[str]],
+    profile: LanguageProfile,
 ) -> tuple[str | None, float]:
-    if func is None:
+    if _BARE_NAME.match(callee_raw):
+        if callee_raw in module_defs:
+            return callee_raw, _CONF_LOCAL_DEF
         return None, _CONF_UNRESOLVED
-    if func.type == "identifier":
-        name = func.text.decode()
-        if name in module_defs:
-            return name, _CONF_LOCAL_DEF
-        return None, _CONF_UNRESOLVED
-    if func.type == "attribute":
-        obj = func.child_by_field_name("object")
-        attr = func.child_by_field_name("attribute")
-        if (
-            obj is not None
-            and obj.type == "identifier"
-            and obj.text.decode() == "self"
-            and enclosing_class is not None
-            and attr is not None
-            and attr.text.decode() in class_methods.get(enclosing_class, set())
-        ):
-            return f"{enclosing_class}.{attr.text.decode()}", _CONF_SELF_METHOD
-        return None, _CONF_UNRESOLVED
+    self_keyword = profile.self_keyword
+    if self_keyword and enclosing_class is not None:
+        match = re.fullmatch(re.escape(self_keyword) + r"\.(\w+)", callee_raw)
+        if match and match.group(1) in class_methods.get(enclosing_class, set()):
+            return f"{enclosing_class}.{match.group(1)}", _CONF_SELF_METHOD
     return None, _CONF_UNRESOLVED
-
-
-def _caller_name(node: Node) -> str | None:
-    fn = _ancestor(node, "function_definition")
-    if fn is None:
-        return None
-    name = _name_of(fn)
-    cls = _name_of(_ancestor(fn, "class_definition"))
-    return f"{cls}.{name}" if cls else name
-
-
-def _ancestor(node: Node, type_: str) -> Node | None:
-    parent = node.parent
-    while parent is not None:
-        if parent.type == type_:
-            return parent
-        parent = parent.parent
-    return None
-
-
-def _name_of(node: Node | None) -> str | None:
-    if node is None:
-        return None
-    name = node.child_by_field_name("name")
-    return name.text.decode() if name is not None else None

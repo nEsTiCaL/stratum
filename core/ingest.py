@@ -21,8 +21,19 @@ from core.repository import Repository
 from core.scope import Scope, ScopeType
 from core.secret_scan import NoopSecretScan, SecretScan
 
-# Reihenfolge der det-Producer je Datei.
-_BUILDERS = (symbol_index_result, dependency_graph_result, call_graph_result)
+# Sprach-Dispatch (I-1.85): Endung -> Sprache und Sprache -> Builder-Set. Das
+# Builder-Set legt fest, welche det-Artefakte eine Sprache erzeugt (z.B. spaeter
+# GDScript ohne dependency_graph). Reihenfolge = Producer-Reihenfolge im Trace.
+_EXTENSION_LANGUAGE = {".py": "python"}
+_BUILDER_SETS = {
+    "python": (symbol_index_result, dependency_graph_result, call_graph_result),
+}
+_DEFAULT_LANGUAGE = "python"
+
+
+def language_for_path(path: str) -> str:
+    """Sprache aus der Dateiendung. Unbekannt -> Default (in S1 nur Python)."""
+    return _EXTENSION_LANGUAGE.get(Path(path).suffix, _DEFAULT_LANGUAGE)
 
 
 @dataclass(frozen=True)
@@ -50,12 +61,13 @@ def ingest_content(
     """Indexiert Dateiinhalt und legt alle Artefakte ab (alte superseded)."""
     scope = file_scope(path)
     src = content.encode("utf-8") if isinstance(content, str) else content
+    language = language_for_path(path)
 
     repo.write_trace(session_id, "ingestion", detail={"scope": scope, "source_hash": source_hash})
 
     artifact_ids: dict[str, int] = {}
-    for builder in _BUILDERS:
-        result = builder(scope, src, source_hash=source_hash)
+    for builder in _BUILDER_SETS[language]:
+        result = builder(scope, src, source_hash=source_hash, language=language)
         art_id = repo.put_artifact(result)
         artifact_ids[result.artifact_type.value] = art_id
         repo.write_trace(

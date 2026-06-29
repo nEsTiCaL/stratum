@@ -91,10 +91,28 @@ Trigger (Watch core/watch.py, optional git-Hook) rufen denselben ingest_file.
 Secret-Scan-Stub (I-1.8, core/secret_scan.py) sitzt in der Pipeline (Trace
 sensitivity=none, stub=True); Egress fail-safe, scharf erst bei I-3.4.
 
+## Sprachagnostischer Kern (I-1.85, fertig)
+
+Der Kern liest nur noch die Capture-Konvention der .scm + ein schmales Profil;
+KEINE Python-Knotentypen mehr in symbols/imports/calls.py (grep-verifiziert).
+Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
+[[sprachagnostik]]. Verteilung der Sprach-Spezifika:
+- queries/<lang>/*.scm: Knotentypen, Pattern, Felder (alles Strukturelle).
+- core/indexer/profiles.py: 4 Achsen (visibility_strategy, self_keyword,
+  import_resolution, const_strategy), je Eintrag mit Begruendung "warum nicht
+  .scm". const_strategy kam dazu, weil Go eine universelle ALL_CAPS->const-Regel
+  verbietet (dort ist Grossschreibung Export); Keyword-Sprachen = none.
+- registry.py: get_profile (re-exportiert) + producer_name(lang) ("tree-sitter-py").
+- Kern-generisch geblieben (nicht Profil): kind=Suffix von @definition.*;
+  Doc-Delimiter-Stripper; Dedup nach Definitionsknoten (hoeherer Pattern-Index
+  gewinnt -> Methode verfeinert Funktion); caller via Span-Containment gegen
+  symbol_index. (const-Erkennung ist Profil, nicht Kern -> const_strategy.)
+- ingest.py: Sprach-Dispatch (Endung -> Sprache -> Builder-Set; Python = 3 Builder).
+
 ## Offen / folgt
 
-- I-1.85 sprachagnostischer Kern (NAECHSTES): kind/role in Capture-Namen
-  (tags.scm), Sprachprofil, Python-Kopplung aus symbols/imports/calls raus.
-  Begruendung + Stolpersteine + Hebel: [[sprachagnostik]].
-- Danach I-1.9 JavaScript/TS (belegt Sprachunabhaengigkeit, nutzt I-1.85),
-  I-1.10 C#, I-1.11 GDScript.
+- I-1.9 JavaScript/TS (NAECHSTES, nutzt I-1.85, belegt Sprachunabhaengigkeit
+  voll): Standing-Invariante = core/indexer/* git-diff leer. Mini-Smoke schon da
+  (queries/javascript/symbols.scm + provisorisches JS-Profil); I-1.9 ergaenzt
+  imports/calls, Funktionsformen, export-Sichtbarkeit, Golden.
+- Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

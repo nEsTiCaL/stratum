@@ -1,16 +1,22 @@
-"""Extraktor-Kern + Python symbol_index (I-1.4), erster echter det-Producer.
+"""Sprachagnostischer Extraktor-Kern + symbol_index (I-1.4, agnostisch I-1.85).
 
 extract_symbols ist die deterministische, rein syntaktische Kernfunktion
 (Golden-testbar). symbol_index_result haengt Provenance an und liefert das
 einheitliche Result-Objekt fuer den Store.
 
-Grenze (tree-sitter, syntaktisch): Signaturen sind nicht typaufgeloest,
-parent ist die naechste umschliessende Klasse, kind unterscheidet Funktion und
-Methode strukturell. Alles Semantische bleibt Approximation (LSP spaeter).
+Agnostik (I-1.85): der Kern liest ausschliesslich die Capture-Konvention der
+.scm (queries/<sprache>/symbols.scm) - @name, @definition.<kind>, @parent,
+@signature, @doc - und die schmale Sprachprofil-Strategie (visibility). KEINE
+Knotentyp-Strings, keine Python-Konventionen im Kern; die stehen in den .scm und
+in profiles.py. Grenzziehung: memory/indexer/sprachagnostik.md.
+
+Grenze (tree-sitter, syntaktisch): Signaturen sind nicht typaufgeloest, parent
+ist der umschliessende Scope laut .scm, Semantik bleibt Approximation (LSP spaeter).
 """
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version
@@ -18,15 +24,19 @@ from typing import Any
 
 from tree_sitter import Node, QueryCursor
 
-from core.indexer.registry import get_parser, get_query
-from core.models.result_det_schema import ResultDet
+from core.indexer.profiles import LanguageProfile
+from core.indexer.registry import get_parser, get_profile, get_query, producer_name
 from core.models.provenance_schema import Provenance
+from core.models.result_det_schema import ResultDet
 
-PRODUCER = "tree-sitter-py"
 _TS_VERSION = version("tree-sitter")
 
-# Reihenfolge = Vorrang beim Lesen des Definitions-Captures je Match.
-_DEF_CAPTURES = ("class", "function", "var")
+_DEF_PREFIX = "definition."
+
+# Generischer Doc-Delimiter-Stripper (keine Profil-Achse): String-Praefix
+# (r/b/f/u), dann Quote-Paare bzw. Kommentar-Delimiter abtragen.
+_DOC_PREFIX = re.compile(r'^[A-Za-z]+(?=["\'])')
+_QUOTES = ('"""', "'''", '"', "'")
 
 
 @dataclass(frozen=True)
@@ -40,20 +50,27 @@ class Extraction:
 def extract_symbols(source: str | bytes, language: str = "python") -> Extraction:
     """Parst Quelltext und extrahiert den symbol_index. Fehlertolerant:
     ERROR-Knoten liefern keine Treffer, der Rest wird extrahiert, partial=True."""
+    profile = get_profile(language)
     src = source.encode("utf-8") if isinstance(source, str) else source
     root = get_parser(language).parse(src).root_node
     query = get_query(language, "symbols")
 
-    records: list[dict[str, Any]] = []
-    for _pattern, caps in QueryCursor(query).matches(root):
+    # Dedup nach Definitionsknoten: faengt Verfeinerungen (Methode verfeinert
+    # Funktion) auf; bei gleichem Knoten gewinnt der hoehere Pattern-Index.
+    by_node: dict[tuple[int, int], tuple[int, dict[str, Any]]] = {}
+    for pattern_index, caps in QueryCursor(query).matches(root):
         name_nodes = caps.get("name")
-        if not name_nodes:
+        def_cap = next((k for k in caps if k.startswith(_DEF_PREFIX)), None)
+        if not name_nodes or def_cap is None:
             continue
-        for base in _DEF_CAPTURES:
-            if base in caps:
-                records.append(_build(caps[base][0], name_nodes[0], base))
-                break
+        def_node = caps[def_cap][0]
+        key = (def_node.start_byte, def_node.end_byte)
+        prev = by_node.get(key)
+        if prev is not None and prev[0] >= pattern_index:
+            continue
+        by_node[key] = (pattern_index, _build(def_cap, def_node, caps, profile))
 
+    records = [record for _, record in by_node.values()]
     records.sort(key=lambda r: (r["span"][0], r["span"][1], r["kind"], r["name"]))
     return Extraction(symbols=records, partial=root.has_error)
 
@@ -77,7 +94,7 @@ def symbol_index_result(
         schema_version="1",
         source_hash=source_hash,
         input_hash=hashlib.sha256(src).hexdigest(),
-        producer=PRODUCER,
+        producer=producer_name(language),
         producer_version=_TS_VERSION,
         producer_class="det",
         timestamp=timestamp or datetime.now(timezone.utc),
@@ -92,73 +109,65 @@ def symbol_index_result(
     )
 
 
-def _build(def_node: Node, name_node: Node, base: str) -> dict[str, Any]:
-    name = name_node.text.decode()
-    enclosing = _enclosing_definition(def_node)
-    in_class = enclosing is not None and enclosing.type == "class_definition"
-    parent = _name_of(enclosing) if in_class else None
-
-    if base == "class":
-        kind = "class"
-        signature = _field_text(def_node, "superclasses")
-        docstring = _docstring(def_node)
-    elif base == "function":
-        kind = "method" if in_class else "function"
-        signature = _field_text(def_node, "parameters")
-        docstring = _docstring(def_node)
-    else:  # var / const
-        kind = "const" if _is_const_name(name) else "var"
-        signature = None
-        docstring = None
-
+def _build(
+    def_cap: str, def_node: Node, caps: dict[str, list[Node]], profile: LanguageProfile
+) -> dict[str, Any]:
+    name = caps["name"][0].text.decode()
+    kind = def_cap[len(_DEF_PREFIX) :]
+    if kind == "var" and profile.const_strategy == "uppercase_name" and name.isupper():
+        # ALL_CAPS = const, aber nur fuer Sprachen OHNE const-Keyword (Python).
+        # Profil-gesteuert, weil name-basiert und NICHT universell: in Go heisst
+        # ein Grossbuchstaben-Name Export, nicht const. Keyword-Sprachen setzen
+        # @definition.const direkt in der .scm (const_strategy=none).
+        kind = "const"
     return {
         "name": name,
         "kind": kind,
-        "signature": signature,
+        "signature": _cap_text(caps, "signature"),
         "span": [def_node.start_point[0] + 1, def_node.end_point[0] + 1],
-        "parent": parent,
-        "visibility": "private" if name.startswith("_") else "public",
-        "docstring": docstring,
+        "parent": _cap_text(caps, "parent"),
+        "visibility": _visibility(name, caps.get("visibility"), profile),
+        "docstring": _docstring(caps),
     }
 
 
-def _enclosing_definition(node: Node) -> Node | None:
-    """Naechste umschliessende Klasse oder Funktion (fuer parent/kind)."""
-    parent = node.parent
-    while parent is not None:
-        if parent.type in ("class_definition", "function_definition"):
-            return parent
-        parent = parent.parent
-    return None
+def _cap_text(caps: dict[str, list[Node]], capture: str) -> str | None:
+    nodes = caps.get(capture)
+    return nodes[0].text.decode() if nodes else None
 
 
-def _name_of(node: Node | None) -> str | None:
-    if node is None:
+def _visibility(
+    name: str, vis_nodes: list[Node] | None, profile: LanguageProfile
+) -> str:
+    """Sichtbarkeit: ein @visibility-Modifier aus dem Code hat Vorrang, sonst die
+    Profil-Strategie (namensbasiert, wo die Sprache keine Modifier hat)."""
+    if vis_nodes:
+        return "private" if vis_nodes[0].text.decode() == "private" else "public"
+    strategy = profile.visibility_strategy
+    if strategy == "underscore_prefix":
+        return "private" if name.startswith("_") else "public"
+    if strategy == "uppercase_export":
+        return "public" if name[:1].isupper() else "private"
+    return "public"
+
+
+def _docstring(caps: dict[str, list[Node]]) -> str | None:
+    nodes = caps.get("doc")
+    if not nodes:
         return None
-    name = node.child_by_field_name("name")
-    return name.text.decode() if name is not None else None
+    return _strip_doc(nodes[0].text.decode())
 
 
-def _field_text(node: Node, field: str) -> str | None:
-    child = node.child_by_field_name(field)
-    return child.text.decode() if child is not None else None
-
-
-def _is_const_name(name: str) -> bool:
-    """ALL_CAPS-Konvention -> const, sonst var (rein syntaktisch)."""
-    return name.isupper()
-
-
-def _docstring(def_node: Node) -> str | None:
-    body = def_node.child_by_field_name("body")
-    if body is None or not body.named_children:
-        return None
-    first = body.named_children[0]
-    if first.type == "expression_statement" and first.named_children:
-        first = first.named_children[0]
-    if first.type != "string":
-        return None
-    parts = [c for c in first.children if c.type == "string_content"]
-    if not parts:
-        return None
-    return "".join(p.text.decode() for p in parts).strip()
+def _strip_doc(text: str) -> str:
+    """Generischer Delimiter-Stripper fuer Doc-Knoten (String oder Kommentar):
+    String-Praefix und umschliessende Quotes/Kommentarzeichen abtragen."""
+    t = _DOC_PREFIX.sub("", text.strip())
+    for quote in _QUOTES:
+        if len(t) >= 2 * len(quote) and t.startswith(quote) and t.endswith(quote):
+            return t[len(quote) : -len(quote)].strip()
+    if t.startswith("/*") and t.endswith("*/"):
+        return t[2:-2].strip()
+    for line_comment in ("///", "//", "#"):
+        if t.startswith(line_comment):
+            return t[len(line_comment) :].strip()
+    return t.strip()
