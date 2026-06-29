@@ -15,6 +15,17 @@ Deterministische Struktur-Artefakte, offline, ohne LLM/Cloud/Router. Alle
 Inkremente det -> durchgaengig test-driven. Grundlage: roadmap-schritt-1.md,
 technische-grundentscheidungen.md, startkonfiguration.md.
 
+## Voraussetzungen (Schicht S1, Details in [[constraints]])
+
+```
+Vor (neu) je Inkrement (uebrige erben die Schicht):
+  I-1.0  datamodel-code-generator (Py), go-jsonschema (Go)
+  I-1.2  Postgres-Container (pgvector-Image) laufend, psycopg v3, pydantic,
+         yoyo (Migrations-Runner), pytest + testcontainers
+  I-1.4  py-tree-sitter + tree-sitter-language-pack
+  I-1.7  watchdog; Working Tree im WSL2-FS (inotify, siehe [[portabilitaet]])
+```
+
 ## I-1.0  Schema-Vertrag + Codegen + Drift-Gate
 
 ```

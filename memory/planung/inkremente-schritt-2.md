@@ -15,6 +15,17 @@ Aktives System: zerlegen, lokalen Workern zuweisen, validieren, eskalieren.
 Ohne Cloud (Eskalation endet am staerksten lokalen Modell). Grundlage:
 roadmap-schritt-2.md, startkonfiguration.md.
 
+## Voraussetzungen (Schicht S2, Details in [[constraints]])
+
+```
+Vor (neu) je Inkrement:
+  I-2.0  capacity.toml, nvidia-smi verfuegbar
+  I-2.5  Ollama-Daemon erreichbar + Modelle gezogen (phi-4-mini,
+         qwen2.5-coder; on-demand qwen3-8b, r1-distill, q8), OLLAMA_HOST,
+         ollama/httpx-Client
+  (I-2.6/2.7 erben die Modelle aus I-2.5)
+```
+
 ## I-2.0  Capacity-Profil + Lifecycle-Manager (Logik)
 
 ```

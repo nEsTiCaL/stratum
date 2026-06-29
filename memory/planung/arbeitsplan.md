@@ -22,7 +22,8 @@ ohne Code oder alle Docs zu lesen.
 2. Haeppchen-Zeile finden: Status, depends_on, Detail-Quellen
 3. Basis-Kontext lesen (immer): C, T, A  (siehe Legende)
 4. NUR die in der Zeile gelisteten Detail-Quellen lesen
-5. depends_on muss "fertig" sein, sonst zuerst dieses bauen
+5. Preflight (V): depends_on fertig UND Voraussetzungs-Schicht erfuellt
+   (Tools/Dienste/Modelle/Env/Build-Vorstufen); sonst zuerst herstellen
 6. Bauen nach Klasse: det test-driven (Test zuerst), prob
    entwickler-verifiziert (Model-Seam, FakeModel/Replay)
 7. Nach Abnahme: Status hier auf "fertig", Zeile in log.md, commit
@@ -50,6 +51,7 @@ Architektur-Detail (nur bei Bedarf laut Zeile):
   IZ = architecture/interfaces-und-zugang.md             Server-Auth/Zugang
   N  = planung/nutzstufen.md                             Produktiv-Meilensteine
   P  = memory/portabilitaet.md                           Windows-Dev -> Linux
+  V  = memory/constraints.md                             Voraussetzungs-Schichten + Preflight
 ```
 
 P (Portabilitaet) ist relevant bei Ingestion/Watch (I-1.7), Bridge-Transport

@@ -15,6 +15,13 @@ Cross-File-Wissen von approximativ auf Repo-Ebene. Knowledge Graph +
 dependency-bewusste Invalidierung. Alle Inkremente det -> test-driven.
 Grundlage: roadmap-schritt-4.md.
 
+## Voraussetzungen (Schicht S4, Details in [[constraints]])
+
+```
+Vor (neu): CREATE EXTENSION vector (Migration); Indizes src/dst auf
+graph_edges (I-4.1). pgvector-Image steht seit S1.
+```
+
 ## I-4.1  graph_edges + Befuellung aus Artefakten
 
 ```

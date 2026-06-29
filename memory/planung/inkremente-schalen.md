@@ -15,6 +15,17 @@ Duenne Schalen ueber dem Kern, Konsumenten des Event-Vokabulars
 (progress|finding|partial|result|error). Kern bleibt schalenagnostisch.
 Grundlage: anforderungsprofil-desktop.md, interfaces-und-zugang.md.
 
+## Voraussetzungen (Schalen-Schichten, Details in [[constraints]])
+
+```
+Vor (neu) je Inkrement:
+  I-D.1  node + npm + vsce, VSCode
+  I-D.2  FastAPI, uvicorn
+  I-D.4  PyInstaller oder embeddable Python
+  I-S.1  Go Linux-Build (cross-compile), OpenSSH zum Testen
+  I-S.2  OpenSSH-Server, ssh-keygen (eigene CA); fail2ban (prod)
+```
+
 ## Phase 1: Desktop (zuerst, lokal, kein SSH/Auth)
 
 ## I-D.0  Dev-Harness (Einstieg fuer N1, ab Ende Schritt 1)

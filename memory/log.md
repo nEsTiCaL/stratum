@@ -7,3 +7,4 @@
 ## [2026-06-29] decision | Arbeitsplan (Haeppchen-Index) als Dispatch-/Kaltstart-Ebene angelegt
 ## [2026-06-29] decision | Portabilitaet Windows-Dev -> Linux: Anforderungen, .gitattributes/.editorconfig, Git-Config
 ## [2026-06-29] decision | Bridge-Transport-Default: lokaler TCP/HTTP-Port (Unix-Socket nur Linux-Prod)
+## [2026-06-29] decision | Voraussetzungs-Schichten (kumulativ) in constraints.md + Delta je Inkrement + Preflight

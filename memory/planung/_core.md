@@ -25,6 +25,10 @@ Jedes Inkrement traegt: Ziel, Modul/Artefakt das entsteht, Akzeptanz (DoD),
 was gestubbt bleibt, Klasse (det|prob|gemischt). Ein Inkrement ist ein
 vertikaler Schnitt mit echtem Wert, nicht eine technische Schicht.
 
+Systemvoraussetzungen werden nicht je Inkrement wiederholt, sondern als
+kumulative Schichten in [[constraints]] gefuehrt; je Spec-Datei steht oben die
+Delta-Liste "Vor (neu)". Vor Baubeginn die Preflight-Checkliste pruefen.
+
 ## Phasen und Inkremente
 
 ```

@@ -14,6 +14,15 @@ related: ["[[_core]]", "[[tdd-methodik]]", "[[inkremente-schritt-2]]"]
 Beobachtbar und steuerbar. Dashboard (read-only) + Kalibrierung + Canary.
 Nutzt den seit S1 mitlaufenden Trace. Grundlage: roadmap-schritt-5.md.
 
+## Voraussetzungen (Schicht S5, Details in [[constraints]])
+
+```
+Vor (neu) je Inkrement:
+  I-5.3  statisches Frontend-Geruest (kein Build)
+  I-5.5  Eval-Harness (eigene SWE-Faelle)
+  (SSE bringt FastAPI mit)
+```
+
 ## I-5.1  Live-Status + SSE-Stream
 
 ```

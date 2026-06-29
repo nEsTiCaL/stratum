@@ -15,6 +15,14 @@ Erster Datenaustritt aus der Maschine. Adapter + Bundling + Redaction-Gate.
 HARTES GATE: I-3.4 (Secret-Scan/Redaction scharf) MUSS vor dem ersten echten
 Egress fertig sein. Grundlage: roadmap-schritt-3.md, startkonfiguration.md.
 
+## Voraussetzungen (Schicht S3, Details in [[constraints]])
+
+```
+Vor (neu) je Inkrement:
+  I-3.1  anthropic SDK, ANTHROPIC_API_KEY (Env/Secret)
+  I-3.4  Detektor-Libs (regex/entropy)
+```
+
 ## I-3.2  Context-Bundling + deterministische Serialisierung
 
 ```
