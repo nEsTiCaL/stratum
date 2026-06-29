@@ -42,6 +42,15 @@ if (-not $wsl) {
   $distros = @(wsl.exe -l -q 2>$null | ForEach-Object { ($_ -replace "`0", "").Trim() } | Where-Object { $_ })
   if ($distros -contains 'Debian') {
     Ok "Debian-Distro installiert"
+    # git in Debian vorinstallieren, damit der Clone ohne setup.sh moeglich ist.
+    $gitCheck = wsl.exe -d Debian -- git --version 2>$null
+    if ($LASTEXITCODE -eq 0) { Ok "git in Debian ($gitCheck)" }
+    else {
+      Warn "git in Debian fehlt, wird jetzt installiert..."
+      wsl.exe -d Debian -u root -- apt-get install -y -q git 2>$null
+      if ($LASTEXITCODE -eq 0) { Ok "git in Debian installiert" }
+      else { Miss "git in Debian konnte nicht installiert werden" "wsl -d Debian -u root -- apt-get install -y git" }
+    }
   } elseif ($distros.Count -gt 0) {
     Warn "WSL-Distros vorhanden ($($distros -join ', ')), aber kein Debian. Projekt-Baseline ist Debian."
     Miss "Debian-Distro fehlt" "MANUELL: wsl --unregister <distro>, dann wsl --install -d Debian"

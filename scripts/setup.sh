@@ -73,7 +73,7 @@ fi
 # --- Baseline ---------------------------------------------------------------
 if want baseline; then
   sec "Baseline (Schicht 0)"
-  for t in git make curl; do
+  for t in make curl; do
     have "$t" && ok "$t" || { miss "$t fehlt" "sudo apt-get install -y $t"; \
       confirm && sudo apt-get install -y "$t"; }
   done

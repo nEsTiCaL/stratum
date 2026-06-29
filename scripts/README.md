@@ -33,6 +33,8 @@ fallen aus oder brauchen langsamen Polling-Fallback.
 Im WSL2-Terminal (als stratum-Benutzer):
 
 ```bash
+# git wird von setup.ps1 (Windows) automatisch in Debian vorinstalliert.
+# Falls setup.ps1 noch nicht gelaufen ist: sudo apt-get install -y git
 git clone https://github.com/nEsTiCaL/stratum ~/stratum
 cd ~/stratum
 ```
