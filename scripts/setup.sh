@@ -115,14 +115,22 @@ if want s1; then
     ok "Benutzer in docker-Gruppe (aktiv)"
   elif $_in_group; then
     warn "Benutzer ist docker-Mitglied, aber Gruppe noch nicht aktiv."
-    printf "  ${r}[stop]${x}  Bitte Shell neu starten: exit, dann WSL2 erneut oeffnen und setup.sh nochmal ausfuehren.\n"
+    printf "  ${r}[stop]${x}  Shell-Neustart erforderlich. Bitte:\n"
+    printf "          1. Diese Shell schliessen:  exit\n"
+    printf "          2. WSL2 neu oeffnen:        Windows-Taste -> 'Debian' eingeben -> Enter\n"
+    printf "             (oder in PowerShell:     wsl -d Debian)\n"
+    printf "          3. Setup fortsetzen:        cd ~/stratum && ./scripts/setup.sh\n"
     exit 1
   else
     miss "Benutzer nicht in docker-Gruppe" "sudo usermod -aG docker \$USER"
     if confirm; then
       sudo usermod -aG docker "$USER"
       printf "\n  ${y}Gruppe hinzugefuegt. Shell-Neustart erforderlich.${x}\n"
-      printf "  Bitte: exit -> WSL2 erneut oeffnen -> ./scripts/setup.sh\n\n"
+      printf "  Bitte:\n"
+      printf "    1. Diese Shell schliessen:  exit\n"
+      printf "    2. WSL2 neu oeffnen:        Windows-Taste -> 'Debian' eingeben -> Enter\n"
+      printf "       (oder in PowerShell:     wsl -d Debian)\n"
+      printf "    3. Setup fortsetzen:        cd ~/stratum && ./scripts/setup.sh\n\n"
       exit 1
     fi
   fi
