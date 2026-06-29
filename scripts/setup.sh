@@ -142,9 +142,9 @@ if want s2; then
   OLLAMA_URL="${OLLAMA_HOST:-http://localhost:11434}"
   [ -f "$ENV_FILE" ] && OLLAMA_URL="$(grep -E '^OLLAMA_HOST=' "$ENV_FILE" | cut -d= -f2- || echo "$OLLAMA_URL")"
 
-  if curl -fsS "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then
+  if curl -fsS --max-time 5 "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then
     ok "Ollama erreichbar ($OLLAMA_URL)"
-    have_tags="$(curl -fsS "${OLLAMA_URL}/api/tags" 2>/dev/null)"
+    have_tags="$(curl -fsS --max-time 5 "${OLLAMA_URL}/api/tags" 2>/dev/null)"
     for m in "${OLLAMA_MODELS[@]}"; do
       if printf '%s' "$have_tags" | grep -q "\"${m%%:*}"; then ok "Modell $m"
       else
@@ -153,7 +153,7 @@ if want s2; then
       fi
     done
   else
-    miss "Ollama nicht erreichbar ($OLLAMA_URL)" "Ollama auf dem Windows-Host starten; OLLAMA_HOST in .env pruefen"
+    miss "Ollama nicht erreichbar ($OLLAMA_URL)" "Ollama auf dem Windows-Host starten (Startmenue -> Ollama); OLLAMA_HOST in .env pruefen"
   fi
 fi
 
