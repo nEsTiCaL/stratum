@@ -1,0 +1,44 @@
+# Zeilenenden deterministisch: Repo speichert LF, Checkout LF.
+# Verhindert, dass Windows-CRLF im Linux-Container/Server bricht.
+* text=auto eol=lf
+
+# Explizit Text -> immer LF (Scripts/Config/Quellen)
+*.sh        text eol=lf
+*.py        text eol=lf
+*.sql       text eol=lf
+*.scm       text eol=lf
+*.toml      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.go        text eol=lf
+*.js        text eol=lf
+*.ts        text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.env       text eol=lf
+Dockerfile  text eol=lf
+Makefile    text eol=lf
+.gitattributes text eol=lf
+.editorconfig  text eol=lf
+
+# Windows-spezifische Skripte brauchen CRLF
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binaer -> nie konvertieren
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.gz        binary
+*.zip       binary
+*.so        binary
+*.dll       binary
+*.dylib     binary
+*.exe       binary
+*.wasm      binary

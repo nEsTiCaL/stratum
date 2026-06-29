@@ -49,7 +49,11 @@ Architektur-Detail (nur bei Bedarf laut Zeile):
   DP = architecture/anforderungsprofil-desktop.md        Desktop-Schale/Intent
   IZ = architecture/interfaces-und-zugang.md             Server-Auth/Zugang
   N  = planung/nutzstufen.md                             Produktiv-Meilensteine
+  P  = memory/portabilitaet.md                           Windows-Dev -> Linux
 ```
+
+P (Portabilitaet) ist relevant bei Ingestion/Watch (I-1.7), Bridge-Transport
+(I-2.5, I-D.1, I-S.1) und beim Dev-Setup allgemein.
 
 Provenance- und Result-Vertrag stehen in R1 (Store-Layout, Bloecke). Wer den
 Store beruehrt, liest R1.
