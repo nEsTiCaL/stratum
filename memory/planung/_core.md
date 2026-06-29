@@ -4,6 +4,9 @@ Ausfuehrungsplan fuer Stratum. Zerlegt die fuenf Architektur-Schritte plus die
 Schalen in kleine, vertikale, einzeln abnehmbare Inkremente. Grundlage:
 [[architecture]] und die Roadmap-Dokumente unter architecture/.
 
+Start-hier fuer den Bau eines Moduls: [[arbeitsplan]] (Haeppchen -> Quellen,
+Status, Kaltstart-Workflow).
+
 ## Leitlinie der Abnahme (zentral)
 
 Die Trennlinie der Architektur (producer_class = det | prob) IST die

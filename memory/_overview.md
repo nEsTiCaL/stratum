@@ -36,3 +36,7 @@ Ausfuehrungsplan steht: die fuenf Architektur-Schritte plus Schalen sind in
 kleine, vertikale, einzeln abnehmbare Inkremente zerlegt. Teststrategie folgt
 der det/prob-Grenze: det test-driven, prob entwickler-verifiziert. Siehe
 Planungs-Domaene [[_core]] (planung/) und [[tdd-methodik]].
+
+Um ein Modul zu bauen: [[arbeitsplan]] ist die Start-hier-Karte. Sie bildet
+jedes Haeppchen auf genau die zu lesenden Quellen ab (tokeneffizienter
+Kaltstart) und traegt den Fortschritts-Status.
