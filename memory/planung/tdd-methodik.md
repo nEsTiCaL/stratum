@@ -29,6 +29,11 @@ Testarten:
 ```
 Golden-Test    Input-Fixture -> erwartetes JSON (Extraktoren). tree-sitter
                ist deterministisch -> Byte-genau pruefbar.
+Real-Code-Smoke Ergaenzend zu Golden: Extraktoren gegen KLEINE echte Code-
+               beispiele, Invarianten/Properties statt byte-exakt (kein Crash,
+               Determinismus, Span-/parent-/arity-Invarianten, Schluessel-
+               Symbole vorhanden, Store-Durchstich). Faengt reale Idiome, die
+               synthetische Fixtures verfehlen. Klein halten (Suite in Sekunden).
 Eigenschaft    z.B. Bundle zweimal serialisiert -> Byte-identisch (Cache-
                Pflicht). Oder: Router liefert det-Typ genau einen Kandidaten.
 Contract       Schema-Konformitaet an jeder Interface-Grenze; gueltig

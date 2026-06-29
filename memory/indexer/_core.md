@@ -93,5 +93,8 @@ sensitivity=none, stub=True); Egress fail-safe, scharf erst bei I-3.4.
 
 ## Offen / folgt
 
-- I-1.9 JavaScript/TS belegt die Sprachunabhaengigkeit (nur neue .scm, Kern
-  unveraendert). I-1.10 C#, I-1.11 GDScript.
+- I-1.85 sprachagnostischer Kern (NAECHSTES): kind/role in Capture-Namen
+  (tags.scm), Sprachprofil, Python-Kopplung aus symbols/imports/calls raus.
+  Begruendung + Stolpersteine + Hebel: [[sprachagnostik]].
+- Danach I-1.9 JavaScript/TS (belegt Sprachunabhaengigkeit, nutzt I-1.85),
+  I-1.10 C#, I-1.11 GDScript.

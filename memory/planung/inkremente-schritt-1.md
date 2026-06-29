@@ -130,20 +130,147 @@ Akzeptanz: Stub liefert none; Schalter-Mechanik testbar (noch ohne Egress);
 Klasse  : det
 ```
 
-## I-1.9  JavaScript/TS (symbols/imports/calls)
+## I-1.85  Sprachagnostischer Extraktor-Kern (Multi-Sprache-Vorbereitung)
+
+Befund + Begruendung: [[sprachagnostik]]. Refactor VOR der ersten Fremdsprache,
+sonst zementieren C#/GDScript die Python-Kopplung dreifach.
 
 ```
-Ziel    : Grammar-Registry als sprachunabhaengig beweisen
-Modul   : queries/javascript/*.scm (CommonJS + ESM)
-Akzeptanz: Golden je Artefakt fuer JS/TS; Extraktor-Kern unveraendert (nur
-          .scm neu) -> belegt Sprachunabhaengigkeit
+Ziel    : Extraktor-Kern von Python-AST-Annahmen entkoppeln; neue Sprachen
+          brauchen nur .scm + schmales Sprachprofil, KEIN Kern-Code
+          Grenzziehung im Detail: [[sprachagnostik]] (kontrolliertes Capture-
+          Vokabular, 3 Profil-Achsen, out-of-scope).
+Modul   : (a) Capture-Konvention tags.scm-Stil: @name, @definition.<kind>
+              (kind als String-Suffix), @parent, @signature, @param, @doc,
+              @visibility, @reference.call + @callee, @import.* -> Kern liest
+              kind/role aus dem Capture, nicht aus Knotentypen
+          (b) caller/parent ueber SPAN-CONTAINMENT gegen symbol_index (innerstes
+              Symbol, dessen Span die Zeile enthaelt) -> kein Vorfahren-Walk
+          (c) Sprachprofil core/indexer/profiles.py mit genau 3 Achsen:
+              visibility_strategy (none|underscore_prefix|uppercase_export),
+              self_keyword (self|this|$this|None), import_resolution
+              (namespace_passthrough|relative_path|relative_path_ext).
+              Doc = generischer Delimiter-Stripper (KEINE Profil-Achse).
+              LEITLINIE: Profil so schmal wie moeglich; Modifier-Sprachen ohne
+              Eintrag; jeder Eintrag mit Begruendung "warum nicht .scm"
+          (d) symbols/imports/calls auf Captures + Profil umstellen; Registry um
+              Profil-Lookup; ingest sprach-dispatched mit Builder-Set je Sprache
+              (Tabelle Sprache -> erzeugte Artefakte)
+          (e) bestehenden Python-Pfad MIT ueberarbeiten (kein Greenfield):
+              queries/python/*.scm, core/indexer/{registry,symbols,imports,
+              calls}.py, ingest._BUILDERS. Golden-Tests + Fixtures bleiben das
+              Netz, Erwartungen unveraendert. Ist-Zustand + Checkliste:
+              [[sprachagnostik]]
+Akzeptanz: alle Python-Golden-Tests byte-identisch gruen (Regressionsnetz,
+          Verhalten unveraendert); core/indexer/{symbols,imports,calls}.py ohne
+          Python-spezifische Knotentyp-Strings/Konventionen (stehen nur in
+          queries/python/*.scm + profiles.py); Profil minimal (jeder Eintrag
+          begruendet, warum nicht .scm); "Sprache hinzufuegen"-Checkliste
+          dokumentiert; Tests zweigleisig (Teststrategie in [[sprachagnostik]]):
+          Golden + Real-Code-Smoke fuer Python (dogfood core/, z.B. core/scope.py,
+          core/secret_scan.py) mit wiederverwendbarem Invarianten-Checker;
+          optionaler Mini-Smoke einer zweiten Grammar (triviales JS)
+Stub    : voller JS/TS-Umfang bleibt I-1.9; C#/GDScript I-1.10/1.11
+Klasse  : det (Refactor unter Golden-Netz)
+```
+
+## I-1.9  JavaScript/TS (symbols/imports/calls)
+
+Standing-Invariante (Kern unberuehrt) + Capture-Konvention: [[sprachagnostik]].
+
+```
+Ziel    : Grammar-Registry als sprachunabhaengig BEWEISEN (Kern aus I-1.85
+          bleibt unveraendert -> das ist die Abnahme)
+Modul   : queries/javascript|typescript|tsx/*.scm + Profil-Eintrag
+Anders als Python (muss I-1.9 abdecken):
+  - Funktionsformen vielgestaltig: function_declaration, function_expression,
+    arrow_function, Objekt-/Klassen-Methoden, Generatoren. .scm mappt alle auf
+    @definition.function/.method; Name anonymer Arrows aus der Bindung
+    (const x = () => ..) holen; namenlose Lambdas -> kein Symbol.
+  - Sichtbarkeit zweigleisig: TS-Modifier (public/private/protected) und
+    #private -> @visibility-Capture; ABER top-level: export = oeffentlich,
+    nicht-exportiert = modul-privat. export-als-Sichtbarkeit in der .scm
+    erfassen (profil visibility_strategy bleibt none).
+  - Imports: ESM (import .. from), CommonJS (require), dynamic import(),
+    re-export (export .. from). import_resolution = relative_path_ext
+    (./x -> x.js|x/index.js|.ts ..); bare specifier (react) -> external,
+    target NULL.
+  - 2-3 Grammatiken: javascript, typescript, tsx getrennt registrieren; TS
+    bringt @definition.interface/.type/.enum/.namespace (Vokabular deckt das).
+Akzeptanz: Golden je Artefakt fuer JS und TS + Real-Code-Smoke (kleine echte
+          Datei, Invarianten); core/indexer/{symbols,imports,calls}.py git-diff
+          LEER -> belegt Sprachunabhaengigkeit
 Klasse  : det
 ```
 
-## I-1.10  C# (voll) und I-1.11 GDScript (nur symbol_index + grobe calls)
+## I-1.10  C# (voll)
 
 ```
-Folgend, gleiche Mechanik. C# staerkstes syntaktisches Signal (Overloads ->
-Arity). GDScript juenger -> reduzierter Umfang. C/C++ offen gehalten.
+Ziel    : staerkstes syntaktisches Signal; Overloads -> Arity zahlt sich aus
+Anders als Python (muss I-1.10 abdecken):
+  - Sichtbarkeit per Modifier (public/private/protected/internal) ->
+    @visibility-Capture, profil visibility_strategy = none.
+  - Overloads: gleicher Name, andere Arity -> symbol_index muss arity sauber
+    liefern (count @param); scope unterscheidet ueber /<arity>. C# ist der
+    Grund fuer die Arity-Konvention (TG 3).
+  - Imports: using <Namespace> -> import_resolution = namespace_passthrough
+    (target = Namespace-Id, KEINE FS-Aufloesung in S1; echte Aufloesung S4).
+  - self_keyword = this.
+  - zusaetzliche kinds: struct, interface, enum, record, delegate, property,
+    event, constructor, namespace (Vokabular offen erweitern).
+Akzeptanz: Golden je Artefakt + Real-Code-Smoke (kleine echte Datei, Invarianten,
+          inkl. Overload-Arity); core/indexer/* git-diff leer.
+Klasse  : det
+```
+
+## I-1.11  GDScript (reduziert: nur symbol_index + grobe calls)
+
+Standing-Invariante + Konvention: [[sprachagnostik]]. Godot-Skriptsprache,
+einrueckungsbasiert wie Python.
+
+```
+Ziel    : juengere Grammar, bewusst reduzierter Umfang -> belegt, dass das
+          Modell auch bei reduziertem Artefakt-Set traegt
+Artefakt-Set: NUR symbol_index + call_graph (KEIN dependency_graph). Macht die
+          ingest-Sprach-Dispatch (Builder-Set je Sprache, I-1.85) konkret:
+          GDScript registriert 2 Builder statt 3.
+Anders als Python (muss I-1.11 abdecken):
+  - Grammar: language-pack-Name pruefen (gdscript), Reifegrad gering ->
+    intensiv sondieren, ERROR-Toleranz und fehlende Felder einplanen.
+  - kinds: func -> @definition.function/.method; class (innere Klasse) +
+    file-level class via `class_name`; var/const; enum; signal
+    (@definition.signal, neues Vokabular). Annotationen (@export/@onready/
+    @tool/@rpc) sind Marker am Symbol, kein eigenes Symbol.
+  - Vererbung: `extends Base` bzw. extends "res://..": Basis als signature der
+    Klasse erfassen (analog superclasses), NICHT als dependency_graph.
+  - Sichtbarkeit: fuehrender Unterstrich -> visibility_strategy =
+    underscore_prefix (wie Python). Bekannte Unschaerfe: _ready/_process u.a.
+    sind Engine-Callbacks (per _ als "private" gewertet, intentional public) -
+    akzeptiert (Sichtbarkeit ist syntaktische Approximation). self_keyword=self.
+  - Abhaengigkeiten (preload/load("res://..")/extends): bewusst NICHT als
+    dependency_graph in S1; res://-Aufloesung waere ein eigenes
+    import_resolution-Profil und folgt spaeter bei Bedarf.
+Akzeptanz: Golden (symbol_index, call_graph) + Real-Code-Smoke; core/indexer/*
+          git-diff leer; dependency_graph fuer GDScript nicht erzeugt.
+Klasse  : det
+C/C++ bleibt offen gehalten (Praeprozessor/#include -> spaeter).
+```
+
+## I-1.12  Lint-/Format-Gate (Schritt-1-Abschluss vor Phase 2)
+
+Letzter Schritt von Schritt 1: Code-Qualitaet von Stratum selbst haerten, bevor
+Phase 2 den Kern festschreibt. Reines Dev-/CI-Gate, KEIN Produktfeature (der
+Linter als Analyse-Vorstufe ist eine eigene Idee fuer S2: [[det-linter-review]]).
+
+```
+Ziel    : ruff als schnelle Lint-+Format-Stufe VOR der Testsuite (CI-Gate)
+Modul   : ruff-Konfig in pyproject.toml; make lint (+ ggf. make fmt); CI vor
+          make test; Regelset minimal: F (pyflakes), E, I (isort), UP, B (bugbear)
+Akzeptanz: make lint gruen ueber core/ + tests/; in CI vor make test geschaltet
+Wichtig : core/models/* AUSSCHLIESSEN (generiert, black-formatiert, haengt am
+          Drift-Gate -> ruff darf es nicht reformatieren); ruff format
+          black-kompatibel halten, damit codegen und lint nicht streiten
+Stub    : mypy (Typcheck) spaeter, eigener Schritt; Go-Lint (gofmt/go vet) erst
+          Phase 2 mit dem Go-CLI
 Klasse  : det
 ```
