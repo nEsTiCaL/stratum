@@ -104,15 +104,26 @@ if want s1; then
   if have docker; then ok "docker ($(docker --version | awk '{print $3}' | tr -d ,))"
   else miss "docker/CLI nicht erreichbar" "Docker Desktop (Windows) starten, WSL2-Integration aktivieren"; fi
 
-  # Docker-Gruppe pruefen: ohne Mitgliedschaft schlaegt docker info mit
+  # Docker-Gruppe pruefen: ohne aktive Mitgliedschaft schlaegt docker info mit
   # "permission denied on /var/run/docker.sock" fehl.
+  # Zwei Faelle unterscheiden:
+  #   a) Benutzer ist kein Mitglied -> hinzufuegen, dann Shell-Neustart erzwingen
+  #   b) Mitglied, aber Gruppe noch nicht aktiv (nach usermod ohne Re-Login)
+  _in_group=false
+  getent group docker 2>/dev/null | grep -qw "$USER" && _in_group=true
   if id -nG 2>/dev/null | grep -qw docker; then
-    ok "Benutzer in docker-Gruppe"
+    ok "Benutzer in docker-Gruppe (aktiv)"
+  elif $_in_group; then
+    warn "Benutzer ist docker-Mitglied, aber Gruppe noch nicht aktiv."
+    printf "  ${r}[stop]${x}  Bitte Shell neu starten: exit, dann WSL2 erneut oeffnen und setup.sh nochmal ausfuehren.\n"
+    exit 1
   else
     miss "Benutzer nicht in docker-Gruppe" "sudo usermod -aG docker \$USER"
     if confirm; then
       sudo usermod -aG docker "$USER"
-      warn "Gruppe hinzugefuegt. Starte die Shell neu (newgrp docker) oder melde dich ab/an, damit die Gruppe aktiv wird."
+      printf "\n  ${y}Gruppe hinzugefuegt. Shell-Neustart erforderlich.${x}\n"
+      printf "  Bitte: exit -> WSL2 erneut oeffnen -> ./scripts/setup.sh\n\n"
+      exit 1
     fi
   fi
 
