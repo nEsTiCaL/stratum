@@ -1,0 +1,33 @@
+# Stratum: Kernuebersicht
+
+Stratum ist ein schichtweiser Coding Agent: deterministische Werkzeuge vor
+lokalen Modellen vor der Cloud. Fuer jeden Teilschritt wird die kleinste
+faehige Schicht gewaehlt, teure Cloud-Modelle nur bei Bedarf eskaliert. Jedes
+Zwischenergebnis ist ein nachpruefbares Artefakt mit Provenance.
+
+## Leitprinzipien
+
+- artifact-first: der Code ist die Wahrheit, Artefakte sind ein Cache mit
+  Herkunftsnachweis
+- deterministisch vor probabilistisch: Parser und Graphen vor Sprachmodellen
+- Gate vor Faehigkeit: erst pruefen ob eine Aufgabe die Maschine verlassen darf,
+  dann das kleinste faehige Modell
+- austauschbar: Speicher, Queue, Graph, Modelle und Frontends hinter schmalen
+  Schnittstellen
+
+## Aufbau
+
+Sprache-Split: Python-Kern (volatil) plus Go-CLI (stabil, Single-Binary),
+Bruecke ueber JSON-Lines. Persistenz in PostgreSQL (jsonb-Artefakte, SQL-Queue,
+pgvector). Analyse ueber tree-sitter mit .scm-Queries. Lokale Modelle via Ollama,
+Cloud via Anthropic Messages-API.
+
+Module sind duenne Schalen ueber EINEM Kern, keine Forks: Desktop (Phase 1)
+vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in
+[[architecture]].
+
+## Status
+
+In Entwicklung. Sicherheits-Gates laufen in der Testphase als kontrollierte
+Stubs und werden vor dem Produktivbetrieb scharf gestellt. Ordnerstruktur des
+Repos angelegt (siehe [[architecture]]), Code noch nicht begonnen.
