@@ -14,3 +14,5 @@
 ## [2026-06-29] finding | WSL2-Distro-Installation kann nicht automatisiert werden (Installer wartet auf manuelle Benutzernamen-Eingabe); setup.ps1 + README dokumentieren jetzt das manuelle Verfahren
 ## [2026-06-29] decision | Repo-Klone ins WSL2-FS (nicht /mnt/c mounten): inotify muss zuverlassig sein fuer Ingestion-Watch (I-1.7); Standard-Credentials stratum:stratum dokumentiert
 ## [2026-06-29] decision | Schema-Vertrag: result_det + result_prob statt Discriminated Union (Option B); artifact_type-Enum 10 Typen S1-S5 vorgebaut; task_classification im Trace
+## [2026-06-29] decision | I-1.0 abgeschlossen: 4 JSON-Schemata, make codegen (py+go), 26 Contract-Tests gruen, Drift-Gate verifiziert
+## [2026-06-29] decision | I-1.1 abgeschlossen: scope-Parser/Serializer (core/scope.py), Pfad-Normalisierung, Typmenge-Validierung, Arity-Konvention, 34 Tests gruen
