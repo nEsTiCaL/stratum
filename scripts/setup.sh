@@ -68,8 +68,6 @@ else
     if [ -n "${host_ip:-}" ]; then
       sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
       ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host)"
-      warn "Firewall: Port 11434 muss auf Windows freigegeben sein (als Admin):"
-      warn "  netsh advfirewall firewall add rule name=\"Ollama WSL2\" dir=in action=allow protocol=TCP localport=11434"
     else
       ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
     fi
@@ -178,6 +176,9 @@ if want s2; then
     done
   else
     miss "Ollama nicht erreichbar ($OLLAMA_URL)" "Ollama auf dem Windows-Host starten (Startmenue -> Ollama); OLLAMA_HOST in .env pruefen"
+    warn "Falls Ollama laeuft aber nicht erreichbar ist: Windows-Firewall pruefen."
+    warn "Als Admin in PowerShell: netsh advfirewall firewall delete rule name=\"ollama.exe\" dir=in"
+    warn "Dann:  netsh advfirewall firewall add rule name=\"Ollama WSL2\" dir=in action=allow protocol=TCP localport=11434"
   fi
 fi
 
