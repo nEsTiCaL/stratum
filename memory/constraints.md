@@ -26,7 +26,7 @@ oben in den Spec-Dateien (planung/inkremente-*). Doku-Pruefung, kein Skript.
 
 ```
 Schicht 0  Baseline (einmalig)
-  WSL2 (Ubuntu), Docker Desktop (WSL2-Backend), git, make,
+  WSL2 (Debian), Docker Desktop (WSL2-Backend), git, make,
   Python 3.12+ (venv/uv), Go 1.22+, Ollama (Windows, GPU).
   Repo-Configs (.gitattributes/.editorconfig) -> erledigt.
 

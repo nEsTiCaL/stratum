@@ -30,10 +30,24 @@ else { Miss "winget fehlt" "App-Installer aus dem Microsoft Store installieren" 
 Sec "WSL2"
 $wsl = $false
 try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wsl = $true } } catch {}
-if ($wsl) { Ok "WSL2 vorhanden (Distros: wsl -l -v)" }
-else {
-  Miss "WSL2 nicht eingerichtet" "wsl --install -d Ubuntu   (Admin, danach NEUSTART)"
-  Confirm "wsl --install -d Ubuntu" | Out-Null
+if (-not $wsl) {
+  Miss "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Admin, danach NEUSTART)"
+  Confirm "wsl --install -d Debian" | Out-Null
+} else {
+  Ok "WSL2 vorhanden"
+  # WSL kann ohne Distro dastehen (--status meldet trotzdem ok). Distro pruefen.
+  # wsl -l -q liefert UTF-16 mit Null-Bytes; die filtern wir heraus.
+  $distros = @(wsl.exe -l -q 2>$null | ForEach-Object { ($_ -replace "`0", "").Trim() } | Where-Object { $_ })
+  if ($distros -contains 'Debian') {
+    Ok "Debian-Distro installiert"
+  } elseif ($distros.Count -gt 0) {
+    Warn "WSL-Distros vorhanden ($($distros -join ', ')), aber kein Debian. Projekt-Baseline ist Debian."
+    Miss "Debian-Distro fehlt" "wsl --install -d Debian"
+    Confirm "wsl --install -d Debian" | Out-Null
+  } else {
+    Miss "keine WSL-Distro installiert" "wsl --install -d Debian   (danach Linux-Benutzer anlegen)"
+    Confirm "wsl --install -d Debian" | Out-Null
+  }
 }
 
 Sec "Docker Desktop"

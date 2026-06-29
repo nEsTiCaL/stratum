@@ -29,12 +29,15 @@ Python-Kern  | WSL2 nativ + Dockerfile    | Linux-Basis = Container
 Go-CLI       | WSL2 bauen, cross-compile  | Linux-Binary muehelos
 ```
 
-## Grundlage: WSL2 (Ubuntu)
+## Grundlage: WSL2 (Debian)
 
 ```
 - echte Linux-Umgebung -> tree-sitter, psycopg, Pfade stimmen
 - GPU via CUDA-on-WSL2 verfuegbar
 - Docker Desktop nutzt WSL2 ohnehin als Backend
+- Debian spiegelt das slim-Base-Image des Kern-Containers enger
+  (python:3.12-slim = Debian); Paritaet sitzt an der Container-
+  Grenze, nicht am Host. Naeheres: memory/portabilitaet.md.
 -> die Windows-Linux-Kluft verschwindet fast vollstaendig
 ```
 
@@ -133,7 +136,7 @@ Container.
 ## Empfohlene Reihenfolge beim Aufsetzen
 
 ```
-1. WSL2 (Ubuntu) einrichten, Docker Desktop mit WSL2-Backend
+1. WSL2 (Debian) einrichten, Docker Desktop mit WSL2-Backend
 2. Ollama nativ Windows installieren, GPU pruefen, Modelle ziehen
 3. Postgres als compose-Dienst starten (erster Prod-Baustein)
 4. Python-Kern in WSL2 aufsetzen, Repository-Interface +
@@ -148,7 +151,7 @@ Container.
 ## Zusammenfassung
 
 ```
-WSL2 (Ubuntu)        Entwicklungsumgebung, Linux-Paritaet
+WSL2 (Debian)        Entwicklungsumgebung, Linux-Paritaet
 Ollama nativ Windows GPU, per HTTP (= Prod-Abbild)
 Postgres in Docker   ab Tag 1 (compose), Prod-identisch
 Python-Kern          WSL2 nativ + fruehes Dockerfile

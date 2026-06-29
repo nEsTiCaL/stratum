@@ -9,3 +9,4 @@
 ## [2026-06-29] decision | Bridge-Transport-Default: lokaler TCP/HTTP-Port (Unix-Socket nur Linux-Prod)
 ## [2026-06-29] decision | Voraussetzungs-Schichten (kumulativ) in constraints.md + Delta je Inkrement + Preflight
 ## [2026-06-29] decision | Onboarding-Setup: setup.ps1 (Host) + setup.sh (WSL2), erkennen+anleiten; Infra (compose, pyproject, .env.example)
+## [2026-06-29] decision | WSL2-Distro Ubuntu -> Debian (Paritaet sitzt im Container, nicht am Host); setup.ps1 prueft jetzt Distro-Praesenz

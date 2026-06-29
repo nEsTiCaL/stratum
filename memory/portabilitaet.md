@@ -8,7 +8,7 @@ auf einem Linux-Server ohne Ueberraschungen. Ergaenzt architecture/dev-setup.md
 ## Dev-Modell (bindend)
 
 ```
-WSL2 (Ubuntu) = Bauumgebung -> echte Linux-Paritaet (psycopg, tree-sitter,
+WSL2 (Debian) = Bauumgebung -> echte Linux-Paritaet (psycopg, tree-sitter,
                 Pfade, Zeilenenden stimmen mit dem Container ueberein)
 Windows-nativ = nur Host: Ollama/GPU und Editor. NICHTS Prod-Relevantes
                 Windows-nativ bauen oder ausfuehren.
@@ -63,3 +63,14 @@ Bridge-Transport (Punkt 3): lokaler TCP/HTTP-Port ist Default (festgelegt
 2026-06-29). Unix-Socket nur als Linux-Prod-Optimierung hinter demselben
 Interface. In [[architecture]] (Sprache-Split) verankert.
 ```
+
+WSL2-Distro: Debian (festgelegt 2026-06-29, zuvor Ubuntu). Begruendung: Die
+Paritaet, die zaehlt, wird an der Container-Grenze erzwungen, nicht am
+WSL-Host. Die produktive Laufzeit ist der Docker-Dienst (Postgres, Kern,
+Gateway); dessen Base-Image ist ohnehin Debian-basiert (z.B. python:3.12-slim).
+Der WSL-Host ist nur Bau-/Orchestrierungs-Host (git, docker compose, uv,
+Dev-.venv). manylinux-Wheels (psycopg[binary], tree-sitter-pack) sind
+glibc-basiert und distro-agnostisch -> Ubuntu vs Debian technisch belanglos.
+Das System-Python-Argument (Debian 12 = 3.11 unter dem 3.12+-Floor) wiegt
+nicht, weil uv ein eigenes Python provisioniert. Damit kauft Ubuntu keinen
+realen Vorteil; Debian ist schlanker und spiegelt das slim-Base-Image enger.
