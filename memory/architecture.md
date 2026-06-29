@@ -8,8 +8,10 @@ Domaene, nicht hierher.
 - Kern in Python (volatil, schnelle Iteration, beste Bindings fuer
   tree-sitter/Ollama/Claude/Postgres, kein Build-Schritt)
 - CLI in Go (stabil, Single-Binary, Streaming, einfache Verteilung)
-- Bruecke: JSON-Lines ueber lokalen Socket oder HTTP-Port. Empfehlung: Kern als
-  Dienst, CLI spricht ueber lokalen Socket/HTTP (entkoppelt, passt zu Docker)
+- Bruecke: JSON-Lines, Kern als Dienst, CLI/Frontends sprechen ihn an.
+  Transport-Default: lokaler TCP/HTTP-Port (portabel Windows/Linux). Unix-Socket
+  nur als Linux-Prod-Optimierung hinter demselben Interface. Begruendung:
+  Portabilitaet (Unix-Sockets Windows-nativ unzuverlaessig), siehe [[portabilitaet]]
 - Verworfen: Rust (langsamer Build im volatilen Teil), reines Python (schwaches
   CLI-Binary), reines Go (tree-sitter via cgo spaerlich)
 

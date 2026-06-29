@@ -56,10 +56,10 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
 core.eol=lf. Rest ist Bau-Disziplin in den jeweiligen Inkrementen.
 ```
 
-## Offen / zu bestaetigen
+## Entschieden
 
 ```
-Bridge-Transport-Default (Punkt 3): TCP/HTTP als Standard vorgeschlagen,
-noch nicht in der Architektur verankert. Bei Bestaetigung in
-technische-grundentscheidungen-Naehe nachziehen.
+Bridge-Transport (Punkt 3): lokaler TCP/HTTP-Port ist Default (festgelegt
+2026-06-29). Unix-Socket nur als Linux-Prod-Optimierung hinter demselben
+Interface. In [[architecture]] (Sprache-Split) verankert.
 ```
