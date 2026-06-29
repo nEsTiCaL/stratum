@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "events.schema.json",
+  "title": "Event",
+  "description": "Wire-Format fuer alle Ereignisse vom Kern an Frontends (JSON-Lines). Das t-Feld ist der Diskriminator. Go-CLI liest nur t und Rendering-Felder.",
+  "oneOf": [
+    { "$ref": "#/definitions/ProgressEvent" },
+    { "$ref": "#/definitions/FindingEvent" },
+    { "$ref": "#/definitions/PartialEvent" },
+    { "$ref": "#/definitions/ResultEvent" },
+    { "$ref": "#/definitions/ErrorEvent" }
+  ],
+  "definitions": {
+    "ProgressEvent": {
+      "type": "object",
+      "required": ["t", "session_id", "stage"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "string", "const": "progress" },
+        "session_id": { "type": "string" },
+        "stage": {
+          "type": "string",
+          "enum": ["ingestion", "index", "scan", "route", "queue", "worker", "validate"]
+        },
+        "pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Fortschritt in Prozent, optional"
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "FindingEvent": {
+      "type": "object",
+      "required": ["t", "session_id", "scope", "severity", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "string", "const": "finding" },
+        "session_id": { "type": "string" },
+        "scope": { "type": "string" },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warning", "error", "critical"]
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "PartialEvent": {
+      "type": "object",
+      "required": ["t", "session_id", "fragment"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "string", "const": "partial" },
+        "session_id": { "type": "string" },
+        "fragment": {
+          "type": "string",
+          "description": "Streaming-Fragment eines LLM-Workers"
+        }
+      }
+    },
+    "ResultEvent": {
+      "type": "object",
+      "required": ["t", "session_id", "artifact_type", "scope", "producer_class"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "string", "const": "result" },
+        "session_id": { "type": "string" },
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "symbol_index",
+            "dependency_graph",
+            "call_graph",
+            "code_summary",
+            "code_explanation",
+            "review_findings",
+            "refactor_plan",
+            "debug_analysis",
+            "test_generation",
+            "docstring"
+          ]
+        },
+        "scope": { "type": "string" },
+        "producer_class": {
+          "type": "string",
+          "enum": ["det", "prob"]
+        }
+      }
+    },
+    "ErrorEvent": {
+      "type": "object",
+      "required": ["t", "session_id", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "string", "const": "error" },
+        "session_id": { "type": "string" },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

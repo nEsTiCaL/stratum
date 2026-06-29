@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "result_det.schema.json",
+  "title": "ResultDet",
+  "description": "Ergebnis eines deterministischen Producers. Das confidence-Feld ist verboten.",
+  "type": "object",
+  "required": ["artifact_type", "scope", "content", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "type": "string",
+      "enum": ["symbol_index", "dependency_graph", "call_graph"],
+      "description": "Typ des det-Artefakts (Teilmenge der Gesamtenum in provenance)"
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9_.-]+::)?(repo|file|module|symbol):[^#]*(#[A-Za-z0-9_.]+(/[0-9]+)?)?$",
+      "description": "Scope-Schluessel: [repo-id::]typ:pfad[#symbolpfad[/arity]]"
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Typ-spezifische Nutzlast (jsonb). Struktur je artifact_type in den Extraktoren definiert."
+    },
+    "provenance": {
+      "$ref": "provenance.schema.json"
+    }
+  }
+}

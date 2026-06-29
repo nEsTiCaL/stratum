@@ -28,3 +28,7 @@ dev = [
 # Abhaengigkeiten, ohne den Projektbaum zu bauen.
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

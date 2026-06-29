@@ -105,6 +105,40 @@ Go     | JSON-Schema->struct-Generator (z.B. go-jsonschema)
 Build  | ein make-Target laeuft beide
 ```
 
+Ergebnis-Schema: zwei statt einem (Option B):
+
+```
+schemas/result_det.schema.json   confidence-Feld fehlt (bei det verboten)
+schemas/result_prob.schema.json  confidence-Feld Pflicht (real, 0..1)
+```
+
+Begruendung: if/then/else ueber producer_class in JSON Schema erzeugt
+unhandlichen generierten Code (union-Types in Python und Go). Zwei
+explizite Schemata sind lesbar, testbar und erzeugen saubere generierte
+Typen. Der Validator liest producer_class aus der Provenance und waehlt
+das passende Schema.
+
+artifact_type: geschlossene Enum, S1-S5 vorgebaut:
+
+```
+S1 (det) : symbol_index | dependency_graph | call_graph
+S2/S3 (prob): code_summary | code_explanation | review_findings |
+              refactor_plan | debug_analysis | test_generation | docstring
+```
+
+Alle bekannten Typen ueber S1-S5 im Schema definiert, damit
+schema_version-Bumps fuer bekannte Typen entfallen. Echte neue
+Typen erfordern einen Bump (selten, akzeptiert).
+
+Bewusst nicht als Artefakt-Typ:
+
+```
+task_classification  -> Trace (kein Caching-Nutzen, S5 liest Trace)
+task_dag             -> Queue (dag_id), kein gespeichertes Artefakt
+redaction_report     -> Trace (laut R3), nicht Artifact-Store
+symbol_diff          -> transiente Berechnung in S4
+```
+
 ## 3. scope-Namensschema
 
 Schluessel fuer Store, Graph, Bundling. Uneinheitlichkeit ->

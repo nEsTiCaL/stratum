@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "result_prob.schema.json",
+  "title": "ResultProb",
+  "description": "Ergebnis eines probabilistischen Producers (LLM). confidence ist Pflicht.",
+  "type": "object",
+  "required": ["artifact_type", "scope", "content", "confidence", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {
+      "type": "string",
+      "enum": [
+        "code_summary",
+        "code_explanation",
+        "review_findings",
+        "refactor_plan",
+        "debug_analysis",
+        "test_generation",
+        "docstring"
+      ],
+      "description": "Typ des prob-Artefakts (Teilmenge der Gesamtenum in provenance)"
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9_.-]+::)?(repo|file|module|symbol):[^#]*(#[A-Za-z0-9_.]+(/[0-9]+)?)?$",
+      "description": "Scope-Schluessel: [repo-id::]typ:pfad[#symbolpfad[/arity]]"
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Typ-spezifische Nutzlast (jsonb)"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Selbsteinschaetzung des Producers. Pflicht bei prob, verboten bei det."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Einzelne Befunde (z.B. Review-Hinweise)"
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity"],
+        "additionalProperties": true,
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          }
+        }
+      },
+      "description": "Risiken je Finding: severity, location, Beschreibung"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Verbesserungsvorschlaege"
+    },
+    "provenance": {
+      "$ref": "provenance.schema.json"
+    }
+  }
+}

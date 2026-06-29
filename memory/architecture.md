@@ -21,8 +21,13 @@ JSON Schema in schemas/*.schema.json ist die Quelle der Wahrheit (sprachneutral)
 Ein Generierungslauf erzeugt beide Seiten: pydantic-Modelle (Python) und structs
 (Go). Drift damit strukturell ausgeschlossen.
 
-- Dateien: provenance, result (referenziert provenance), events
-  (progress|finding|partial|result|error)
+- Dateien: provenance, result_det, result_prob (beide referenzieren provenance),
+  events (progress|finding|partial|result|error)
+- Ergebnis zweigeteilt: result_det (confidence verboten) und result_prob
+  (confidence Pflicht). Kein if/then/else im Schema -> sauberer Codegen.
+  Validator waehlt Schema anhand producer_class in Provenance.
+- artifact_type: geschlossene Enum ueber S1-S5 vorgebaut (10 Typen, s. TG Abschnitt 2).
+  task_classification bleibt im Trace (kein Artefakt).
 - Asymmetrie: Python-Kern kennt volles Schema (erzeugt, validiert, speichert),
   Go-CLI kennt nur die Event-Huelle (t-Feld plus Rendering)
 - Generierte Dateien: nie von Hand editieren, als DO NOT EDIT markieren,
