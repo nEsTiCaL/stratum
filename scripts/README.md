@@ -72,6 +72,23 @@ processors=6
 
 Danach `wsl --shutdown` (PowerShell) und WSL2 neu oeffnen.
 
+## Ollama aus WSL2 erreichbar (Firewall)
+
+WSL2 spricht den Host-Ollama ueber die Bridge-IP an (Default-Gateway aus
+WSL2, z.B. `http://172.x.x.1:11434`); `setup.sh` traegt sie in `.env` als
+`OLLAMA_HOST` ein. Ollama muss dafuer auf `0.0.0.0` lauschen (`OLLAMA_HOST=0.0.0.0`
+als User-Variable auf dem Host, dann Ollama neu starten) -- das setzt `setup.ps1`.
+
+- **Windows 11:** Damit ist Ollama aus WSL2 **ohne** zusaetzliche Firewall-Regel
+  erreichbar (getestet, Bridge-IP + Ollama auf `0.0.0.0`/`::`).
+- **Windows 10:** Die Windows-Firewall blockiert den Zugriff aus WSL2; hier ist
+  die Inbound-Allow-Regel noetig (Admin-PowerShell):
+  ```powershell
+  netsh advfirewall firewall add rule name="Ollama WSL2" dir=in action=allow protocol=TCP localport=11434
+  ```
+  Etwaige Block-Regeln fuer ollama zuvor entfernen (entstehen, wenn man beim
+  ersten Windows-Firewall-Prompt "Blockieren" gewaehlt hat).
+
 ## Was die Skripte NICHT tun
 
 - WSL2/Docker nicht erzwingen (Admin/Neustart bleiben manuell).

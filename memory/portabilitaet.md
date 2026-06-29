@@ -47,6 +47,11 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
 
 9 CI auf Linux als massgebliches Gate (det-Suite gegen Postgres-Container).
   Optionaler Windows-Job faengt Bruch der lokalen Dev-Umgebung.
+
+10 Ollama-Erreichbarkeit aus WSL2: Host-Ollama auf 0.0.0.0 (bindet ::),
+   WSL2 ueber die Bridge-IP (Default-Gateway). Windows 11: ohne Firewall-Regel
+   erreichbar (getestet). Windows 10: Inbound-Allow-Regel fuer Port 11434
+   noetig, sonst blockt die Firewall. Detail: scripts/README.md.
 ```
 
 ## Bereits umgesetzt
