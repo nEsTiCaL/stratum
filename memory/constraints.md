@@ -76,6 +76,10 @@ Schicht 0  Baseline (einmalig)
 [ ] depends_on-Inkremente fertig (arbeitsplan)
 ```
 
+Onboarding/Installation (erkennen + anleiten, ausfuehrbare Form dieser
+Schichten): scripts/setup.ps1 (Windows-Host) + scripts/setup.sh (WSL2).
+Anleitung in scripts/README.md.
+
 ## Sicherheit
 
 Stratum ist Werkzeug fuer legitime, autorisierte Code-Analyse. Vor dem

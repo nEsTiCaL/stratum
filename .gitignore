@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Umgebung / Secrets
+.env
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Hinweis: generierte Schema-Artefakte (pydantic/Go-structs) werden bewusst
+# COMMITTED (Drift-Check in CI), daher hier NICHT ignoriert.
