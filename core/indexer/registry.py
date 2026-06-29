@@ -24,6 +24,7 @@ _PRODUCER_SHORT = {
     "javascript": "js",
     "typescript": "ts",
     "csharp": "cs",
+    "gdscript": "gd",
 }
 
 

@@ -31,6 +31,7 @@ _EXTENSION_LANGUAGE = {
     ".cjs": "javascript",
     ".ts": "typescript",
     ".cs": "csharp",
+    ".gd": "gdscript",
 }
 _ALL_THREE = (symbol_index_result, dependency_graph_result, call_graph_result)
 _BUILDER_SETS = {
@@ -38,6 +39,9 @@ _BUILDER_SETS = {
     "javascript": _ALL_THREE,
     "typescript": _ALL_THREE,
     "csharp": _ALL_THREE,
+    # GDScript reduziert: KEIN dependency_graph -> 2 Builder. Macht die
+    # Sprach-Dispatch konkret (Builder-Set je Sprache).
+    "gdscript": (symbol_index_result, call_graph_result),
 }
 _DEFAULT_LANGUAGE = "python"
 

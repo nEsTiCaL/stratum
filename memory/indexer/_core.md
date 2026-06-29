@@ -140,7 +140,10 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   import-Keyword). calls.py weiter diff-leer. Verbleibend akzeptiert: C#
   namespace-Sichtbarkeit private (bedeutungslos), TS exportierte namespace-Member
   als Top-Level.
-- I-1.11 GDScript (NAECHSTES): vollstaendiger Plan + Grammar-Findings in
-  [[gdscript-umsetzung]]. 2 Builder (symbol_index + call_graph, KEIN
-  dependency_graph), underscore_prefix, self=self, const strukturell.
+- I-1.11 GDScript FERTIG: queries/gdscript/{symbols,calls}.scm + Profil
+  (underscore_prefix, self, const strukturell). ingest .gd -> 2 Builder (kein
+  dependency_graph) -> Sprach-Dispatch konkret. neues kind 'signal'. calls.py
+  weiter git-diff LEER (Agnostik ueber 5 Sprachen Py/JS/TS/C#/GDScript). grobe
+  calls: member self.x() callee_ref NULL. Details: [[gdscript-umsetzung]].
+- Schritt 1 fast fertig: nur noch I-1.12 (ruff Lint-/Format-Gate) offen.
 - Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

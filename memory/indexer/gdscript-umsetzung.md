@@ -2,7 +2,7 @@
 id: gdscript-umsetzung
 title: I-1.11 GDScript - Findings, Plan
 type: decision
-status: open
+status: resolved
 created: 2026-06-30
 updated: 2026-06-30
 tags: [indexer, tree-sitter, gdscript]
@@ -10,6 +10,20 @@ related: ["[[sprachagnostik]]", "[[_core]]", "[[inkremente-schritt-1]]"]
 ---
 
 # I-1.11 GDScript: Findings, Plan
+
+## Stand: ERLEDIGT (I-1.11 fertig, 2026-06-30)
+
+Umgesetzt wie geplant. queries/gdscript/{symbols,calls}.scm + Profil
+(underscore_prefix/self/const-none); ingest .gd -> 2 Builder (symbol_index +
+call_graph, KEIN dependency_graph). calls.py git-diff LEER (Agnostik ueber 5
+Sprachen); kein GDScript-Knotentyp im Kern. 157 Tests gruen. Risiken aufgeloest:
+member-Calls (self.x()) bewusst callee_ref NULL (grobe calls, calls.py unberuehrt),
+callee_raw enthaelt den Aufruf-Text; Datei-Klasse-Quirk wie geplant (top-level-
+Member parent None). Golden + Real-Code-Smoke + 2-Builder-ingest-Test.
+
+Findings + Plan unten als Referenz.
+
+---
 
 Vorab-Analyse + Bauplan. GDScript ist bewusst REDUZIERT: nur symbol_index +
 call_graph (2 Builder, KEIN dependency_graph). Grammar 'gdscript' (on-demand,

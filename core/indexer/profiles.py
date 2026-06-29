@@ -102,6 +102,17 @@ _PROFILES: dict[str, LanguageProfile] = {
         # von var trennbar -> aus dem erfassten Modifier-Set ableiten.
         const_strategy="modifier",
     ),
+    # GDScript (I-1.11, reduziert: nur symbol_index + call_graph). underscore_prefix
+    # (fuehrender _ -> private; _ready/_process u.a. sind Engine-Callbacks, als
+    # privat gewertet obwohl faktisch public - akzeptierte Approximation). self.
+    # const strukturell (const_statement) -> none. import_resolution UNBENUTZT
+    # (kein dependency_graph-Builder fuer GDScript), Platzhalter.
+    "gdscript": LanguageProfile(
+        visibility_strategy="underscore_prefix",
+        self_keyword="self",
+        import_resolution="namespace_passthrough",
+        const_strategy="none",
+    ),
 }
 
 
