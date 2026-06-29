@@ -18,3 +18,4 @@
 ## [2026-06-29] decision | Schema-Vertrag: result_det + result_prob statt Discriminated Union (Option B); artifact_type-Enum 10 Typen S1-S5 vorgebaut; task_classification im Trace
 ## [2026-06-29] decision | I-1.0 abgeschlossen: 4 JSON-Schemata, make codegen (py+go), 26 Contract-Tests gruen, Drift-Gate verifiziert
 ## [2026-06-29] decision | I-1.1 abgeschlossen: scope-Parser/Serializer (core/scope.py), Pfad-Normalisierung, Typmenge-Validierung, Arity-Konvention, 34 Tests gruen
+## [2026-06-29] finding | Drift-Gate war faktisch rot trotz "verifiziert" (I-1.0): codegen-py schrieb Single-File bei modularen $refs (Fehler) + Header-Timestamp = nie reproduzierbar. Fix 5eeaa57: Verzeichnis-Ausgabe core/models, --disable-timestamp, schemas/.gitkeep raus; make check-drift jetzt exit 0
