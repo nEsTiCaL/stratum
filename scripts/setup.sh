@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 # Stratum Dev-Setup (WSL2 / Linux-Seite).
 #
-# Modus: ERKENNEN + ANLEITEN. Standardmaessig wird NICHTS ungefragt
-# installiert. Das Skript prueft die Voraussetzungs-Schichten (siehe
-# memory/constraints.md) und meldet je Punkt [ok] / [fehlt] mit dem
-# passenden Befehl. Mit --install fuehrt es Schritte nach Rueckfrage [y/N] aus.
+# Modus: INSTALLIEREN mit Rueckfrage [y/N] je Schritt (Standard).
+# Mit --no-install nur pruefen ohne zu installieren.
+# Das Skript prueft die Voraussetzungs-Schichten (siehe memory/constraints.md)
+# und meldet je Punkt [ok] / [fehlt] mit dem passenden Befehl.
 #
 # Schichten:  baseline -> s1 -> s2  (Standardziel: s2 = N2, inkl. Ollama-Modelle)
 # Aufruf:     ./scripts/setup.sh [--install] [--layer baseline|s1|s2]
 
 set -uo pipefail
 
-DO_INSTALL=false
+DO_INSTALL=true
 TARGET="s2"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --install) DO_INSTALL=true ;;
-    --layer)   shift; TARGET="${1:-s2}" ;;
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --install)    DO_INSTALL=true ;;
+    --no-install) DO_INSTALL=false ;;
+    --layer)      shift; TARGET="${1:-s2}" ;;
+    -h|--help)    grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekanntes Argument: $1"; exit 2 ;;
   esac
   shift

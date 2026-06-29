@@ -44,9 +44,9 @@ Das klont ins `$HOME`, typisch `/home/stratum/stratum`.
 ## 3. Projekt einrichten (WSL2)
 
 ```bash
-./scripts/setup.sh            # nur pruefen + Befehle anzeigen
-./scripts/setup.sh --install  # gefuehrt installieren (je Schritt Rueckfrage)
-./scripts/setup.sh --layer s1 # nur bis Schicht S1 (ohne Modell-Download)
+./scripts/setup.sh                      # installieren mit Rueckfrage je Schritt (Standard)
+./scripts/setup.sh --no-install         # nur pruefen, nichts installieren
+./scripts/setup.sh --layer s1           # nur bis Schicht S1 (ohne Modell-Download)
 ```
 
 Standardziel ist **N2**: Postgres laeuft, Python-/Go-Toolchain steht, lokale
