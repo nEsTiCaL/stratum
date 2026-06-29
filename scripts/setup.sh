@@ -61,13 +61,24 @@ if [ -f "$ENV_FILE" ]; then
 else
   if $DO_INSTALL; then
     cp "$REPO_ROOT/.env.example" "$ENV_FILE"
-    # Windows-Host-IP fuer OLLAMA_HOST aus der WSL2-Default-Route ermitteln.
-    host_ip="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
-    if [ -n "${host_ip:-}" ]; then
-      sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
-      ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host)"
+    # Mirrored Networking pruefen: dann ist localhost direkt der Windows-Host.
+    # Erkennungszeichen: keine separate Gateway-IP (127.0.0.1 als default-Route).
+    wslconfig_mirrored=false
+    wslconfig_file="$(wslpath "$(cmd.exe /C "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')" 2>/dev/null)/.wslconfig" 2>/dev/null || true
+    if [ -f "${wslconfig_file:-}" ] && grep -qi "networkingMode=mirrored" "$wslconfig_file" 2>/dev/null; then
+      wslconfig_mirrored=true
+    fi
+    if $wslconfig_mirrored; then
+      ok ".env erzeugt, OLLAMA_HOST=http://localhost:11434 (Mirrored Networking)"
     else
-      ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
+      # Fallback: Bridge-IP ermitteln
+      host_ip="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
+      if [ -n "${host_ip:-}" ]; then
+        sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
+        ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host-IP)"
+      else
+        ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
+      fi
     fi
   else
     miss ".env fehlt" "cp .env.example .env  (danach OLLAMA_HOST/Secrets pruefen)"
