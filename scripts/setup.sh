@@ -61,24 +61,17 @@ if [ -f "$ENV_FILE" ]; then
 else
   if $DO_INSTALL; then
     cp "$REPO_ROOT/.env.example" "$ENV_FILE"
-    # Mirrored Networking pruefen: dann ist localhost direkt der Windows-Host.
-    # Erkennungszeichen: keine separate Gateway-IP (127.0.0.1 als default-Route).
-    wslconfig_mirrored=false
-    wslconfig_file="$(wslpath "$(cmd.exe /C "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')" 2>/dev/null)/.wslconfig" 2>/dev/null || true
-    if [ -f "${wslconfig_file:-}" ] && grep -qi "networkingMode=mirrored" "$wslconfig_file" 2>/dev/null; then
-      wslconfig_mirrored=true
-    fi
-    if $wslconfig_mirrored; then
-      ok ".env erzeugt, OLLAMA_HOST=http://localhost:11434 (Mirrored Networking)"
+    # Windows-Host-IP fuer OLLAMA_HOST aus der WSL2-Default-Route ermitteln.
+    # Hinweis: WSL2 Mirrored Networking (localhost direkt) erfordert Windows 11.
+    # Auf Windows 10 immer Bridge-IP verwenden.
+    host_ip="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
+    if [ -n "${host_ip:-}" ]; then
+      sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
+      ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host)"
+      warn "Firewall: Port 11434 muss auf Windows freigegeben sein (als Admin):"
+      warn "  netsh advfirewall firewall add rule name=\"Ollama WSL2\" dir=in action=allow protocol=TCP localport=11434"
     else
-      # Fallback: Bridge-IP ermitteln
-      host_ip="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
-      if [ -n "${host_ip:-}" ]; then
-        sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
-        ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host-IP)"
-      else
-        ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
-      fi
+      ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
     fi
   else
     miss ".env fehlt" "cp .env.example .env  (danach OLLAMA_HOST/Secrets pruefen)"
