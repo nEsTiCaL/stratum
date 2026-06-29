@@ -69,8 +69,22 @@ else {
 }
 
 Sec "Ollama (GPU-Host)"
-if (Have ollama) { Ok "ollama ($(ollama --version))" }
-else {
+if (Have ollama) {
+  Ok "ollama ($(ollama --version))"
+  # Ollama muss auf 0.0.0.0 lauschen, sonst ist es aus WSL2 nicht erreichbar
+  # (Standard: nur 127.0.0.1, WSL2 kommt ueber die Host-Bridge-IP rein).
+  $ollamaHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
+  if ($ollamaHost -eq "0.0.0.0" -or $ollamaHost -eq "0.0.0.0:11434") {
+    Ok "OLLAMA_HOST=0.0.0.0 (WSL2-erreichbar)"
+  } else {
+    Warn "OLLAMA_HOST ist '$ollamaHost' (Standard: nur localhost, WSL2 kann Ollama nicht erreichen)"
+    Miss "OLLAMA_HOST nicht auf 0.0.0.0 gesetzt" '[System.Environment]::SetEnvironmentVariable("OLLAMA_HOST","0.0.0.0","User")  dann Ollama neu starten'
+    if ($Install) {
+      [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "User")
+      Ok "OLLAMA_HOST=0.0.0.0 gesetzt. Ollama bitte neu starten (Tray -> Quit, dann Ollama neu starten)."
+    }
+  }
+} else {
   Miss "Ollama fehlt" "winget install -e --id Ollama.Ollama"
   Confirm "winget install -e --id Ollama.Ollama" | Out-Null
 }
