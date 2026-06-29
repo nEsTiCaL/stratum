@@ -177,16 +177,16 @@ if want s2; then
   #   8192-12287 : alle Q4_K_M sequenziell, kein qwen3:8b-q8
   #   >= 12288   : alle Modelle
   if   [ "$VRAM_MiB" -ge 12288 ] 2>/dev/null; then
-    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" "qwen3:8b-q8_0" )
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1:8b" "qwen3:8b-q8_0" )
     ok "VRAM ${VRAM_MiB} MiB: alle Modelle verfuegbar"
   elif [ "$VRAM_MiB" -ge 8192 ] 2>/dev/null; then
-    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" )
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1:8b" )
     ok "VRAM ${VRAM_MiB} MiB: Q4_K_M-Modelle, sequenziell (kein qwen3:8b-q8)"
   elif [ "$VRAM_MiB" -gt 0 ] 2>/dev/null; then
     OLLAMA_MODELS=( "phi4-mini" )
     warn "VRAM ${VRAM_MiB} MiB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein"
   else
-    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" )
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1:8b" )
     warn "VRAM nicht ermittelbar; lade Standard-Modellsatz (Q4_K_M)"
   fi
 
@@ -227,11 +227,14 @@ if want s2; then
               fi
             fi
             printf '%s' "$line" | grep -q '"status":"success"' && pull_ok=true
+            # API-Fehler anzeigen (z.B. unbekannter Modellname)
+            api_err="$(printf '%s' "$line" | grep -o '"error":"[^"]*"' | sed 's/"error":"//;s/"//')"
+            [ -n "$api_err" ] && printf "          [!] %s\n" "$api_err"
           done < <(curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
             -H "Content-Type: application/json" \
             -d "{\"name\":\"${m}\"}" 2>/dev/null)
           $progress_line && printf "\n"
-          $pull_ok && ok "Modell $m geladen" || warn "Pull fehlgeschlagen: $m (Tag pruefen)"
+          $pull_ok && ok "Modell $m geladen" || warn "Pull fehlgeschlagen: $m"
         fi
       fi
     done
