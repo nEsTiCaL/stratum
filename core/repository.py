@@ -7,6 +7,10 @@ Loeschen: ein neues Artefakt verdraengt das bisherige aktuelle desselben
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
 import psycopg
 from psycopg.types.json import Jsonb
 
@@ -15,6 +19,18 @@ from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
 
 Result = ResultDet | ResultProb
+
+
+@dataclass(frozen=True)
+class TraceEntry:
+    """Eine Trace-Zeile. Kein Artefakt, kein Result-Schema (reine Chronik)."""
+
+    id: int
+    session_id: str
+    stage: str
+    artifact_id: int | None
+    detail: dict[str, Any] | None
+    timestamp: datetime
 
 # Spaltenreihenfolge fuer das Auslesen, einmal definiert.
 _SELECT_COLUMNS = (
@@ -95,6 +111,40 @@ class Repository:
             )
             row = cur.fetchone()
         return _row_to_result(row) if row is not None else None
+
+    def write_trace(
+        self,
+        session_id: str,
+        stage: str,
+        *,
+        artifact_id: int | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> int:
+        """Haengt eine Trace-Zeile an (write-time-Zeitstempel). Liefert die id.
+
+        Laeuft ab S1 bei jeder Stufe mit; speist spaeter Kalibrierung (S5) und
+        das Live-Dashboard.
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO trace (session_id, stage, artifact_id, detail, timestamp) "
+                    "VALUES (%s, %s, %s, %s, now()) RETURNING id",
+                    (session_id, stage, artifact_id, _jsonb(detail)),
+                )
+                row = cur.fetchone()
+                assert row is not None
+                return row[0]
+
+    def get_trace(self, session_id: str) -> list[TraceEntry]:
+        """Alle Trace-Zeilen einer Session, chronologisch."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, session_id, stage, artifact_id, detail, timestamp "
+                "FROM trace WHERE session_id = %s ORDER BY timestamp, id",
+                (session_id,),
+            )
+            return [TraceEntry(*row) for row in cur.fetchall()]
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
