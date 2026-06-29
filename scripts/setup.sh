@@ -8,6 +8,9 @@
 #
 # Schichten:  baseline -> s1 -> s2  (Standardziel: s2 = N2, inkl. Ollama-Modelle)
 # Aufruf:     ./scripts/setup.sh [--install] [--layer baseline|s1|s2]
+#
+# Sudo-Hinweis: baseline benoetigt sudo (apt-get install); s1 benoetigt sudo fuer
+# usermod -aG docker. In WSL2/Debian ist der Standardbenutzer sudoer (kein Problem).
 
 set -uo pipefail
 
