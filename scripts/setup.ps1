@@ -76,6 +76,18 @@ if (Have ollama) {
   $ollamaHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
   if ($ollamaHost -eq "0.0.0.0" -or $ollamaHost -eq "0.0.0.0:11434") {
     Ok "OLLAMA_HOST=0.0.0.0 (WSL2-erreichbar)"
+    # Firewall-Regel pruefen: WSL2 kommt ueber Bridge-IP rein, Firewall blockiert sonst.
+    $fwRule = Get-NetFirewallRule -DisplayName "Ollama WSL2" -ErrorAction SilentlyContinue
+    if ($fwRule) { Ok "Firewall-Regel 'Ollama WSL2' (Port 11434) vorhanden" }
+    else {
+      Miss "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any   (als Admin)'
+      if ($Install) {
+        try {
+          New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any | Out-Null
+          Ok "Firewall-Regel gesetzt"
+        } catch { Warn "Firewall-Regel konnte nicht gesetzt werden (Admin-Rechte benoetigt). Bitte als Admin ausfuehren." }
+      }
+    }
   } else {
     Warn "OLLAMA_HOST ist '$ollamaHost' (Standard: nur localhost, WSL2 kann Ollama nicht erreichen)"
     Miss "OLLAMA_HOST nicht auf 0.0.0.0 gesetzt" '[System.Environment]::SetEnvironmentVariable("OLLAMA_HOST","0.0.0.0","User")  dann Ollama neu starten'
