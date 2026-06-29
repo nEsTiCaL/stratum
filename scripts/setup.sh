@@ -43,6 +43,9 @@ want() { # want <layer>: ist die Schicht im Zielumfang?
   esac
 }
 
+# ~/.local/bin in PATH aufnehmen (uv-Installationsziel, auch mid-session).
+export PATH="$HOME/.local/bin:$PATH"
+
 # --- Pfade & Umgebung -------------------------------------------------------
 sec "Pfade & Umgebung"
 case "$REPO_ROOT" in
