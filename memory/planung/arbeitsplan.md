@@ -69,7 +69,7 @@ I-1.0   Schema + Codegen + Drift-Gate  det  -          TG(2), R1         fertig
 I-1.1   scope-Normalisierung + Schema  det  I-1.0      TG(3)             fertig
 I-1.2   Repo-Interface+Migration+RT    det  I-1.0      R1, SK(1), DS     fertig
 I-1.3   Trace-Bus                      det  I-1.2      R1                fertig
-I-1.4   tree-sitter symbols (Python)   det  I-1.2/1.1  TG(4), R1
+I-1.4   tree-sitter symbols (Python)   det  I-1.2/1.1  TG(4), R1         fertig
 I-1.5   dependency_graph (Python)      det  I-1.4      R1
 I-1.6   call_graph approx. (Python)    det  I-1.4      R1
 I-1.7   Ingestion + source_hash+Watch  det  I-1.4      R1, DS
@@ -150,7 +150,7 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 ## Status
 
-I-1.0 bis I-1.3 fertig (2026-06-29). Beim Abschluss eines Haeppchens Status hier
+I-1.0 bis I-1.4 fertig (2026-06-29). Beim Abschluss eines Haeppchens Status hier
 aktualisieren (offen -> in arbeit -> fertig) und log.md ergaenzen. Dieser
 Plan ist die einzige Fortschritts-Wahrheit; nicht an mehreren Stellen pflegen.
 

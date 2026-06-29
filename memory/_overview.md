@@ -29,8 +29,10 @@ vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in
 ## Status
 
 In Entwicklung. Sicherheits-Gates laufen in der Testphase als kontrollierte
-Stubs und werden vor dem Produktivbetrieb scharf gestellt. Ordnerstruktur des
-Repos angelegt (siehe [[architecture]]), Code noch nicht begonnen.
+Stubs und werden vor dem Produktivbetrieb scharf gestellt. Schritt 1 (Substrat)
+in Arbeit: I-1.0 bis I-1.4 fertig (Schema/Codegen, scope, Repository+Migration,
+Trace-Bus, tree-sitter symbol_index fuer Python). Indexer-Domaene: [[_core]]
+(indexer/). Fortschritts-Wahrheit: [[arbeitsplan]].
 
 Ausfuehrungsplan steht: die fuenf Architektur-Schritte plus Schalen sind in
 kleine, vertikale, einzeln abnehmbare Inkremente zerlegt. Teststrategie folgt
