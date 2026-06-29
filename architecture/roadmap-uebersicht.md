@@ -8,6 +8,27 @@ Bedarf eskaliert. Deterministische Werkzeuge dominieren vor LLMs.
 Dieses Dokument ist der Einstieg. Details je Phase in den Einzelbloecken
 roadmap-schritt-1 bis -5.
 
+## Modul-Strategie (Bau-Reihenfolge der Schalen)
+
+Ein gemeinsamer Kern, duenne Schalen pro Modul. Module sind keine Forks.
+
+```
+Modul 1  Desktop / Einzelnutzer      PHASE 1 (zuerst)
+         lokal, Web-GUI + VSCode, kein SSH/Auth. Validiert den Kern
+         mit der duennsten Schale. Detail: anforderungsprofil-desktop.md
+Modul 2  Server / kleine Gruppen     PHASE 2 (danach)
+         Multi-User, SSH-CLI, Auth, Token-/Zeit-Ersparnis.
+         Detail: interfaces-und-zugang.md
+Modul 3  verteilte Buendelung (Firma) GEPARKT (eigenes verteiltes System)
+```
+
+```
+Die fuenf Schritte (Kern) sind in BEIDEN Modulen dieselben. Die
+Module unterscheiden sich nur in der Schale (Frontend + Zugang).
+Der Kern bleibt schalenagnostisch (Event-Vokabular, owner_uuid mit
+lokalem Default in Desktop).
+```
+
 ## Leitprinzipien
 
 ```
@@ -101,25 +122,31 @@ Template-Registry    | S2     | task_type -> Sub-DAG (Zerlegung)
 Lifecycle-Manager    | S2     | Resident-Set + Swap-Kosten (VRAM-Folge)
 ```
 
-## Interface- und Zugangsschicht (Querschnitt ab S1)
-
-Eigener Block: interfaces-und-zugang.md. Kurz:
+## Frontends und Zugang (nach Phase getrennt)
 
 ```
-Frontends (duenn, ein Kern):
-  SSH-Agent-CLI (Mensch+CI) | Web SSE/REST (read-only) | VSCode
-  gleiches Event-Vokabular, gleiche Auth-Hooks
+Ein Kern, duenne Frontends, gleiches Event-Vokabular
+(progress|finding|partial|result|error).
 
-Auth: Cert (authn, eigene CA, KRL) + UUID-Capability (authz)
-  herkunftsunabhaengig, fail-safe auth_enforce (Test permissiv)
+Phase 1 (Desktop):  Detail in anforderungsprofil-desktop.md
+  VSCode-Extension (zuerst) | Web-GUI (FastAPI im Kern, statisches
+  HTML/CSS/JS). Lokaler HTTP/Socket, KEIN SSH, KEINE Auth.
 
-Netz (headless):
-  Agent-Port 2222  -> exponiert, Cert+UUID
-  System-SSH 22    -> LAN-only, OS-Key, Break-Glass
+Phase 2 (Server):   Detail in interfaces-und-zugang.md
+  SSH-Agent-CLI (Mensch+CI) | dasselbe Web-Frontend, read-only remote.
+  Auth: Cert (eigene CA, KRL) + UUID-Capability, fail-safe
+  auth_enforce. Netz headless: Agent-Port 2222 (exponiert) +
+  System-SSH 22 (LAN, Break-Glass). Verteilung: Einmal-Links.
+  Aktionen nur CLI, an owner_uuid gebunden.
+```
 
-Verteilung: Einmal-Links (kein E-Mail), Cert/UUID getrennt
-Aktionen:   nur CLI, an owner_uuid des Tasks gebunden (o. Admin)
-Recovery:   Break-Glass ueber System-SSH, ungeprueft aber geloggt
+## Prompt-Verstaendnis (Intent-Zerlegung)
+
+```
+Vor der Klassifikation: freier Prompt -> mehrere Teilziele.
+Plan anzeigen + bestaetigen, dann verketteter Gesamt-DAG.
+Mehrere Teilziele = Normalfall; Bestaetigung statt harter Grenze.
+Detail in roadmap-schritt-2 (Komponente 0) + Desktop-Profil.
 ```
 
 ## Modell-Roster (12-16 GB)
@@ -158,29 +185,43 @@ Cloud (ab S3, Eskalation):
 
 ## Empfohlene Bau-Reihenfolge
 
+Desktop-Phase zuerst (duennste Schale, leicht testbar), Server danach.
+
 ```
-1. Postgres + Repository-Interface + Provenance/Result-Schema
-2. Indexer (tree-sitter) fuer Python + JavaScript, Store fuellen
-3. Trace-Bus mitlaufen lassen (ab erster Stufe)
-4. Agent-CLI (SSH+ForceCommand, JSON-Lines) im permissiven Modus
-   (auth_enforce=false) -> Testen ueber die echte Eingangstuer
-5. Orchestrator: Klassifikation, Template-Zerlegung, SQL-Queue,
-   Lifecycle-Mgr, ein lokaler Worker, Validator
-6. Claude-Adapter (API) + Bundling, Redaction als fail-safe Stub
-7. Graph + Invalidierung (CTE, stale-Flag)
-8. read-only Dashboard, dann Kalibrierung, dann Canary
-9. Vor Produktion scharf stellen: Secret-Scan + Redaction-Gate,
-   auth_enforce=true, Test-Cert entfernen, Option-3 aktiv
+Phase 1 (Desktop / Einzelnutzer):
+  1. Postgres + Repository-Interface + Provenance/Result-Schema
+  2. Indexer (tree-sitter) fuer Python + JavaScript, Store fuellen
+  3. Trace-Bus mitlaufen lassen (ab erster Stufe)
+  4. Orchestrator: Intent-Zerlegung, Klassifikation, Template-
+     Zerlegung, SQL-Queue, Lifecycle-Mgr, ein lokaler Worker, Validator
+  5. VSCode-Extension (lokaler HTTP/Socket, kein SSH) -> erstes
+     testbares Frontend
+  6. Claude-Adapter (API) + Bundling, Redaction als fail-safe Stub
+  7. Web-GUI (FastAPI im Kern, statisches HTML/CSS/JS, EventSource)
+  8. Graph + Invalidierung (CTE, stale-Flag)
+  9. manual-Adapter (Copy-Paste, Gratis-Token) als Modul
+  10. Packaging der Web-GUI (eingebettete Python-Runtime)
+
+Phase 2 (Server / kleine Gruppen):
+  11. SSH-Agent-CLI + ForceCommand + JSON-Lines
+  12. Auth-Schicht: SSH-CA, Certs, UUID-Capabilities, auth_enforce
+  13. Control Plane, Einmal-Links, Break-Glass, Netz-Topologie
+  14. read-only Remote-Dashboard (dasselbe Web-Frontend)
+  15. Kalibrierung, Canary
+
+Vor Produktion (Phase 2): Secret-Scan + Redaction-Gate scharf,
+  auth_enforce=true, Test-Cert entfernen, Option-3 aktiv.
 ```
 
 ## Dokumentenverweise
 
 ```
-roadmap-uebersicht        dieses Einstiegsdokument
-roadmap-schritt-1         Substrat (Postgres)
-roadmap-schritt-2         Orchestrator-Kern
-roadmap-schritt-3         Cloud-Bruecke
-roadmap-schritt-4         Graph-Tiefe
-roadmap-schritt-5         Betrieb
-interfaces-und-zugang     Interface- und Zugangsschicht (Querschnitt)
+roadmap-uebersicht            dieses Einstiegsdokument
+roadmap-schritt-1 bis -5      die fuenf Kern-Phasen (in beiden Modulen)
+anforderungsprofil-desktop    Phase 1: Desktop-Modul (zuerst gebaut)
+interfaces-und-zugang         Phase 2: Server-Modul (Zugang/Auth)
+technische-grundentscheidungen Sprache, Schema, scope, Indexer
+startkonfiguration            Postgres, task_types, Matrix, Templates,
+                              Ollama, Capacity-Profil, Schwellen, Claude
+dev-setup                     Windows/WSL2-Entwicklungsumgebung
 ```

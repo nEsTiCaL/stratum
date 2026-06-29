@@ -37,9 +37,22 @@ aus Schritt 1. Start mit API.
             Orchestrator
                  |
           Claude-Adapter (Interface)
-            |            |
-       CLI-Backend   API-Backend  <- Start
-       (Claude Code) (Messages)
+            |        |          |
+       CLI-Backend  API-Backend  manual-Backend
+       (Claude Code)(Messages)   (Copy-Paste, Desktop)
+                     ^ Start
+```
+
+Drei Backends hinter einem Interface, alle liefern das Result-Objekt
+aus Schritt 1:
+
+```
+api     ZUERST  automatisch an Messages-API (Server + Desktop)
+cli             Claude Code (Server-Variante, spaeter)
+manual  Desktop Bundle ANZEIGEN -> Nutzer kopiert in einen Gratis-
+                Chatdienst -> Antwort EINFUEGEN. Zugang ohne Abo,
+                nutzt Gratis-Kontingente. Komplexer (Mensch im Loop),
+                daher NACH api. Detail in anforderungsprofil-desktop.md.
 ```
 
 Adapter kapselt (backendunabhaengig):
@@ -63,7 +76,12 @@ Parallel    | ueber CLI-Workflows      | frei parallelisierbar
 Kostenziel  | weniger granular         | besser fuer Token-Optimierung
 ```
 
-Folgeanforderung: einheitliche Kosten-Telemetrie, die beide Backends
+Der manual-Adapter ist der komplexeste (asynchrone Mensch-Interaktion),
+aber konzeptionell nur ein weiteres Backend: statt eines API-Calls
+zeigt er das fertige Bundle an und wartet auf die eingefuegte Antwort,
+die dann wie eine API-Antwort durch Validierung/Eskalation laeuft.
+
+Folgeanforderung: einheitliche Kosten-Telemetrie, die alle Backends
 fuettern (max-cost + Trace backendunabhaengig).
 
 ## Teil 2: Context-Bundling

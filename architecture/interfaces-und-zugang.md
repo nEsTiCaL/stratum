@@ -1,9 +1,18 @@
-# Interfaces und Zugang (Querschnitt, ab Schritt 1)
+# Interfaces und Zugang (Server-Modul, Phase 2)
 
-Kein nachgelagerter Schritt, sondern eine Schicht, die ab Schritt 1
-existiert (im permissiven Stub-Modus) und sich durch alle Phasen zieht.
-Das Agent-CLI ist die Eingangstuer zum Testen von Tag eins an. Haertung
-wird wie Secret-Scan und Cloud-Egress per Schalter scharf gestellt.
+Diese Schicht gehoert zum Server-Modul (Phase 2), nicht zur zuerst
+gebauten Desktop-Phase. Die Desktop-Variante (Phase 1) laeuft lokal
+ueber HTTP/Socket ohne SSH, Certs oder Auth (siehe
+anforderungsprofil-desktop.md).
+
+Im Server-Modul ist das Agent-CLI die Eingangstuer fuer mehrere Nutzer
+und CI. Die Auth-/Sicherheits-Maschinerie unten wird gebaut, wenn der
+Kern in Phase 1 bereits validiert ist. Innerhalb von Phase 2 existiert
+sie ab Beginn (im permissiven Stub-Modus) und wird wie Secret-Scan und
+Cloud-Egress per Schalter scharf gestellt.
+
+Hinweis: Das Web-Frontend ist dasselbe wie in der Desktop-Phase, hier
+nur read-only und remote (Monitoring) statt lokal bedienbar.
 
 ## Grundprinzip
 

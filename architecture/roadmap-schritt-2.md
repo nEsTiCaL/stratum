@@ -16,8 +16,11 @@ neu ggue Paper: Model-Lifecycle-Manager (Folge des 12-16-GB-Constraints)
 ## Pipeline
 
 ```
-Anfrage
+Anfrage (freier Prompt)
    |
+   v
+[Intent-Zerlegung] freier Text -> Teilziele; Plan bestaetigen
+   |               (lokales Modell; Detail unten + Desktop-Profil)
    v
 [Klassifikation]  Typ + Komplexitaet + Sensitivitaet (Phi-4-mini resident)
    |
@@ -38,6 +41,39 @@ Anfrage
    |                              (Cloud erst Schritt 3)
    v
 Aggregation + Trace
+```
+
+## Komponente 0: Intent-Zerlegung
+
+Vorgelagerte Stufe, die einen freien Nutzer-Prompt versteht, bevor die
+Klassifikation einen einzelnen task_type bestimmt. Ein Prompt ist oft
+NICHT eine Aufgabe, sondern mehrere mit Abhaengigkeiten.
+
+```
+Beispiel-Prompt: "Schau dir auth an, finde warum der Login haengt,
+                  und schlag eine Loesung vor"
+  -> Teilziel 1: auth verstehen   (summarize)
+  -> Teilziel 2: Hang finden      (debug)      <- braucht 1
+  -> Teilziel 3: Loesung          (refactor)   <- braucht 2
+```
+
+```
+Ablauf:
+  Prompt
+   -> Intent-Zerlegung (lokales Modell phi/qwen)
+      -> geordnete Teilziele: (task_type, scope, abhaengig_von)
+   -> PLAN ANZEIGEN + BESTAETIGEN (menschenlesbar)
+      [Bestaetigen] [Anpassen] [Abbrechen]
+   -> je bestaetigtes Teilziel: Klassifikation -> Template -> Sub-DAG
+   -> Verkettung aller Sub-DAGs zu EINEM Gesamt-DAG
+```
+
+```
+Mehrere Teilziele = Normalfall und Zweck dieser Stufe.
+Plan-Bestaetigung ist die Kontrolle -> KEINE harte Obergrenze noetig,
+nur weiche Warnung bei sehr grossen/teuren Plaenen.
+Einfacher Prompt -> ein Teilziel -> direkt klassifizieren.
+Detail in anforderungsprofil-desktop.md.
 ```
 
 ## Komponente 1: Klassifikation
