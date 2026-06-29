@@ -237,7 +237,8 @@ if want s2; then
             -H "Content-Type: application/json" \
             -d "{\"name\":\"${m}\"}" 2>/dev/null)
           $progress_line && printf "\n"
-          $pull_ok && ok "Modell $m geladen" || warn "Pull fehlgeschlagen: $m"
+          if $pull_ok; then ok "Modell $m geladen"; MISSING=$((MISSING-1))
+          else warn "Pull fehlgeschlagen: $m"; fi
         fi
       fi
     done
