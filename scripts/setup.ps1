@@ -76,16 +76,30 @@ if (Have ollama) {
   $ollamaHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
   if ($ollamaHost -eq "0.0.0.0" -or $ollamaHost -eq "0.0.0.0:11434") {
     Ok "OLLAMA_HOST=0.0.0.0 (WSL2-erreichbar)"
-    # Firewall-Regel pruefen: WSL2 kommt ueber Bridge-IP rein, Firewall blockiert sonst.
+    # Firewall: Block-Regeln fuer ollama.exe entfernen (entstehen beim ersten Start
+    # wenn Windows fragt und man "Blockieren" waehlt; ueberschreiben Allow-Regeln).
+    $blockRules = @(Get-NetFirewallRule -DisplayName "ollama.exe" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Action -eq 'Block' })
+    if ($blockRules.Count -gt 0) {
+      Miss "Block-Regeln fuer ollama.exe gefunden ($($blockRules.Count) Stueck) - ueberschreiben Allow" 'netsh advfirewall firewall delete rule name="ollama.exe" dir=in   (als Admin)'
+      if ($Install) {
+        try {
+          $blockRules | Remove-NetFirewallRule -ErrorAction Stop
+          Ok "Block-Regeln fuer ollama.exe entfernt"
+        } catch { Warn "Block-Regeln konnten nicht entfernt werden (Admin-Rechte benoetigt). Als Admin ausfuehren: netsh advfirewall firewall delete rule name=`"ollama.exe`" dir=in" }
+      }
+    } else { Ok "Keine Block-Regeln fuer ollama.exe" }
+
+    # Allow-Regel fuer Port 11434 pruefen
     $fwRule = Get-NetFirewallRule -DisplayName "Ollama WSL2" -ErrorAction SilentlyContinue
     if ($fwRule) { Ok "Firewall-Regel 'Ollama WSL2' (Port 11434) vorhanden" }
     else {
-      Miss "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any   (als Admin)'
+      Miss "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'netsh advfirewall firewall add rule name="Ollama WSL2" dir=in action=allow protocol=TCP localport=11434   (als Admin)'
       if ($Install) {
         try {
           New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any | Out-Null
           Ok "Firewall-Regel gesetzt"
-        } catch { Warn "Firewall-Regel konnte nicht gesetzt werden (Admin-Rechte benoetigt). Bitte als Admin ausfuehren." }
+        } catch { Warn "Firewall-Regel konnte nicht gesetzt werden (Admin-Rechte benoetigt). Als Admin ausfuehren: netsh advfirewall firewall add rule name=`"Ollama WSL2`" dir=in action=allow protocol=TCP localport=11434" }
       }
     }
   } else {
