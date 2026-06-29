@@ -2,7 +2,7 @@
 # Auf Windows: wsl make <target>
 
 SCHEMAS_DIR := schemas
-PY_OUT      := core/models/generated.py
+PY_OUT      := core/models
 GO_OUT      := cli/schema/generated.go
 GO_PKG      := schema
 
@@ -11,7 +11,7 @@ GO_PKG      := schema
 codegen: codegen-py codegen-go
 
 codegen-py:
-	mkdir -p $(dir $(PY_OUT))
+	mkdir -p $(PY_OUT)
 	uv run --extra dev datamodel-codegen \
 		--input $(SCHEMAS_DIR) \
 		--input-file-type jsonschema \
@@ -22,7 +22,8 @@ codegen-py:
 		--reuse-model \
 		--formatters black \
 		--formatters isort \
-		--target-python-version 3.12
+		--target-python-version 3.12 \
+		--disable-timestamp
 
 codegen-go:
 	mkdir -p $(dir $(GO_OUT))
