@@ -86,7 +86,8 @@ if want baseline; then
     confirm && sudo apt-get install -y build-essential; fi
 
   if have python3; then ok "python3 ($(python3 -V 2>&1 | awk '{print $2}'))"
-  else miss "python3 fehlt" "sudo apt-get install -y python3 python3-venv"; fi
+  else miss "python3 fehlt" "sudo apt-get install -y python3 python3-venv"
+    confirm && sudo apt-get install -y python3 python3-venv; fi
 
   if have uv; then ok "uv ($(uv --version 2>&1 | awk '{print $2}'))"
   else miss "uv fehlt" "curl -LsSf https://astral.sh/uv/install.sh | sh"
