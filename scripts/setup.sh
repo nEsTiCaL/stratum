@@ -200,11 +200,15 @@ if want s2; then
         # ollama-CLI laeuft auf Windows, nicht in WSL2 -> Pull ueber HTTP-API.
         if confirm; then
           printf "          Pulling %s (kann mehrere Minuten dauern)...\n" "$m"
-          # Jede JSON-Zeile sofort ausgeben; letzten Status pruefen.
+          # Status-Updates streamen; gleiche Status-Zeilen zusammenfassen.
           pull_ok=false
+          last_status=""
           while IFS= read -r line; do
-            status="$(printf '%s' "$line" | grep -o '"status":"[^"]*"' | head -1)"
-            [ -n "$status" ] && printf "          %s\n" "$status"
+            status="$(printf '%s' "$line" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')"
+            if [ -n "$status" ] && [ "$status" != "$last_status" ]; then
+              printf "          -> %s\n" "$status"
+              last_status="$status"
+            fi
             printf '%s' "$line" | grep -q '"status":"success"' && pull_ok=true
           done < <(curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
             -H "Content-Type: application/json" \
