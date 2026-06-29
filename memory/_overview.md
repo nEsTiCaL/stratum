@@ -31,3 +31,8 @@ vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in
 In Entwicklung. Sicherheits-Gates laufen in der Testphase als kontrollierte
 Stubs und werden vor dem Produktivbetrieb scharf gestellt. Ordnerstruktur des
 Repos angelegt (siehe [[architecture]]), Code noch nicht begonnen.
+
+Ausfuehrungsplan steht: die fuenf Architektur-Schritte plus Schalen sind in
+kleine, vertikale, einzeln abnehmbare Inkremente zerlegt. Teststrategie folgt
+der det/prob-Grenze: det test-driven, prob entwickler-verifiziert. Siehe
+Planungs-Domaene [[_core]] (planung/) und [[tdd-methodik]].
