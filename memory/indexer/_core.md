@@ -68,8 +68,23 @@ Zuweisungen und Docstrings sind in dieser Grammar-Version KEINE
 - Grammar: assignment-Eigenheit gilt analog; module_name-Feld ist dotted_name
   (absolut) oder relative_import (import_prefix=Punkte + optional dotted_name).
 
+## call_graph (Python, approx., I-1.6)
+
+- queries/python/calls.scm `(call) @call` + core/indexer/calls.py. Felder je
+  Kante: caller/callee_raw/callee_ref/span/confidence (einziges det-Artefakt mit
+  Kanten-confidence; confidence am Result bleibt verboten, sie steht IN content).
+- caller = umschliessende Funktion/Methode, bei Methode qualifiziert
+  "Klasse.methode", auf Modulebene None.
+- callee_raw = function-Feld wie geschrieben ("foo", "obj.method", "C().a").
+- Heuristik-Aufloesung (dateilokal, deterministisch): bare Name in module_defs
+  (Funktion/Klasse der Datei) -> LOCAL_DEF 0.5; `self.m()` in Klasse und m ist
+  Methode -> "Klasse.m" SELF_METHOD 0.6; sonst callee_ref NULL, confidence 0.
+- Symboltabelle dafuer aus extract_symbols (Komposition der det-Artefakte).
+- Grammar: attribute-Felder object/attribute; Module-Calls direkt unter module
+  (kein expression_statement-Wrapper).
+
 ## Offen / folgt
 
-- I-1.6 calls.scm (call_graph approx., einziges det-Artefakt mit Kanten-confidence).
-- I-1.9 JavaScript/TS belegt die Sprachunabhaengigkeit (nur neue .scm, Kern
-  unveraendert). I-1.10 C#, I-1.11 GDScript.
+- I-1.7 Ingestion + source_hash + Watch (vertikaler Schnitt Datei -> Store).
+- I-1.8 Secret-Scan No-op-Stub. I-1.9 JavaScript/TS belegt die Sprachunabhaengig-
+  keit (nur neue .scm, Kern unveraendert). I-1.10 C#, I-1.11 GDScript.

@@ -1,4 +1,5 @@
 """Indexer: deterministische Struktur-Extraktion via tree-sitter (.scm-Queries)."""
+from core.indexer.calls import CallExtraction, call_graph_result, extract_calls
 from core.indexer.imports import (
     ImportExtraction,
     dependency_graph_result,
@@ -13,4 +14,7 @@ __all__ = [
     "ImportExtraction",
     "extract_imports",
     "dependency_graph_result",
+    "CallExtraction",
+    "extract_calls",
+    "call_graph_result",
 ]
