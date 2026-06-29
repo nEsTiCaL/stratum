@@ -18,19 +18,26 @@ Hinweise:
 - `wsl --install -d Debian` braucht Admin-Rechte, NEUSTART und **manuelle Eingabe**:
   Der Installer fragt nach Benutzernamen + Passwort. Das Skript kann nicht
   interaktiv antworten -> du musst es manuell im Terminal eingeben.
-  (Beispiel: Benutzer `stratum`, Passwort beliebig.)
+  **Standard-Setup: Benutzer `stratum`, Passwort `stratum`** (einfacher zu merken,
+  da lokal + dev).
 - Docker Desktop einmalig starten und die WSL2-Integration aktivieren:
   Settings → Resources → WSL Integration → Enable.
 
-## 2. Repo ins WSL2-Dateisystem holen
+## 2. Repo ins WSL2-Dateisystem holen (PFLICHT)
 
-Wichtig fuer File-Watch (inotify) und Tempo: NICHT unter `/mnt/c`, sondern
-im Linux-Dateisystem.
+**Wichtig fuer File-Watch (inotify) und Zuverlassigkeit:** NICHT unter `/mnt/c`
+(Windows-Mount), sondern ins native WSL2-Dateisystem. inotify funktioniert auf
+Windows-Mounts nicht verlaesslich -> Watcher-Faehigkeiten (I-1.7: Ingestion-Watch)
+fallen aus oder brauchen langsamen Polling-Fallback.
+
+Im WSL2-Terminal (als stratum-Benutzer):
 
 ```bash
 git clone https://github.com/nEsTiCaL/stratum ~/stratum
 cd ~/stratum
 ```
+
+Das klont ins `$HOME`, typisch `/home/stratum/stratum`.
 
 ## 3. Projekt einrichten (WSL2)
 
