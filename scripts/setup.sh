@@ -200,10 +200,16 @@ if want s2; then
         # ollama-CLI laeuft auf Windows, nicht in WSL2 -> Pull ueber HTTP-API.
         if confirm; then
           printf "          Pulling %s (kann mehrere Minuten dauern)...\n" "$m"
-          curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
+          # Jede JSON-Zeile sofort ausgeben; letzten Status pruefen.
+          pull_ok=false
+          while IFS= read -r line; do
+            status="$(printf '%s' "$line" | grep -o '"status":"[^"]*"' | head -1)"
+            [ -n "$status" ] && printf "          %s\n" "$status"
+            printf '%s' "$line" | grep -q '"status":"success"' && pull_ok=true
+          done < <(curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
             -H "Content-Type: application/json" \
-            -d "{\"name\":\"${m}\"}" | grep -E '"status"|"error"' | tail -5 \
-            || warn "Pull fehlgeschlagen: $m (Tag pruefen)"
+            -d "{\"name\":\"${m}\"}" 2>/dev/null)
+          $pull_ok && ok "Modell $m geladen" || warn "Pull fehlgeschlagen: $m (Tag pruefen)"
         fi
       fi
     done
