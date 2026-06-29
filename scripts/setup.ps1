@@ -31,8 +31,10 @@ Sec "WSL2"
 $wsl = $false
 try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wsl = $true } } catch {}
 if (-not $wsl) {
-  Miss "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Admin, danach NEUSTART)"
-  Confirm "wsl --install -d Debian" | Out-Null
+  Miss "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Admin + Neustart erforderlich)"
+  Write-Host "          MANUELL: Nach 'wsl --install' startet Debian und fragt nach einem"
+  Write-Host "          Benutzernamen. Gib einen ein (z.B. 'stratum') und bestaetigt mit Enter."
+  Write-Host "          Das Skript kann nicht interaktiv auf diesen Prompt antworten."
 } else {
   Ok "WSL2 vorhanden"
   # WSL kann ohne Distro dastehen (--status meldet trotzdem ok). Distro pruefen.
@@ -42,11 +44,11 @@ if (-not $wsl) {
     Ok "Debian-Distro installiert"
   } elseif ($distros.Count -gt 0) {
     Warn "WSL-Distros vorhanden ($($distros -join ', ')), aber kein Debian. Projekt-Baseline ist Debian."
-    Miss "Debian-Distro fehlt" "wsl --install -d Debian"
-    Confirm "wsl --install -d Debian" | Out-Null
+    Miss "Debian-Distro fehlt" "MANUELL: wsl --unregister <distro>, dann wsl --install -d Debian"
   } else {
-    Miss "keine WSL-Distro installiert" "wsl --install -d Debian   (danach Linux-Benutzer anlegen)"
-    Confirm "wsl --install -d Debian" | Out-Null
+    Miss "keine WSL-Distro installiert" "MANUELL: wsl --install -d Debian"
+    Write-Host "          Nach dem Befehl: Linux-Benutzernamen eingeben, Passwort setzen."
+    Write-Host "          (Das Skript kann nicht interaktiv auf diese Prompts antworten.)"
   }
 }
 

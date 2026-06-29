@@ -14,8 +14,13 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Install
 ```
 
-Hinweise: `wsl --install` braucht Admin-Rechte und danach einen **Neustart**.
-Docker Desktop einmalig starten und die WSL2-Integration aktivieren.
+Hinweise:
+- `wsl --install -d Debian` braucht Admin-Rechte, NEUSTART und **manuelle Eingabe**:
+  Der Installer fragt nach Benutzernamen + Passwort. Das Skript kann nicht
+  interaktiv antworten -> du musst es manuell im Terminal eingeben.
+  (Beispiel: Benutzer `stratum`, Passwort beliebig.)
+- Docker Desktop einmalig starten und die WSL2-Integration aktivieren:
+  Settings → Resources → WSL Integration → Enable.
 
 ## 2. Repo ins WSL2-Dateisystem holen
 

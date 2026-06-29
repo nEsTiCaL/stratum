@@ -10,3 +10,4 @@
 ## [2026-06-29] decision | Voraussetzungs-Schichten (kumulativ) in constraints.md + Delta je Inkrement + Preflight
 ## [2026-06-29] decision | Onboarding-Setup: setup.ps1 (Host) + setup.sh (WSL2), erkennen+anleiten; Infra (compose, pyproject, .env.example)
 ## [2026-06-29] decision | WSL2-Distro Ubuntu -> Debian (Paritaet sitzt im Container, nicht am Host); setup.ps1 prueft jetzt Distro-Praesenz
+## [2026-06-29] finding | WSL2-Distro-Installation kann nicht automatisiert werden (Installer wartet auf manuelle Benutzernamen-Eingabe); setup.ps1 + README dokumentieren jetzt das manuelle Verfahren
