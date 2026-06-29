@@ -11,7 +11,9 @@ Docker. Zeilenenden/Encoding sind im Repo erzwungen (.gitattributes,
 
 ## Voraussetzungen (Laufzeit)
 
-- GPU mit 12-16 GB VRAM fuer lokale Modelle
+- GPU mit 12-16 GB VRAM fuer lokale Modelle (Dev-System: GTX 1070 8 GB;
+  reicht fuer ein 7B-Modell Q4_K_M gleichzeitig, nicht fuer parallelen
+  Betrieb mehrerer grosser Modelle)
 - Ollama nativ auf dem Host
 - Docker / Docker Compose fuer die Funktionsschicht
 - PostgreSQL als Compose-Dienst

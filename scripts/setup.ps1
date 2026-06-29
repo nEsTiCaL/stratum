@@ -110,6 +110,43 @@ if (Have ollama) {
       Ok "OLLAMA_HOST=0.0.0.0 gesetzt. Ollama bitte neu starten (Tray -> Quit, dann Ollama neu starten)."
     }
   }
+
+  # --- Ollama Modell-Speicherort pruefen --------------------------------------
+  Sec "Ollama Modell-Speicher"
+  $modelsEnv  = [System.Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "User")
+  $modelsPath = if ($modelsEnv) { $modelsEnv } else { "$env:USERPROFILE\.ollama\models" }
+  $modelsDrive = Split-Path -Qualifier $modelsPath
+  $driveInfo  = Get-PSDrive ($modelsDrive.TrimEnd(':')) -ErrorAction SilentlyContinue
+  $freeGB     = if ($driveInfo) { [math]::Round($driveInfo.Free / 1GB, 1) } else { 0 }
+  $neededGB   = 20   # grobe Schaetzung: 4 Modelle Q4_K_M ~5 GB je Modell
+
+  Write-Host ""
+  Write-Host "  Modell-Pfad : $modelsPath" -ForegroundColor Cyan
+  Write-Host "  Freier Platz: $freeGB GB auf $modelsDrive" -ForegroundColor Cyan
+  Write-Host "  Benoetigt   : ca. $neededGB GB (4 Modelle Q4_K_M)" -ForegroundColor Cyan
+  Write-Host ""
+
+  # Alle Laufwerke anzeigen damit der Nutzer entscheiden kann
+  Write-Host "  Verfuegbare Laufwerke:" -ForegroundColor DarkGray
+  Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | ForEach-Object {
+    $gb = [math]::Round($_.Free / 1GB, 1)
+    Write-Host ("    {0}:  {1,7} GB frei" -f $_.Name, $gb) -ForegroundColor DarkGray
+  }
+  Write-Host ""
+
+  if ($freeGB -lt $neededGB) {
+    Miss "Zu wenig Platz auf $modelsDrive ($freeGB GB frei, ca. $neededGB GB benoetigt)" `
+      '[System.Environment]::SetEnvironmentVariable("OLLAMA_MODELS","X:\ollama\models","User")  dann Ollama neu starten'
+    Write-Host "  -> Bitte OLLAMA_MODELS auf ein Laufwerk mit genuegend Platz setzen" -ForegroundColor Yellow
+    Write-Host "     und dieses Skript danach erneut ausfuehren." -ForegroundColor Yellow
+    $script:Missing++
+  } else {
+    Ok "Modell-Pfad hat genuegend Platz ($freeGB GB frei auf $modelsDrive)"
+    if (-not $modelsEnv) {
+      Warn "OLLAMA_MODELS nicht gesetzt (Default: $modelsPath). Zum Aendern:"
+      Warn '  [System.Environment]::SetEnvironmentVariable("OLLAMA_MODELS","X:\ollama\models","User")'
+    }
+  }
 } else {
   Miss "Ollama fehlt" "winget install -e --id Ollama.Ollama"
   Confirm "winget install -e --id Ollama.Ollama" | Out-Null

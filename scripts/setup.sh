@@ -171,7 +171,14 @@ if want s2; then
       if printf '%s' "$have_tags" | grep -q "\"${m%%:*}"; then ok "Modell $m"
       else
         miss "Modell $m fehlt" "ollama pull $m   (mehrere GB)"
-        if confirm; then OLLAMA_HOST="$OLLAMA_URL" ollama pull "$m" || warn "Pull fehlgeschlagen: $m (Tag pruefen)"; fi
+        # ollama-CLI laeuft auf Windows, nicht in WSL2 -> Pull ueber HTTP-API.
+        if confirm; then
+          printf "          Pulling %s (kann mehrere Minuten dauern)...\n" "$m"
+          curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"${m}\"}" | grep -E '"status"|"error"' | tail -5 \
+            || warn "Pull fehlgeschlagen: $m (Tag pruefen)"
+        fi
       fi
     done
   else
