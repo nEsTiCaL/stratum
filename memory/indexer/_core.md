@@ -53,8 +53,23 @@ Zuweisungen und Docstrings sind in dieser Grammar-Version KEINE
 - Symbole deterministisch sortiert nach (span, kind, name) fuer Byte-Stabilitaet.
 - input_hash = SHA-256 des Quelltexts; source_hash kommt vom Aufrufer (Ingestion).
 
+## dependency_graph (Python, I-1.5)
+
+- queries/python/imports.scm + core/indexer/imports.py. Felder je Import:
+  raw/target/kind/span. import-level (Modul-Abhaengigkeit), Symbolnamen nicht.
+- kind: module (`import a`) | symbol (`from x import ...`) | relative
+  (`from . / .mod / ..pkg`). "external" wird in S1 nicht erzeugt (braucht
+  Repo-Layout -> S4).
+- raw = Modul-Referenz wie geschrieben (analog callee_raw), NICHT die ganze
+  Zeile. Mehrfach-Import `import a, b` -> zwei Zeilen. Alias ignoriert.
+- target: nur relative Imports werden gegen den Pfad der importierenden Datei
+  aufgeloest (dots=1 = aktuelles Paket = Verzeichnis der Datei). Absolute ->
+  NULL (ohne sys.path nicht aufloesbar). Ueber Repo-Wurzel hinaus -> NULL.
+- Grammar: assignment-Eigenheit gilt analog; module_name-Feld ist dotted_name
+  (absolut) oder relative_import (import_prefix=Punkte + optional dotted_name).
+
 ## Offen / folgt
 
-- I-1.5 imports.scm (dependency_graph), I-1.6 calls.scm (call_graph approx.).
+- I-1.6 calls.scm (call_graph approx., einziges det-Artefakt mit Kanten-confidence).
 - I-1.9 JavaScript/TS belegt die Sprachunabhaengigkeit (nur neue .scm, Kern
   unveraendert). I-1.10 C#, I-1.11 GDScript.

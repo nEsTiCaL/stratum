@@ -70,7 +70,7 @@ I-1.1   scope-Normalisierung + Schema  det  I-1.0      TG(3)             fertig
 I-1.2   Repo-Interface+Migration+RT    det  I-1.0      R1, SK(1), DS     fertig
 I-1.3   Trace-Bus                      det  I-1.2      R1                fertig
 I-1.4   tree-sitter symbols (Python)   det  I-1.2/1.1  TG(4), R1         fertig
-I-1.5   dependency_graph (Python)      det  I-1.4      R1
+I-1.5   dependency_graph (Python)      det  I-1.4      R1                fertig
 I-1.6   call_graph approx. (Python)    det  I-1.4      R1
 I-1.7   Ingestion + source_hash+Watch  det  I-1.4      R1, DS
 I-1.8   Secret-Scan No-op-Stub         det  I-1.2      R1, R3
