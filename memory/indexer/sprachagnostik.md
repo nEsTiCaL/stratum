@@ -252,6 +252,12 @@ in den Kern inlinen. Genau dieser Test (Kern unberuehrt) ist die Abnahme von
 I-1.9. Sprach-Besonderheiten je Increment stehen in [[inkremente-schritt-1]]
 (I-1.9/1.10/1.11).
 
+Verfeinerung (I-1.9, mit Nutzer): "Kern git-diff leer" gilt strikt fuer calls.py.
+symbols.py/imports.py duerfen GENERISCHE, profilgesteuerte Erweiterungen bekommen
+(der hier genannte Ausweg), kein language-inlining. Konkret bei I-1.9:
+_visibility parent-bewusst + export-Strategie (korrekte JS-Sichtbarkeit war
+Vorgabe), relative_path_ext. Details: [[js-ts-umsetzung]].
+
 ## Quellen
 
 - TIOBE Index: https://www.tiobe.com/tiobe-index/ (Jun 2026 via

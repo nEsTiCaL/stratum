@@ -111,8 +111,11 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
 
 ## Offen / folgt
 
-- I-1.9 JavaScript/TS (NAECHSTES, nutzt I-1.85, belegt Sprachunabhaengigkeit
-  voll): Standing-Invariante = core/indexer/* git-diff leer. Mini-Smoke schon da
-  (queries/javascript/symbols.scm + provisorisches JS-Profil); I-1.9 ergaenzt
-  imports/calls, Funktionsformen, export-Sichtbarkeit, Golden.
+- I-1.9 JavaScript/TS (IN ARBEIT, pausiert nach Grammatik-Sondierung vor
+  Implementierung): vollstaendiger Stand, Findings und Bauplan in
+  [[js-ts-umsetzung]]. Kurz: nur JS+TS (tsx verschoben); Sichtbarkeit korrekt
+  via generischer _visibility-Erweiterung (parent-bewusst + export-Strategie);
+  imports.py bekommt generischen relative_path_ext-Zweig; calls.py bleibt
+  diff-leer. require()/dynamic import() verschoben. Mini-Smoke (symbols.scm +
+  JS-Profil) ist Ausgangspunkt.
 - Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).
