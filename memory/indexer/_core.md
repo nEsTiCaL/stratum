@@ -83,8 +83,15 @@ Zuweisungen und Docstrings sind in dieser Grammar-Version KEINE
 - Grammar: attribute-Felder object/attribute; Module-Calls direkt unter module
   (kein expression_statement-Wrapper).
 
+## Ingestion (I-1.7, ausserhalb dieser Domaene, core/ingest.py)
+
+Verdrahtet die drei Producer zu einem Schnitt Datei -> Store: file_scope ist die
+EINE Normalisierungsgrenze, je Stufe eine Trace-Zeile, Re-Index supersedet.
+Trigger (Watch core/watch.py, optional git-Hook) rufen denselben ingest_file.
+Secret-Scan-Stub (I-1.8, core/secret_scan.py) sitzt in der Pipeline (Trace
+sensitivity=none, stub=True); Egress fail-safe, scharf erst bei I-3.4.
+
 ## Offen / folgt
 
-- I-1.7 Ingestion + source_hash + Watch (vertikaler Schnitt Datei -> Store).
-- I-1.8 Secret-Scan No-op-Stub. I-1.9 JavaScript/TS belegt die Sprachunabhaengig-
-  keit (nur neue .scm, Kern unveraendert). I-1.10 C#, I-1.11 GDScript.
+- I-1.9 JavaScript/TS belegt die Sprachunabhaengigkeit (nur neue .scm, Kern
+  unveraendert). I-1.10 C#, I-1.11 GDScript.
