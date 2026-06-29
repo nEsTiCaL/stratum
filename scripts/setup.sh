@@ -159,10 +159,36 @@ fi
 # --- S2: Orchestrator (Ollama-Modelle) --------------------------------------
 if want s2; then
   sec "S2 Orchestrator (Ollama + Modelle)"
-  # Tags gegen die Ollama-Registry pruefen (koennen abweichen).
-  OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1:8b" )
   OLLAMA_URL="${OLLAMA_HOST:-http://localhost:11434}"
   [ -f "$ENV_FILE" ] && OLLAMA_URL="$(grep -E '^OLLAMA_HOST=' "$ENV_FILE" | cut -d= -f2- || echo "$OLLAMA_URL")"
+
+  # VRAM ermitteln: nvidia-smi direkt (WSL2 mit CUDA-Treiber) oder via
+  # Windows-Interop (nvidia-smi.exe immer verfuegbar wenn Treiber installiert).
+  VRAM_MiB=0
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    VRAM_MiB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | awk '{print $1; exit}')"
+  elif command -v nvidia-smi.exe >/dev/null 2>&1; then
+    VRAM_MiB="$(nvidia-smi.exe --query-gpu=memory.total --format=csv,noheader 2>/dev/null | awk '{print $1; exit}')"
+  fi
+  VRAM_MiB="${VRAM_MiB:-0}"
+
+  # Modell-Liste gemaess memory/modell-vram-matrix.md:
+  #   < 8192 MiB : nur phi4-mini sicher
+  #   8192-12287 : alle Q4_K_M sequenziell, kein qwen3:8b-q8
+  #   >= 12288   : alle Modelle
+  if   [ "$VRAM_MiB" -ge 12288 ] 2>/dev/null; then
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" "qwen3:8b-q8_0" )
+    ok "VRAM ${VRAM_MiB} MiB: alle Modelle verfuegbar"
+  elif [ "$VRAM_MiB" -ge 8192 ] 2>/dev/null; then
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" )
+    ok "VRAM ${VRAM_MiB} MiB: Q4_K_M-Modelle, sequenziell (kein qwen3:8b-q8)"
+  elif [ "$VRAM_MiB" -gt 0 ] 2>/dev/null; then
+    OLLAMA_MODELS=( "phi4-mini" )
+    warn "VRAM ${VRAM_MiB} MiB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein"
+  else
+    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1-distill:8b" )
+    warn "VRAM nicht ermittelbar; lade Standard-Modellsatz (Q4_K_M)"
+  fi
 
   if curl -fsS --max-time 5 "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then
     ok "Ollama erreichbar ($OLLAMA_URL)"
