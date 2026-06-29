@@ -103,11 +103,23 @@ if want s1; then
   if have docker; then ok "docker ($(docker --version | awk '{print $3}' | tr -d ,))"
   else miss "docker/CLI nicht erreichbar" "Docker Desktop (Windows) starten, WSL2-Integration aktivieren"; fi
 
+  # Docker-Gruppe pruefen: ohne Mitgliedschaft schlaegt docker info mit
+  # "permission denied on /var/run/docker.sock" fehl.
+  if id -nG 2>/dev/null | grep -qw docker; then
+    ok "Benutzer in docker-Gruppe"
+  else
+    miss "Benutzer nicht in docker-Gruppe" "sudo usermod -aG docker \$USER"
+    if confirm; then
+      sudo usermod -aG docker "$USER"
+      warn "Gruppe hinzugefuegt. Starte die Shell neu (newgrp docker) oder melde dich ab/an, damit die Gruppe aktiv wird."
+    fi
+  fi
+
   if docker compose version >/dev/null 2>&1; then ok "docker compose v2"
   else miss "docker compose v2 fehlt" "Docker Desktop aktualisieren"; fi
 
   if docker info >/dev/null 2>&1; then ok "Docker-Daemon laeuft"
-  else miss "Docker-Daemon nicht erreichbar" "Docker Desktop starten"; fi
+  else miss "Docker-Daemon nicht erreichbar" "Docker Desktop starten oder WSL2-Integration in Docker Desktop fuer Debian aktivieren"; fi
 
   if have docker && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^stratum-db$'; then
     ok "Postgres-Container laeuft (stratum-db)"
