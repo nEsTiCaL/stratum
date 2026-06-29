@@ -257,6 +257,11 @@ Profil B: 12-16 GB (Standard)
 Profil C: 48 GB Server
   vram_budget 44000 resident [phi, qwen-coder, qwen3-8b, r1-distill]
   max_parallel 4  allowed [*]
+
+Profil D: CPU-only (kein GPU)
+  total_vram 0  ram_budget ~9000  resident [phi-4-mini]  max_parallel 1
+  allowed [phi-4-mini]   (Coden/Reasoning -> Cloud, kein lokaler Coder)
+  Details + Begruendung: memory/modell-cpu-profil.md
 ```
 
 Auto-Detect + Override:

@@ -175,7 +175,8 @@ if want s2; then
   fi
   VRAM_MiB="${VRAM_MiB:-0}"
 
-  # Modell-Liste gemaess memory/modell-vram-matrix.md:
+  # Modell-Liste gemaess memory/modell-vram-matrix.md und modell-cpu-profil.md:
+  #   keine GPU (VRAM=0): CPU-only -> nur phi4-mini (Profil D), Rest via Cloud
   #   < 8192 MiB : nur phi4-mini sicher
   #   8192-12287 : alle Q4_K_M sequenziell, kein qwen3:8b-q8
   #   >= 12288   : alle Modelle
@@ -189,8 +190,10 @@ if want s2; then
     OLLAMA_MODELS=( "phi4-mini" )
     warn "VRAM ${VRAM_MiB} MiB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein"
   else
-    OLLAMA_MODELS=( "phi4-mini" "qwen2.5-coder:7b" "qwen3:8b" "deepseek-r1:8b" )
-    warn "VRAM nicht ermittelbar; lade Standard-Modellsatz (Q4_K_M)"
+    # Kein nvidia-smi / keine GPU -> CPU-only-Profil (memory/modell-cpu-profil.md).
+    # Lokal nur phi-4-mini (leichte NL + Klassifikation); Coden/Reasoning -> Cloud.
+    OLLAMA_MODELS=( "phi4-mini" )
+    warn "Keine NVIDIA-GPU erkannt -> CPU-only-Profil: nur phi4-mini lokal (Coden/Reasoning via Cloud)."
   fi
 
   if curl -fsS --max-time 5 "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then

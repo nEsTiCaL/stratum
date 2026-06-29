@@ -53,6 +53,25 @@ Standardziel ist **N2**: Postgres laeuft, Python-/Go-Toolchain steht, lokale
 Ollama-Modelle sind gezogen. Danach ist der erste produktive Stand erreicht
 (siehe `memory/planung/nutzstufen.md`).
 
+## Maschinen ohne GPU (CPU-only-Profil)
+
+Erkennt `setup.sh` keine NVIDIA-GPU (kein `nvidia-smi`, VRAM = 0), zieht es
+nur **phi4-mini** lokal. Coden/Reasoning eskaliert dann zur Cloud (ab N3),
+statt auf der CPU langsame, mittelmaessige 7B/8B-Modelle zu fahren.
+Begruendung + Matrix: `memory/modell-cpu-profil.md`.
+
+Ollama laeuft auf dem Windows-Host und teilt sich den RAM mit WSL2. Auf
+einer 16-GB-Maschine WSL2 deckeln, damit der Host genug fuer das Modell
+behaelt. Datei `%USERPROFILE%\.wslconfig`:
+
+```ini
+[wsl2]
+memory=6GB
+processors=6
+```
+
+Danach `wsl --shutdown` (PowerShell) und WSL2 neu oeffnen.
+
 ## Was die Skripte NICHT tun
 
 - WSL2/Docker nicht erzwingen (Admin/Neustart bleiben manuell).

@@ -13,3 +13,4 @@
 ## [2026-06-29] decision | WSL2-Distro Ubuntu -> Debian (Paritaet sitzt im Container, nicht am Host); setup.ps1 prueft jetzt Distro-Praesenz
 ## [2026-06-29] finding | WSL2-Distro-Installation kann nicht automatisiert werden (Installer wartet auf manuelle Benutzernamen-Eingabe); setup.ps1 + README dokumentieren jetzt das manuelle Verfahren
 ## [2026-06-29] decision | Repo-Klone ins WSL2-FS (nicht /mnt/c mounten): inotify muss zuverlassig sein fuer Ingestion-Watch (I-1.7); Standard-Credentials stratum:stratum dokumentiert
+## [2026-06-29] decision | CPU-only-Profil (Dev-Laptop ohne GPU): lokal nur phi-4-mini (Klassif. + leichte NL), Coden/Reasoning direkt Cloud (keine schwachen 7B/8B auf CPU); Capacity-Profil D; setup.sh+README+startkonfiguration angepasst -> modell-cpu-profil.md

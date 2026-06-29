@@ -6,7 +6,7 @@ status: active
 created: 2026-06-29
 updated: 2026-06-29
 tags: [gpu, vram, modelle, kapazitaet]
-related: ["[[constraints]]", "[[_core]]"]
+related: ["[[constraints]]", "[[_core]]", "[[modell-cpu-profil]]"]
 ---
 
 # Modell-VRAM-Matrix
@@ -43,3 +43,6 @@ VRAM   Was geht
 Der Router muss VRAM-verfuegbar abfragen (nvidia-smi) und bei
 < 12 GB automatisch auf sequenziellen Betrieb umschalten.
 qwen3:8b-q8 darf nur angeboten werden wenn VRAM >= 8 GB frei.
+
+Sonderfall ohne GPU (total_vram = 0): CPU-only-Profil, nur phi-4-mini
+lokal, Coden/Reasoning via Cloud. Siehe [[modell-cpu-profil]].
