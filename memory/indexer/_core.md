@@ -28,6 +28,16 @@ Diese Form hat mehrere Anlaeufe gekostet; fuer I-1.5/1.6/1.9 direkt nutzen:
   `QueryCursor(query).matches(root)` -> `[(pattern_index, {capture: [Node]})]`.
 - Fehlertoleranz: `root.has_error` -> partial-Flag. ERROR-Knoten matchen die
   Pattern nicht und fallen so von selbst raus; gueltige Symbole bleiben.
+- Praedikate: `QueryCursor.matches` WENDET Praedikate AN (frueher anders
+  vermutet). `(#eq? @cap "str")` auf einem EINZEL-Capture funktioniert robust
+  (auch um aus mehreren Geschwistern eines herauszufiltern, z.B. den const-
+  Modifier in C#: `(modifier) @m ... (#eq? @m "const")` matcht trotz mehrerer
+  Modifier). ABER `#any-of?`/`#match?` auf QUANTIFIZIERTEN Captures `(x)+ @c`
+  liefern leer/unzuverlaessig - dann lieber Einzel-`(x) @c` + `#eq?` oder die
+  Tokens im Kern scannen. Genutzt fuer JS require() (#eq? "require").
+- Grammatiken werden vom language-pack ON-DEMAND geladen (get_language laedt +
+  cacht). Namen pruefen: 'csharp' (nicht c_sharp), 'gdscript'. Netz beim
+  Erstlauf, siehe [[constraints]].
 
 ## Python-Grammar-Eigenheit (wichtig)
 
@@ -122,10 +132,15 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   (scannt alle Modifier auf Access-Keywords {public,export}/{private,protected,
   internal,#}); calls.py weiter git-diff LEER. Wildcard-Member-Pattern
   (_ name body: declaration_list) liefert @parent fuer alle Typarten. Overloads =
-  zwei Records gleichen Namens (Arity nur auf scope-Ebene). S1-NAEHERUNGEN:
-  Interface-Member ohne Modifier -> private (statt implizit public); const-Feld ->
-  var (const ist nur Modifier); namespace-Sichtbarkeit -> private (bedeutungslos).
-- I-1.11 GDScript (NAECHSTES): Grammar 'gdscript' (on-demand), 2 Builder
-  (symbol_index + call_graph, KEIN dependency_graph), underscore_prefix, self=self.
-  Details/Anforderungen: [[inkremente-schritt-1]].
+  zwei Records gleichen Namens (Arity nur auf scope-Ebene).
+- Qualitaets-Nachbesserung (2026-06-30, generisch): C# const-Feld -> const
+  (const_strategy=modifier, scannt erfasste Modifier); Interface-Member -> public
+  (generischer Nachlauf _apply_interface_visibility, sprachuebergreifend); JS/TS
+  require()/dynamic import() jetzt als Dependency erfasst (Praedikat #eq? +
+  import-Keyword). calls.py weiter diff-leer. Verbleibend akzeptiert: C#
+  namespace-Sichtbarkeit private (bedeutungslos), TS exportierte namespace-Member
+  als Top-Level.
+- I-1.11 GDScript (NAECHSTES): vollstaendiger Plan + Grammar-Findings in
+  [[gdscript-umsetzung]]. 2 Builder (symbol_index + call_graph, KEIN
+  dependency_graph), underscore_prefix, self=self, const strukturell.
 - Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

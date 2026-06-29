@@ -12,3 +12,14 @@
 
 (export_statement
   source: (string (string_fragment) @name)) @import.module
+
+; CommonJS require("x") - via #eq?-Praedikat auf den Callee-Namen
+(call_expression
+  function: (identifier) @_req
+  arguments: (arguments (string (string_fragment) @name))
+  (#eq? @_req "require")) @import.module
+
+; dynamischer Import import("x") - strukturell (import-Keyword als Callee)
+(call_expression
+  function: (import)
+  arguments: (arguments (string (string_fragment) @name))) @import.module

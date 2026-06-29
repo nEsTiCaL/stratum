@@ -54,6 +54,8 @@ _IMPORTS = [
     {"raw": "pkg", "target": None, "kind": "module", "span": [3, 3]},
     {"raw": "./side", "target": "src/app/side", "kind": "module", "span": [4, 4]},
     {"raw": "./reexport", "target": "src/app/reexport", "kind": "module", "span": [5, 5]},
+    {"raw": "./cjs", "target": "src/app/cjs", "kind": "module", "span": [6, 6]},
+    {"raw": "./dyn", "target": "src/app/dyn", "kind": "module", "span": [7, 7]},
 ]
 
 _CALLS = [
@@ -95,6 +97,11 @@ class TestImports:
         result = extract_imports(_read("imports_basic.js"), _IMPORT_FILE, "javascript")
         assert result.partial is False
         assert result.imports == _IMPORTS
+
+    def test_cjs_and_dynamic_import_covered(self):
+        # require() (CommonJS) und dynamisches import() werden als Dependency erfasst
+        raws = {i["raw"] for i in _IMPORTS}
+        assert {"./cjs", "./dyn"} <= raws
 
 
 class TestCalls:

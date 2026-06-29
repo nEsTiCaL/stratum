@@ -37,13 +37,17 @@ class LanguageProfile:
         "relative_path_ext"     wie relative_path mit Datei-Endung (JS/TS, I-1.9).
     const_strategy:
         "none"            const kommt strukturell aus der .scm (@definition.const).
-                          Default fuer JEDE Sprache mit const-Keyword (Go, JS/TS,
-                          C#, Rust, ...). Wichtig fuer Go: dort heisst ein
-                          ALL_CAPS- bzw. Grossbuchstaben-Name Export, NICHT const.
+                          Sprachen mit eigenem const-Knoten (JS/TS const/let,
+                          GDScript const_statement). Wichtig fuer Go: dort heisst
+                          ein Grossbuchstaben-Name Export, NICHT const.
         "uppercase_name"  kind var + ALL_CAPS-Name -> const. Nur fuer Sprachen
                           OHNE const-Keyword, die die SCREAMING_SNAKE_CASE-
-                          Konvention nutzen (Python). name-basiert, daher nicht
-                          per Capture ausdrueckbar -> Profil, nicht Kern.
+                          Konvention nutzen (Python). name-basiert -> Profil.
+        "modifier"        kind var + 'const' unter den gecaptureten Modifiern
+                          (@visibility) -> const. Fuer Sprachen, in denen const
+                          ein Modifier ist und strukturell nicht von var trennbar
+                          (C#: `public const int X`). Nutzt das schon erfasste
+                          Modifier-Set, daher kein Praedikat noetig.
     """
 
     visibility_strategy: str
@@ -94,7 +98,9 @@ _PROFILES: dict[str, LanguageProfile] = {
         visibility_strategy="default_private",
         self_keyword="this",
         import_resolution="namespace_passthrough",
-        const_strategy="none",
+        # const ist in C# ein Modifier (`public const int X`), strukturell nicht
+        # von var trennbar -> aus dem erfassten Modifier-Set ableiten.
+        const_strategy="modifier",
     ),
 }
 

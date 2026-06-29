@@ -72,7 +72,21 @@ def extract_symbols(source: str | bytes, language: str = "python") -> Extraction
 
     records = [record for _, record in by_node.values()]
     records.sort(key=lambda r: (r["span"][0], r["span"][1], r["kind"], r["name"]))
+    _apply_interface_visibility(records)
     return Extraction(symbols=records, partial=root.has_error)
+
+
+def _apply_interface_visibility(records: list[dict[str, Any]]) -> None:
+    """Member eines Interface sind oeffentlich (sprachuebergreifend: C#, Java, TS,
+    Go). Generischer Nachlauf, keine Sprachlogik: er greift nur, wenn es ueberhaupt
+    ein interface-Symbol gibt, und ist idempotent (TS-Interface-Member sind schon
+    public). Behebt die C#-Naeherung 'Interface-Member ohne Modifier -> private'."""
+    interfaces = {r["name"] for r in records if r["kind"] == "interface"}
+    if not interfaces:
+        return
+    for record in records:
+        if record["parent"] in interfaces:
+            record["visibility"] = "public"
 
 
 def symbol_index_result(
@@ -114,12 +128,15 @@ def _build(
 ) -> dict[str, Any]:
     name = caps["name"][0].text.decode()
     kind = def_cap[len(_DEF_PREFIX) :]
-    if kind == "var" and profile.const_strategy == "uppercase_name" and name.isupper():
-        # ALL_CAPS = const, aber nur fuer Sprachen OHNE const-Keyword (Python).
-        # Profil-gesteuert, weil name-basiert und NICHT universell: in Go heisst
-        # ein Grossbuchstaben-Name Export, nicht const. Keyword-Sprachen setzen
-        # @definition.const direkt in der .scm (const_strategy=none).
-        kind = "const"
+    vis_nodes = caps.get("visibility")
+    if kind == "var":
+        if profile.const_strategy == "uppercase_name" and name.isupper():
+            # ALL_CAPS = const, nur fuer Sprachen OHNE const-Keyword (Python).
+            # name-basiert und NICHT universell (Go: Grossbuchstabe = Export).
+            kind = "const"
+        elif profile.const_strategy == "modifier" and _has_token(vis_nodes, "const"):
+            # const ist ein Modifier (C#: `public const int X`).
+            kind = "const"
     parent = _cap_text(caps, "parent")
     return {
         "name": name,
@@ -127,7 +144,7 @@ def _build(
         "signature": _cap_text(caps, "signature"),
         "span": [def_node.start_point[0] + 1, def_node.end_point[0] + 1],
         "parent": parent,
-        "visibility": _visibility(name, parent, caps.get("visibility"), profile),
+        "visibility": _visibility(name, parent, vis_nodes, profile),
         "docstring": _docstring(caps),
     }
 
@@ -135,6 +152,10 @@ def _build(
 def _cap_text(caps: dict[str, list[Node]], capture: str) -> str | None:
     nodes = caps.get(capture)
     return nodes[0].text.decode() if nodes else None
+
+
+def _has_token(nodes: list[Node] | None, token: str) -> bool:
+    return bool(nodes) and any(n.text.decode() == token for n in nodes)
 
 
 def _visibility(

@@ -4,9 +4,9 @@ Staerkstes syntaktisches Signal: Modifier-Sichtbarkeit, Overloads (gleicher Name
 andere Signatur -> zwei Records; Arity unterscheidet auf scope-Ebene). Belegt mit
 dem leeren calls.py-Diff die Sprachunabhaengigkeit.
 
-Bekannte S1-Naeherungen (dokumentiert): Interface-Member ohne Modifier -> private
-(statt implizit public); const-Felder -> var (const ist nur ein Modifier);
-namespace-Sichtbarkeit -> private (bedeutungslos, default_private).
+Behoben ggue. erstem Wurf: Interface-Member -> public (generischer Nachlauf);
+const-Felder -> const (const_strategy=modifier). Verbleibende S1-Naeherung:
+namespace-Sichtbarkeit -> private (bedeutungslos, default_private; akzeptiert).
 """
 from __future__ import annotations
 
@@ -29,14 +29,14 @@ _SYMBOLS = [
     {"name": "IShape", "kind": "interface", "signature": None, "span": [6, 9],
      "parent": None, "visibility": "public", "docstring": None},
     {"name": "Area", "kind": "method", "signature": "()", "span": [8, 8],
-     "parent": "IShape", "visibility": "private", "docstring": None},
+     "parent": "IShape", "visibility": "public", "docstring": None},
     {"name": "Box", "kind": "class", "signature": None, "span": [11, 36],
      "parent": None, "visibility": "public", "docstring": None},
     {"name": "secret", "kind": "var", "signature": None, "span": [13, 13],
      "parent": "Box", "visibility": "private", "docstring": None},
     {"name": "Name", "kind": "property", "signature": None, "span": [14, 14],
      "parent": "Box", "visibility": "public", "docstring": None},
-    {"name": "MAX", "kind": "var", "signature": None, "span": [15, 15],
+    {"name": "MAX", "kind": "const", "signature": None, "span": [15, 15],
      "parent": "Box", "visibility": "public", "docstring": None},
     {"name": "Box", "kind": "constructor", "signature": "(int id)", "span": [17, 20],
      "parent": "Box", "visibility": "public", "docstring": None},
@@ -90,6 +90,13 @@ class TestSymbols:
         assert by[("secret", "Box")]["visibility"] == "private"   # private modifier
         assert by[("Name", "Box")]["visibility"] == "public"      # public modifier
         assert by[("Util", None)]["visibility"] == "private"      # static -> default internal
+
+    def test_const_field_and_interface_member_fixed(self):
+        by = {(s["name"], s["parent"]): s for s in _SYMBOLS}
+        # const-Feld -> const (const_strategy=modifier), nicht var
+        assert by[("MAX", "Box")]["kind"] == "const"
+        # Interface-Member -> public (generischer Nachlauf), nicht private
+        assert by[("Area", "IShape")]["visibility"] == "public"
 
 
 class TestImports:

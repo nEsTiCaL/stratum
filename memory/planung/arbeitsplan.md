@@ -77,7 +77,7 @@ I-1.8   Secret-Scan No-op-Stub         det  I-1.2      R1, R3            fertig
 I-1.85  Sprachagnostischer Kern        det  I-1.6      sprachagnostik    fertig
 I-1.9   JavaScript/TS (sym/imp/call)   det  I-1.85     js-ts-umsetzung   fertig
 I-1.10  C# voll                        det  I-1.85     R1, TG(3), sprachagn.   fertig
-I-1.11  GDScript (reduziert)           det  I-1.85     R1, sprachagnostik   offen   <- naechstes
+I-1.11  GDScript (reduziert, 2 Builder) det  I-1.85     gdscript-umsetzung   in arbeit  <- HIER
 I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11     DS, V  (vor Phase 2)
 ```
 
