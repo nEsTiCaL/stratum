@@ -202,19 +202,34 @@ extract_symbols; kuenftig liefert die Tabelle auch die Spans fuer Containment).
 ## Checkliste: Sprache hinzufuegen (Ergebnis von I-1.85)
 
 ```
-1. Grammar-Name im language-pack pruefen (z.B. c_sharp mit Unterstrich) +
-   Knotentypen/Felder sondieren (probe, siehe [[_core]]).
+1. PROBE FIRST (Pflicht, nicht optional): Grammar-Name im language-pack pruefen
+   (z.B. c_sharp mit Unterstrich) + Knotentypen/Felder/Quantoren sondieren gegen
+   die ECHTE Grammar (Probe-Skript, siehe [[_core]]). Hauptaufwand liegt hier.
+   Dabei zwei Dinge VORAB klaeren:
+   a) Sichtbarkeits-DEFAULT der Sprache (kein-Modifier -> was?). "none" (=public)
+      stimmt selten ungeprueft: C#-Member default private, Top-Level internal;
+      JS nicht-exportiert = modul-privat. Default bestimmt die visibility_strategy.
+   b) Konstrukte, die NICHT sauber capture-bar sind (brauchen Praedikat/Kernlogik)
+      -> bewusst als dokumentierte Luecke verschieben (wie JS require()/import()),
+      NICHT den Kern aufweichen.
 2. queries/<lang>/{symbols,imports,calls}.scm nach Capture-Konvention schreiben
    (@name, @definition.<kind>, @parent, @signature, @param, @doc, @visibility,
-   @reference.call + @callee, @import.*).
+   @reference.call + @callee, @import.*). Mechanismen wiederverwenden: Dedup nach
+   Knoten + Pattern-Reihenfolge (allgemein -> spezifisch; spaeteres Pattern
+   gewinnt) fuer Verfeinerungen.
 3. Profil-Eintrag in profiles.py NUR fuer das, was die .scm nicht ausdrueckt
-   (visibility_strategy, self_keyword, import_resolution) - mit Begruendung.
+   (visibility_strategy, self_keyword, import_resolution, const_strategy) - mit
+   Begruendung "warum nicht .scm".
 4. Sprache in Registry registrieren + Builder-Set in der ingest-Dispatch
    eintragen (welche Artefakte die Sprache erzeugt).
 5. Tests zweigleisig (siehe Teststrategie): Golden-Fixtures (byte-exakt) UND
-   Real-Code-Smoke (kleines echtes Beispiel, Invarianten) unter
-   tests/fixtures/<lang>/, test_*_<lang>.
-6. KEINE Aenderung an core/indexer/{symbols,imports,calls}.py.
+   Real-Code-Smoke (kleines echtes Beispiel, Invarianten via tests/_invariants.py)
+   unter tests/fixtures/<lang>/, test_*_<lang>.
+6. KERN-DIFF: calls.py bleibt strikt git-diff leer (der harte Agnostik-Beleg).
+   symbols.py/imports.py duerfen NUR generische, profilgesteuerte Erweiterungen
+   bekommen (neue visibility_strategy/import_resolution-Werte, parent-bewusste
+   Logik) - NIE sprachspezifisches Inlinen. Jede solche Erweiterung hier
+   dokumentieren.
 ```
 
 ## Teststrategie je Artefakt/Sprache (zweigleisig)

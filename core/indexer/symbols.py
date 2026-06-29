@@ -120,13 +120,14 @@ def _build(
         # ein Grossbuchstaben-Name Export, nicht const. Keyword-Sprachen setzen
         # @definition.const direkt in der .scm (const_strategy=none).
         kind = "const"
+    parent = _cap_text(caps, "parent")
     return {
         "name": name,
         "kind": kind,
         "signature": _cap_text(caps, "signature"),
         "span": [def_node.start_point[0] + 1, def_node.end_point[0] + 1],
-        "parent": _cap_text(caps, "parent"),
-        "visibility": _visibility(name, caps.get("visibility"), profile),
+        "parent": parent,
+        "visibility": _visibility(name, parent, caps.get("visibility"), profile),
         "docstring": _docstring(caps),
     }
 
@@ -137,18 +138,32 @@ def _cap_text(caps: dict[str, list[Node]], capture: str) -> str | None:
 
 
 def _visibility(
-    name: str, vis_nodes: list[Node] | None, profile: LanguageProfile
+    name: str,
+    parent: str | None,
+    vis_nodes: list[Node] | None,
+    profile: LanguageProfile,
 ) -> str:
-    """Sichtbarkeit: ein @visibility-Modifier aus dem Code hat Vorrang, sonst die
-    Profil-Strategie (namensbasiert, wo die Sprache keine Modifier hat)."""
+    """Sichtbarkeit (generisch, profilgesteuert): ein @visibility-Marker aus dem
+    Code hat Vorrang, sonst die Profil-Strategie. parent unterscheidet Member
+    (parent gesetzt) von Top-Level (parent None) - manche Sprachen haben dort
+    verschiedene Defaults (z.B. JS: Member oeffentlich, Top-Level modul-privat)."""
     if vis_nodes:
-        return "private" if vis_nodes[0].text.decode() == "private" else "public"
+        token = vis_nodes[0].text.decode()
+        if token.startswith("#") or token in ("private", "protected"):
+            return "private"
+        return "public"  # public / export / sonstige Marker
     strategy = profile.visibility_strategy
     if strategy == "underscore_prefix":
         return "private" if name.startswith("_") else "public"
     if strategy == "uppercase_export":
         return "public" if name[:1].isupper() else "private"
-    return "public"
+    if strategy == "default_private":
+        return "private"
+    if strategy == "export":
+        # Top-Level braucht einen export-Marker (sonst modul-privat); Member sind
+        # ohne Modifier oeffentlich.
+        return "public" if parent else "private"
+    return "public"  # "none"
 
 
 def _docstring(caps: dict[str, list[Node]]) -> str | None:

@@ -1,10 +1,10 @@
 ---
 id: js-ts-umsetzung
-title: I-1.9 JavaScript/TypeScript - Stand, Findings, Plan
+title: I-1.9 JavaScript/TypeScript - Findings, Plan, Umsetzung
 type: decision
-status: open
+status: resolved
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-06-30
 tags: [indexer, tree-sitter, javascript, typescript]
 related: ["[[sprachagnostik]]", "[[_core]]", "[[inkremente-schritt-1]]"]
 ---
@@ -17,13 +17,26 @@ Entscheidungen, die sondierten Grammatik-Strukturen (nicht neu sondieren) und de
 konkrete Bauplan inkl. der genauen Kern-Edits. Grundlage: [[sprachagnostik]],
 [[inkremente-schritt-1]] (I-1.9).
 
-## Wo wir stehen
+## Stand: ERLEDIGT (I-1.9 fertig, 2026-06-30)
 
-- Basis-Kontext gelesen, Preflight ok (dep I-1.85 fertig).
-- Grammatik javascript/typescript durchsondiert (Ergebnisse unten).
-- NOCH NICHTS implementiert/committet. Nichts am Code geaendert seit I-1.85.
-- Naechster Schritt: die zwei generischen Kern-Edits (imports.py, symbols.py),
-  dann Profile, dann .scm, dann Golden+Smoke.
+Umgesetzt wie geplant. calls.py git-diff LEER (harter Agnostik-Beleg);
+symbols.py/imports.py nur generisch erweitert (_visibility parent-bewusst +
+export/default_private-Strategien + Token-Klassifikation #/private/protected;
+relative_path_ext) - kein JS/TS-Knotentyp im Kern (grep-verifiziert).
+queries/javascript|typescript/{symbols,imports,calls}.scm + Profile js/ts
+(visibility_strategy=export). Golden je Artefakt JS+TS + Real-Code-Smoke; 143
+Tests gruen. ingest dispatched .js/.mjs/.cjs/.ts (je 3 Builder).
+
+Umgesetzte/bestaetigte Abweichungen ggue. Plan:
+- require()/dynamic import() VERSCHOBEN (dokumentierte S1-Luecke).
+- var/const NUR Top-Level (program) + Klassen-Member - wie Python; lokale Vars
+  sind keine Symbole. Funktionen/Arrow-Bindungen ueberall erfasst.
+- exportierte Namespace-Member (TS export const im namespace) erscheinen als
+  Top-Level-Symbol (parent None); nicht-exportierte werden uebersprungen. Minor
+  S1-Naeherung, im TS-Golden-Test dokumentiert.
+- default_private-Strategie schon eingebaut (fuer I-1.10 C# vorgesehen).
+
+Findings + Bauplan unten bleiben als Referenz fuer I-1.10/1.11.
 
 ## Entscheidungen (mit Nutzer abgestimmt)
 

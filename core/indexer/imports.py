@@ -113,11 +113,33 @@ def _resolve_target(
     namespace_passthrough: target = rohe Namespace-Id; FS-Aufloesung erst S4.
     """
     resolution = profile.import_resolution
+    if resolution == "relative_path_ext":
+        return _resolve_relative_ext(raw, file_path)
     if kind == "relative":
         return _resolve_relative(raw, file_path)
     if resolution == "namespace_passthrough":
         return raw
     return None
+
+
+def _resolve_relative_ext(raw: str, file_path: str) -> str | None:
+    """Pfad-relative Aufloesung mit Datei-Bezug (JS/TS: ./x, ../x). Bare
+    Specifier (z.B. 'react') -> None (extern). Die Endungs-/index-Disambiguierung
+    (./x -> x.js | x/index.js) braucht das Repo-Layout und folgt in S4; in S1
+    wird nur der Pfad gegen das Dateiverzeichnis normalisiert."""
+    if not (raw.startswith("./") or raw.startswith("../")):
+        return None
+    parts = [s for s in file_path.split("/")[:-1] if s]
+    for segment in raw.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if not parts:
+                return None
+            parts.pop()
+        else:
+            parts.append(segment)
+    return "/".join(parts) if parts else None
 
 
 def _resolve_relative(raw: str, file_path: str) -> str | None:

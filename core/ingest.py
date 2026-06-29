@@ -24,9 +24,18 @@ from core.secret_scan import NoopSecretScan, SecretScan
 # Sprach-Dispatch (I-1.85): Endung -> Sprache und Sprache -> Builder-Set. Das
 # Builder-Set legt fest, welche det-Artefakte eine Sprache erzeugt (z.B. spaeter
 # GDScript ohne dependency_graph). Reihenfolge = Producer-Reihenfolge im Trace.
-_EXTENSION_LANGUAGE = {".py": "python"}
+_EXTENSION_LANGUAGE = {
+    ".py": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+}
+_ALL_THREE = (symbol_index_result, dependency_graph_result, call_graph_result)
 _BUILDER_SETS = {
-    "python": (symbol_index_result, dependency_graph_result, call_graph_result),
+    "python": _ALL_THREE,
+    "javascript": _ALL_THREE,
+    "typescript": _ALL_THREE,
 }
 _DEFAULT_LANGUAGE = "python"
 

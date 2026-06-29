@@ -111,11 +111,12 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
 
 ## Offen / folgt
 
-- I-1.9 JavaScript/TS (IN ARBEIT, pausiert nach Grammatik-Sondierung vor
-  Implementierung): vollstaendiger Stand, Findings und Bauplan in
-  [[js-ts-umsetzung]]. Kurz: nur JS+TS (tsx verschoben); Sichtbarkeit korrekt
-  via generischer _visibility-Erweiterung (parent-bewusst + export-Strategie);
-  imports.py bekommt generischen relative_path_ext-Zweig; calls.py bleibt
-  diff-leer. require()/dynamic import() verschoben. Mini-Smoke (symbols.scm +
-  JS-Profil) ist Ausgangspunkt.
+- I-1.9 JavaScript/TS FERTIG: queries/javascript|typescript/*.scm + Profile
+  (visibility_strategy=export); Sichtbarkeit korrekt via generischer
+  _visibility-Erweiterung (parent-bewusst + export/default_private), imports.py
+  generischer relative_path_ext-Zweig; calls.py git-diff LEER (Agnostik-Beleg).
+  require()/dynamic import() verschoben. Details + Naeherungen: [[js-ts-umsetzung]].
+- I-1.10 C# (NAECHSTES): Lehren aus I-1.9 in [[sprachagnostik]]-Checkliste +
+  [[inkremente-schritt-1]] (C# default private statt none; arity ist scope-Ebene,
+  kein symbol_index-Feld; default_private-Strategie steht schon bereit).
 - Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

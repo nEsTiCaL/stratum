@@ -212,17 +212,26 @@ Klasse  : det
 Ziel    : staerkstes syntaktisches Signal; Overloads -> Arity zahlt sich aus
 Anders als Python (muss I-1.10 abdecken):
   - Sichtbarkeit per Modifier (public/private/protected/internal) ->
-    @visibility-Capture, profil visibility_strategy = none.
-  - Overloads: gleicher Name, andere Arity -> symbol_index muss arity sauber
-    liefern (count @param); scope unterscheidet ueber /<arity>. C# ist der
-    Grund fuer die Arity-Konvention (TG 3).
+    @visibility-Capture. ABER: C#-DEFAULT ist NICHT public - Member ohne Modifier
+    sind private, Top-Level-Typen internal. visibility_strategy=none (=public)
+    passt daher NICHT; vermutlich neue Strategie "default_private" (kein
+    @visibility-Capture -> private). Mapping protected/internal -> "private"
+    (non-public). Vor dem Bau gegen die Grammar pruefen (Lehre aus I-1.9, s.
+    [[js-ts-umsetzung]] / [[sprachagnostik]] Checkliste 1a).
+  - Overloads: gleicher Name, andere Arity. WICHTIG: symbol_index hat KEIN
+    arity-Feld (bewusst seit I-1.85, Python-Golden byte-identisch). Zwei
+    Foo(...) -> zwei Symbol-Records gleichen Namens mit unterschiedlicher
+    signature/span. Arity wird auf SCOPE-Ebene gezaehlt (scope-Key /<arity>),
+    NICHT im symbol_index. Kein Schema-Eingriff in I-1.10.
   - Imports: using <Namespace> -> import_resolution = namespace_passthrough
     (target = Namespace-Id, KEINE FS-Aufloesung in S1; echte Aufloesung S4).
-  - self_keyword = this.
+  - self_keyword = this. const_strategy = none (C# const-Keyword -> .scm).
   - zusaetzliche kinds: struct, interface, enum, record, delegate, property,
     event, constructor, namespace (Vokabular offen erweitern).
 Akzeptanz: Golden je Artefakt + Real-Code-Smoke (kleine echte Datei, Invarianten,
-          inkl. Overload-Arity); core/indexer/* git-diff leer.
+          inkl. Overloads gleichen Namens). KERN-DIFF: calls.py strikt git-diff
+          leer; symbols.py/imports.py nur generische, profilgesteuerte
+          Erweiterungen (kein language-inlining) - Verfeinerung aus I-1.9.
 Klasse  : det
 ```
 
@@ -253,8 +262,11 @@ Anders als Python (muss I-1.11 abdecken):
   - Abhaengigkeiten (preload/load("res://..")/extends): bewusst NICHT als
     dependency_graph in S1; res://-Aufloesung waere ein eigenes
     import_resolution-Profil und folgt spaeter bei Bedarf.
-Akzeptanz: Golden (symbol_index, call_graph) + Real-Code-Smoke; core/indexer/*
-          git-diff leer; dependency_graph fuer GDScript nicht erzeugt.
+Akzeptanz: Golden (symbol_index, call_graph) + Real-Code-Smoke; dependency_graph
+          fuer GDScript nicht erzeugt (2 Builder). KERN-DIFF: calls.py strikt
+          git-diff leer; symbols.py nur generische profilgesteuerte Erweiterungen
+          (Verfeinerung aus I-1.9). Reifegrad der Grammar gering -> intensiv
+          sondieren (Checkliste 1).
 Klasse  : det
 C/C++ bleibt offen gehalten (Praeprozessor/#include -> spaeter).
 ```

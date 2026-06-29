@@ -75,8 +75,8 @@ I-1.6   call_graph approx. (Python)    det  I-1.4      R1                fertig
 I-1.7   Ingestion + source_hash+Watch  det  I-1.4      R1, DS            fertig
 I-1.8   Secret-Scan No-op-Stub         det  I-1.2      R1, R3            fertig
 I-1.85  Sprachagnostischer Kern        det  I-1.6      sprachagnostik    fertig
-I-1.9   JavaScript/TS (sym/imp/call)   det  I-1.85     js-ts-umsetzung   in arbeit  <- HIER
-I-1.10  C# voll                        det  I-1.85     R1, TG(3), sprachagn.
+I-1.9   JavaScript/TS (sym/imp/call)   det  I-1.85     js-ts-umsetzung   fertig
+I-1.10  C# voll                        det  I-1.85     R1, TG(3), sprachagn.   offen   <- naechstes
 I-1.11  GDScript (reduziert)           det  I-1.85     R1, sprachagnostik
 I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11     DS, V  (vor Phase 2)
 ```
@@ -152,9 +152,9 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 ## Status
 
-I-1.0 bis I-1.85 fertig (2026-06-29). I-1.9 IN ARBEIT (pausiert nach Grammatik-
-Sondierung, vor Implementierung; Stand/Plan/Findings: [[js-ts-umsetzung]]).
-Schritt 1 sonst offen: I-1.10 bis I-1.12.
+I-1.0 bis I-1.9 fertig. Schritt 1 noch offen: I-1.10 (C#) bis I-1.12. Lehren aus
+I-1.9 fuer I-1.10/1.11 in [[sprachagnostik]] (Checkliste) + [[inkremente-schritt-1]]
+(C#-Default-Visibility, arity scope-Ebene) eingearbeitet.
 Beim Abschluss eines Haeppchens Status hier
 aktualisieren (offen -> in arbeit -> fertig) und log.md ergaenzen. Dieser
 Plan ist die einzige Fortschritts-Wahrheit; nicht an mehreren Stellen pflegen.

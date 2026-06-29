@@ -63,13 +63,23 @@ _PROFILES: dict[str, LanguageProfile] = {
         # Python hat kein const-Keyword -> ALL_CAPS-Namenskonvention.
         const_strategy="uppercase_name",
     ),
-    # JavaScript: provisorisch fuer den I-1.85 Agnostik-Beleg (nur symbols).
-    # visibility_strategy none, weil JS Sichtbarkeit ueber export ausdrueckt (in
-    # die .scm gehoerig, I-1.9), nicht namensbasiert. const_strategy none: JS hat
-    # ein const-Keyword -> die .scm unterscheidet const/let/var strukturell.
-    # Voll ausgestaltet in I-1.9.
+    # JavaScript (I-1.9): visibility_strategy=export, weil Sichtbarkeit zweigleisig
+    # ist - Member sind oeffentlich per Default, Top-Level ist modul-privat, es sei
+    # denn exportiert (export wird in der .scm als @visibility gecaptured; die
+    # Abwesenheit von export ist nicht matchbar -> Default ueber die Strategie).
+    # self=this. const_strategy none: const-Keyword -> .scm unterscheidet
+    # const/let/var strukturell. relative_path_ext: ./x gegen Dateipfad, bare extern.
     "javascript": LanguageProfile(
-        visibility_strategy="none",
+        visibility_strategy="export",
+        self_keyword="this",
+        import_resolution="relative_path_ext",
+        const_strategy="none",
+    ),
+    # TypeScript (I-1.9): wie JS. Member-Sichtbarkeit zusaetzlich ueber
+    # accessibility_modifier (public/private/protected) in der .scm; Top-Level
+    # wieder export-basiert -> dieselbe export-Strategie traegt beides.
+    "typescript": LanguageProfile(
+        visibility_strategy="export",
         self_keyword="this",
         import_resolution="relative_path_ext",
         const_strategy="none",
