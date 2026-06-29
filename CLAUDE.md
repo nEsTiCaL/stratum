@@ -7,6 +7,6 @@ brauchst, lies zuerst memory-rules.md und richte dich danach. Sonst nicht noetig
 
 ## Commits
 
-Commit-Messages werden vor dem Commit gemeinsam besprochen. Schlage die Message
-vor und warte auf Bestaetigung, bevor du committest. Keine Co-Authored-By-Zeile
-in Commit-Messages.
+Commit-Messages werden vor dem Commit gemeinsam besprochen. Schlage eine
+aussagekraeftige, kurze Message vor und warte auf Bestaetigung, bevor du
+committest. Keine Co-Authored-By-Zeile in Commit-Messages.
