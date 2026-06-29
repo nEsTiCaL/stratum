@@ -6,7 +6,7 @@ PY_OUT      := core/models
 GO_OUT      := cli/schema/generated.go
 GO_PKG      := schema
 
-.PHONY: codegen codegen-py codegen-go check-drift
+.PHONY: codegen codegen-py codegen-go check-drift migrate test
 
 codegen: codegen-py codegen-go
 
@@ -35,3 +35,11 @@ codegen-go:
 
 check-drift: codegen
 	git diff --exit-code $(SCHEMAS_DIR) $(PY_OUT) $(GO_OUT)
+
+# Migrationen gegen die laufende Postgres-Instanz anwenden (DATABASE_URL oder Default).
+migrate:
+	uv run python -m core.db migrate
+
+# Schnelle det-Testsuite (echtes Postgres via testcontainers, Docker noetig).
+test:
+	uv run --extra dev pytest -q

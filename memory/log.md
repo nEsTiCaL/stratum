@@ -19,3 +19,4 @@
 ## [2026-06-29] decision | I-1.0 abgeschlossen: 4 JSON-Schemata, make codegen (py+go), 26 Contract-Tests gruen, Drift-Gate verifiziert
 ## [2026-06-29] decision | I-1.1 abgeschlossen: scope-Parser/Serializer (core/scope.py), Pfad-Normalisierung, Typmenge-Validierung, Arity-Konvention, 34 Tests gruen
 ## [2026-06-29] finding | Drift-Gate war faktisch rot trotz "verifiziert" (I-1.0): codegen-py schrieb Single-File bei modularen $refs (Fehler) + Header-Timestamp = nie reproduzierbar. Fix 5eeaa57: Verzeichnis-Ausgabe core/models, --disable-timestamp, schemas/.gitkeep raus; make check-drift jetzt exit 0
+## [2026-06-29] decision | I-1.2 abgeschlossen: Repository-Interface (core/repository.py: put_artifact/get_current/staleness_lookup), Migration 0001 (artifacts+trace, partieller Unique-Index artifacts_current_uq), Runner core/db.py (yoyo, psycopg3-DSN), conftest mit testcontainers-Postgres; 11 Tests gruen (71 gesamt), make migrate idempotent gegen stratum-db
