@@ -154,8 +154,17 @@ if (Have ollama) {
 
 Sec "GPU"
 if (Have nvidia-smi) {
-  $n = (nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
-  if ($n) { Ok "GPU: $n" } else { Warn "nvidia-smi vorhanden, aber keine GPU gemeldet" }
+  $gpuLine = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>$null | Select-Object -First 1
+  if ($gpuLine) {
+    $vramMiB = [int]($gpuLine -replace '^.*?,\s*(\d+)\s*MiB.*$','$1')
+    $vramGB  = [math]::Round($vramMiB / 1024, 1)
+    Ok "GPU: $gpuLine"
+    # Einordnung gemaess memory/modell-vram-matrix.md
+    if ($vramGB -ge 16)     { Ok  "VRAM $vramGB GB: voller Betrieb (alle Modelle, parallel moeglich)" }
+    elseif ($vramGB -ge 12) { Ok  "VRAM $vramGB GB: alle Modelle einzeln, zwei kleine simultan" }
+    elseif ($vramGB -ge 8)  { Warn "VRAM $vramGB GB: alle Modelle einzeln, NUR sequenziell; kein qwen3:8b-q8" }
+    else                    { Warn "VRAM $vramGB GB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein" }
+  } else { Warn "nvidia-smi vorhanden, aber keine GPU gemeldet" }
 } else { Warn "nvidia-smi nicht gefunden (kein NVIDIA-Treiber? lokale Modelle laufen sonst auf CPU)" }
 
 Write-Host ""
