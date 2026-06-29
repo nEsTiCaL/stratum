@@ -10,12 +10,16 @@
 
 param([switch]$Install)
 
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
 $script:Missing = 0
-function Ok($m)   { Write-Host "  [ok]    $m" -ForegroundColor Green }
-function Miss($m,$cmd) { Write-Host "  [fehlt] $m" -ForegroundColor Red; Write-Host "          -> $cmd" -ForegroundColor DarkGray; $script:Missing++ }
-function Warn($m) { Write-Host "  [warn]  $m" -ForegroundColor Yellow }
-function Sec($m)  { Write-Host "`n== $m ==" -ForegroundColor Yellow }
-function Have($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
+$script:MissingAdmin = 0
+function Ok($m)        { Write-Host "  [ok]      $m" -ForegroundColor Green }
+function Miss($m,$cmd) { Write-Host "  [fehlt]   $m" -ForegroundColor Red; Write-Host "          -> $cmd" -ForegroundColor DarkGray; $script:Missing++ }
+function NoAdmin($m,$cmd) { Write-Host "  [noAdmin] $m" -ForegroundColor Cyan; Write-Host "          -> $cmd" -ForegroundColor DarkGray; $script:MissingAdmin++ }
+function Warn($m)      { Write-Host "  [warn]    $m" -ForegroundColor Yellow }
+function Sec($m)       { Write-Host "`n== $m ==" -ForegroundColor Yellow }
+function Have($c)      { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 function Confirm($cmd) {
   if (-not $Install) { return $false }
   $a = Read-Host "          jetzt ausfuehren? [y/N]"
@@ -31,7 +35,11 @@ Sec "WSL2"
 $wsl = $false
 try { wsl.exe --status *> $null; if ($LASTEXITCODE -eq 0) { $wsl = $true } } catch {}
 if (-not $wsl) {
-  Miss "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Admin + Neustart erforderlich)"
+  if ($isAdmin) {
+    Miss "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Neustart erforderlich)"
+  } else {
+    NoAdmin "WSL2 nicht eingerichtet" "wsl --install -d Debian   (Neustart erforderlich)"
+  }
   Write-Host "          MANUELL: Nach 'wsl --install' startet Debian und fragt nach einem"
   Write-Host "          Benutzernamen. Gib einen ein (z.B. 'stratum') und bestaetigt mit Enter."
   Write-Host "          Das Skript kann nicht interaktiv auf diesen Prompt antworten."
@@ -71,35 +79,46 @@ else {
 Sec "Ollama (GPU-Host)"
 if (Have ollama) {
   Ok "ollama ($(ollama --version))"
+
+  # Firewall: Block-Regeln fuer ollama pruefen (entstehen beim ersten Start wenn
+  # Windows fragt und man "Blockieren" waehlt; sie ueberschreiben Allow-Regeln).
+  # Wildcard erfasst "ollama.exe", "ollama", Varianten mit Pfad usw.
+  $blockRules = @(Get-NetFirewallRule -DisplayName "*ollama*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Action -eq 'Block' })
+  if ($blockRules.Count -gt 0) {
+    if ($isAdmin) {
+      Miss "Block-Regeln fuer ollama gefunden ($($blockRules.Count) Stueck) - blockieren Verbindungen" 'netsh advfirewall firewall delete rule name="ollama.exe" dir=in'
+      if ($Install) {
+        try {
+          $blockRules | Remove-NetFirewallRule -ErrorAction Stop
+          Ok "Block-Regeln fuer ollama entfernt"
+        } catch { Warn "Block-Regeln konnten nicht entfernt werden: $_" }
+      }
+    } else {
+      NoAdmin "Block-Regeln fuer ollama gefunden ($($blockRules.Count) Stueck) - blockieren Verbindungen" 'netsh advfirewall firewall delete rule name="ollama.exe" dir=in'
+    }
+  } else { Ok "Keine Block-Regeln fuer ollama" }
+
   # Ollama muss auf 0.0.0.0 lauschen, sonst ist es aus WSL2 nicht erreichbar
   # (Standard: nur 127.0.0.1, WSL2 kommt ueber die Host-Bridge-IP rein).
   $ollamaHost = [System.Environment]::GetEnvironmentVariable("OLLAMA_HOST", "User")
   if ($ollamaHost -eq "0.0.0.0" -or $ollamaHost -eq "0.0.0.0:11434") {
     Ok "OLLAMA_HOST=0.0.0.0 (WSL2-erreichbar)"
-    # Firewall: Block-Regeln fuer ollama.exe entfernen (entstehen beim ersten Start
-    # wenn Windows fragt und man "Blockieren" waehlt; ueberschreiben Allow-Regeln).
-    $blockRules = @(Get-NetFirewallRule -DisplayName "ollama.exe" -ErrorAction SilentlyContinue |
-      Where-Object { $_.Action -eq 'Block' })
-    if ($blockRules.Count -gt 0) {
-      Miss "Block-Regeln fuer ollama.exe gefunden ($($blockRules.Count) Stueck) - ueberschreiben Allow" 'netsh advfirewall firewall delete rule name="ollama.exe" dir=in   (als Admin)'
-      if ($Install) {
-        try {
-          $blockRules | Remove-NetFirewallRule -ErrorAction Stop
-          Ok "Block-Regeln fuer ollama.exe entfernt"
-        } catch { Warn "Block-Regeln konnten nicht entfernt werden (Admin-Rechte benoetigt). Als Admin ausfuehren: netsh advfirewall firewall delete rule name=`"ollama.exe`" dir=in" }
-      }
-    } else { Ok "Keine Block-Regeln fuer ollama.exe" }
 
     # Allow-Regel fuer Port 11434 pruefen
     $fwRule = Get-NetFirewallRule -DisplayName "Ollama WSL2" -ErrorAction SilentlyContinue
     if ($fwRule) { Ok "Firewall-Regel 'Ollama WSL2' (Port 11434) vorhanden" }
     else {
-      Miss "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'netsh advfirewall firewall add rule name="Ollama WSL2" dir=in action=allow protocol=TCP localport=11434   (als Admin)'
-      if ($Install) {
-        try {
-          New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any | Out-Null
-          Ok "Firewall-Regel gesetzt"
-        } catch { Warn "Firewall-Regel konnte nicht gesetzt werden (Admin-Rechte benoetigt). Als Admin ausfuehren: netsh advfirewall firewall add rule name=`"Ollama WSL2`" dir=in action=allow protocol=TCP localport=11434" }
+      if ($isAdmin) {
+        Miss "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'netsh advfirewall firewall add rule name="Ollama WSL2" dir=in action=allow protocol=TCP localport=11434'
+        if ($Install) {
+          try {
+            New-NetFirewallRule -DisplayName "Ollama WSL2" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow -Profile Any | Out-Null
+            Ok "Firewall-Regel gesetzt"
+          } catch { Warn "Firewall-Regel konnte nicht gesetzt werden: $_" }
+        }
+      } else {
+        NoAdmin "Firewall-Regel fuer Port 11434 fehlt (WSL2 blockiert)" 'netsh advfirewall firewall add rule name="Ollama WSL2" dir=in action=allow protocol=TCP localport=11434'
       }
     }
   } else {
@@ -168,10 +187,16 @@ if (Have nvidia-smi) {
 } else { Warn "nvidia-smi nicht gefunden (kein NVIDIA-Treiber? lokale Modelle laufen sonst auf CPU)" }
 
 Write-Host ""
-if ($script:Missing -eq 0) {
+if ($script:MissingAdmin -gt 0 -and -not $isAdmin) {
+  Write-Host "$($script:MissingAdmin) Schritt(e) benoetigen Admin-Rechte [noAdmin]:" -ForegroundColor Cyan
+  Write-Host "  -> PowerShell als Administrator starten und erneut ausfuehren:" -ForegroundColor Cyan
+  Write-Host "     powershell -ExecutionPolicy Bypass -File scripts\setup.ps1" -ForegroundColor Gray
+  Write-Host ""
+}
+if ($script:Missing -eq 0 -and $script:MissingAdmin -eq 0) {
   Write-Host "Host-Tools bereit. Naechster Schritt in WSL2:" -ForegroundColor Green
   Write-Host "  cd ~/stratum && ./scripts/setup.sh" -ForegroundColor Gray
-} else {
+} elseif ($script:Missing -gt 0) {
   Write-Host "$($script:Missing) Punkt(e) offen (Befehle oben). WSL2 ggf. nach Neustart erneut pruefen." -ForegroundColor Yellow
   Write-Host "Mit -Install fuehrt das Skript die winget-Schritte nach Rueckfrage aus." -ForegroundColor DarkGray
 }
