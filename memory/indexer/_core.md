@@ -116,7 +116,16 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   _visibility-Erweiterung (parent-bewusst + export/default_private), imports.py
   generischer relative_path_ext-Zweig; calls.py git-diff LEER (Agnostik-Beleg).
   require()/dynamic import() verschoben. Details + Naeherungen: [[js-ts-umsetzung]].
-- I-1.10 C# (NAECHSTES): Lehren aus I-1.9 in [[sprachagnostik]]-Checkliste +
-  [[inkremente-schritt-1]] (C# default private statt none; arity ist scope-Ebene,
-  kein symbol_index-Feld; default_private-Strategie steht schon bereit).
+- I-1.10 C# FERTIG: queries/csharp/*.scm + Profil (visibility_strategy=
+  default_private, namespace_passthrough, self=this, const none). Grammar heisst
+  'csharp' (on-demand-Download, siehe [[constraints]]). _visibility generalisiert
+  (scannt alle Modifier auf Access-Keywords {public,export}/{private,protected,
+  internal,#}); calls.py weiter git-diff LEER. Wildcard-Member-Pattern
+  (_ name body: declaration_list) liefert @parent fuer alle Typarten. Overloads =
+  zwei Records gleichen Namens (Arity nur auf scope-Ebene). S1-NAEHERUNGEN:
+  Interface-Member ohne Modifier -> private (statt implizit public); const-Feld ->
+  var (const ist nur Modifier); namespace-Sichtbarkeit -> private (bedeutungslos).
+- I-1.11 GDScript (NAECHSTES): Grammar 'gdscript' (on-demand), 2 Builder
+  (symbol_index + call_graph, KEIN dependency_graph), underscore_prefix, self=self.
+  Details/Anforderungen: [[inkremente-schritt-1]].
 - Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

@@ -30,12 +30,14 @@ _EXTENSION_LANGUAGE = {
     ".mjs": "javascript",
     ".cjs": "javascript",
     ".ts": "typescript",
+    ".cs": "csharp",
 }
 _ALL_THREE = (symbol_index_result, dependency_graph_result, call_graph_result)
 _BUILDER_SETS = {
     "python": _ALL_THREE,
     "javascript": _ALL_THREE,
     "typescript": _ALL_THREE,
+    "csharp": _ALL_THREE,
 }
 _DEFAULT_LANGUAGE = "python"
 

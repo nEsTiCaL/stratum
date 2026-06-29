@@ -84,6 +84,18 @@ _PROFILES: dict[str, LanguageProfile] = {
         import_resolution="relative_path_ext",
         const_strategy="none",
     ),
+    # C# (I-1.10): Sichtbarkeit ueber Modifier (public/private/protected/internal)
+    # in der .scm als @visibility. DEFAULT ist NICHT public - Member sind private,
+    # Top-Level-Typen internal -> visibility_strategy=default_private (kein
+    # Access-Modifier -> private). self=this. const_strategy none (const-Keyword
+    # -> .scm). namespace_passthrough: using <NS> -> target = Namespace-Id, keine
+    # FS-Aufloesung in S1 (echte Aufloesung erst S4).
+    "csharp": LanguageProfile(
+        visibility_strategy="default_private",
+        self_keyword="this",
+        import_resolution="namespace_passthrough",
+        const_strategy="none",
+    ),
 }
 
 

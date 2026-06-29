@@ -148,10 +148,18 @@ def _visibility(
     (parent gesetzt) von Top-Level (parent None) - manche Sprachen haben dort
     verschiedene Defaults (z.B. JS: Member oeffentlich, Top-Level modul-privat)."""
     if vis_nodes:
-        token = vis_nodes[0].text.decode()
-        if token.startswith("#") or token in ("private", "protected"):
+        # Alle gecaptureten Marker scannen (Sprachen wie C# haben mehrere
+        # Modifier in beliebiger Reihenfolge, z.B. "public static"). Kontrolliertes
+        # Sichtbarkeits-Vokabular (analog @definition.<kind>): aussagekraeftige
+        # Tokens entscheiden, nicht-aussagekraeftige (z.B. "static") fallen auf
+        # die Profil-Strategie zurueck.
+        tokens = {n.text.decode() for n in vis_nodes}
+        if tokens & {"public", "export"}:
+            return "public"
+        if tokens & {"private", "protected", "internal"} or any(
+            t.startswith("#") for t in tokens
+        ):
             return "private"
-        return "public"  # public / export / sonstige Marker
     strategy = profile.visibility_strategy
     if strategy == "underscore_prefix":
         return "private" if name.startswith("_") else "public"

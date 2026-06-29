@@ -35,6 +35,11 @@ Schicht 0  Baseline (einmalig)
   Py     : psycopg[binary] v3, pydantic v2, pytest, testcontainers[postgres],
            watchdog, py-tree-sitter, tree-sitter-language-pack,
            datamodel-code-generator
+  Grammar: tree-sitter-language-pack (v1.11) laedt Grammatiken ON-DEMAND beim
+           ersten get_language und cacht sie lokal -> Netz beim Erstlauf noetig.
+           In Gebrauch: python, javascript, typescript, csharp (Name 'csharp',
+           NICHT 'c_sharp'); GDScript ('gdscript') folgt I-1.11. CI/Fresh-Setup:
+           erste Nutzung zieht die Grammar, sonst DownloadError.
   Go     : go-jsonschema
   Tool   : yoyo (Migrations-Runner)
   Build  : Schema-Codegen gelaufen (I-1.0), Migrationen angewandt (I-1.2)

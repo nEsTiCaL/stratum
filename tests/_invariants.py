@@ -10,7 +10,12 @@ from __future__ import annotations
 
 from core.indexer import extract_calls, extract_imports, extract_symbols
 
-_KINDS = {"function", "method", "class", "var", "const"}
+# Offenes kind-Vokabular (Capture-Suffix @definition.<kind>), siehe sprachagnostik.
+_KINDS = {
+    "function", "method", "class", "var", "const", "struct", "interface", "enum",
+    "trait", "record", "namespace", "type", "constant", "field", "property",
+    "constructor", "macro", "signal",
+}
 _VISIBILITY = {"public", "private"}
 _IMPORT_KINDS = {"module", "symbol", "relative"}
 

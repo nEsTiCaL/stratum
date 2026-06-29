@@ -19,7 +19,12 @@ _QUERIES_DIR = Path(__file__).resolve().parent.parent.parent / "queries"
 
 # Sprache -> Kurzform fuer den Producer-Namen ("tree-sitter-py"). Default: der
 # Sprachname selbst. Haelt den Producer sprachrichtig, ohne -py im Kern.
-_PRODUCER_SHORT = {"python": "py", "javascript": "js", "typescript": "ts"}
+_PRODUCER_SHORT = {
+    "python": "py",
+    "javascript": "js",
+    "typescript": "ts",
+    "csharp": "cs",
+}
 
 
 @lru_cache(maxsize=None)
