@@ -78,9 +78,14 @@ da Ausfuehrung weiter im WSL-nativen FS passiert.
 **Phase B: Abnahme (Häppchen fertig, Tests gruen)**
 ```
 1. Commit-Message mit Nutzer besprechen (CLAUDE.md)
-2. Commit + push AUS WSL (~/stratum) -- WSL ist die zuletzt getestete,
-   massgebliche Quelle
-3. Windows-Repo nachziehen: git -C "E:/Projekte/AI Coding/Stratum" pull
+2. Commit + push AUS WINDOWS (Credentials nur dort konfiguriert; WSL hat
+   kein gh, kein .git-credentials, keinen Credential-Helper):
+   git -C "E:/Projekte/AI Coding/Stratum" add <dateien>
+   git -C "E:/Projekte/AI Coding/Stratum" commit -m "..."
+   git -C "E:/Projekte/AI Coding/Stratum" push
+3. WSL-Repo nachziehen: wsl -d Debian -- bash -c "cd ~/stratum && git pull"
+   (ggf. vorher staged/geaenderte WSL-Arbeitskopien unstagen/loeschen,
+   da Phase A cp-Dateien manchmal im Index landen)
 ```
 
 Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den
