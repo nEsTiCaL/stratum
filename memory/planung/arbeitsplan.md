@@ -91,7 +91,7 @@ N1-Dogfooding nutzbar ([[i-d0-dev-harness]]). Naechstes: Schritt 2
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS
+I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, [[i-2-0-capacity-lifecycle]]   fertig
 I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2
 I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)

@@ -16,5 +16,8 @@ build/
 .idea/
 *.swp
 
+# Capacity-Profil pro Deployment (I-2.0): nicht committen, nur das Beispiel.
+capacity.toml
+
 # Hinweis: generierte Schema-Artefakte (pydantic/Go-structs) werden bewusst
 # COMMITTED (Drift-Check in CI), daher hier NICHT ignoriert.
