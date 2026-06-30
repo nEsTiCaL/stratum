@@ -104,7 +104,7 @@ I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, [[i-2-1-matr
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2             fertig
 I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)             fertig
 I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-matrix-router]] (Konsumenten-Vertrag!)   fertig
-I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS
+I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS             fertig
 I-2.6   Klassifikation + Detektor-Stub gem   I-2.5     R2
 I-2.7   Intent-Zerlegung + Plan        gem   I-2.2/2.6 R2, DP
 ```

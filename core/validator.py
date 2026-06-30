@@ -52,6 +52,18 @@ class Model(Protocol):
 
 
 @dataclass
+class ReplayModel:
+    """Prompt-gebundenes Test-Double: gibt fuer jeden bekannten Prompt eine
+    festgelegte Antwort zurueck. KeyError bei unbekanntem Prompt (Testfehler,
+    nicht ContextExceededError)."""
+
+    replay: dict[str, str]
+
+    def complete(self, prompt: str) -> str:
+        return self.replay[prompt]
+
+
+@dataclass
 class FakeModel:
     """Test-Implementierung des Model-Seam: liefert vorgegebene Antworten
     der Reihe nach. raise_context_exceeded zwingt ContextExceededError beim
