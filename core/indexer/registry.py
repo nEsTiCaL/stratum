@@ -3,9 +3,10 @@
 Sprachunabhaengiger Zugang zu tree-sitter. Sprachspezifisches steckt nur in den
 .scm-Dateien unter queries/<sprache>/, nicht hier im Code.
 """
+
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 from tree_sitter import Parser, Query
@@ -28,14 +29,14 @@ _PRODUCER_SHORT = {
 }
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_parser(language: str) -> Parser:
     """Parser fuer eine Sprache. Parser(get_language(...)) ist der stabile Pfad;
     das get_parser des language-pack verhaelt sich in dieser Version unzuverlaessig."""
     return Parser(get_language(language))
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_query(language: str, name: str) -> Query:
     """Kompilierte .scm-Query aus queries/<sprache>/<name>.scm."""
     scm = (_QUERIES_DIR / language / f"{name}.scm").read_text(encoding="utf-8")

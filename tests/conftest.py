@@ -5,6 +5,7 @@ Persistenzschicht; sie gegen ein Mock zu testen waere wertlos. Daher eine
 Wegwerf-DB via testcontainers, einmal pro Session hochgefahren, Schema per
 Migration angewandt, Tabellen je Test geleert.
 """
+
 from __future__ import annotations
 
 import psycopg

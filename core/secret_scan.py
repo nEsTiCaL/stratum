@@ -8,6 +8,7 @@ Wahl ist und kein Versehen.
 Scharfstellen (S3, I-3.4) tauscht nur den Stub-Body gegen echte Detektoren und
 setzt scan_real=true; Interface, Position und Schalter-Mechanik bleiben.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

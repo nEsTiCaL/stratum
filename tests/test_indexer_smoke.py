@@ -6,6 +6,7 @@ private Namen - die synthetische Fixtures verfehlen. Plus ein Mini-Smoke einer
 zweiten Grammar (JS), der belegt, dass der Extraktor-Kern grammar-agnostisch ist
 (KEINE Kern-Aenderung fuer eine neue Sprache).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -96,7 +97,9 @@ class TestSecondGrammar:
         assert {"MAX", "greet", "Greeter", "hello"} <= names
 
     def test_js_kinds_and_const_convention(self):
-        by_name = {s["name"]: s for s in extract_symbols(self._JS, "javascript").symbols}
+        by_name = {
+            s["name"]: s for s in extract_symbols(self._JS, "javascript").symbols
+        }
         assert by_name["greet"]["kind"] == "function"
         assert by_name["Greeter"]["kind"] == "class"
         assert by_name["hello"]["kind"] == "method"

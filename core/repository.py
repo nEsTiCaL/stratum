@@ -5,6 +5,7 @@ einheitliche Result-Objekt (ResultDet | ResultProb). Versionierung statt
 Loeschen: ein neues Artefakt verdraengt das bisherige aktuelle desselben
 (scope, artifact_type) per superseded-Flag.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ class TraceEntry:
     artifact_id: int | None
     detail: dict[str, Any] | None
     timestamp: datetime
+
 
 # Spaltenreihenfolge fuer das Auslesen, einmal definiert.
 _SELECT_COLUMNS = (
@@ -128,7 +130,8 @@ class Repository:
         with self._conn.transaction():
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO trace (session_id, stage, artifact_id, detail, timestamp) "
+                    "INSERT INTO trace "
+                    "(session_id, stage, artifact_id, detail, timestamp) "
                     "VALUES (%s, %s, %s, %s, now()) RETURNING id",
                     (session_id, stage, artifact_id, _jsonb(detail)),
                 )

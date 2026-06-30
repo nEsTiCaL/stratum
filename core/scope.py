@@ -6,6 +6,7 @@ Scope key: [<repo-id>::]<typ>:<path>[#<symbol>[/<arity>]]
   symbol : dot-nested, overloads via /<arity>
   repo-id: optional; absent means default repo
 """
+
 from __future__ import annotations
 
 import re
@@ -40,10 +41,12 @@ class Scope:
         if self.arity is not None and self.symbol is None:
             raise ValueError("arity requires symbol to be set")
         if self.repo_id is not None and not _REPO_ID_RE.match(self.repo_id):
-            raise ValueError(f"invalid repo_id {self.repo_id!r}: must match [A-Za-z0-9_.-]+")
+            raise ValueError(
+                f"invalid repo_id {self.repo_id!r}: must match [A-Za-z0-9_.-]+"
+            )
 
     @classmethod
-    def parse(cls, raw: str) -> "Scope":
+    def parse(cls, raw: str) -> Scope:
         if not raw:
             raise ValueError("scope string must not be empty")
 
@@ -64,7 +67,9 @@ class Scope:
             typ = ScopeType(typ_str)
         except ValueError:
             valid = [t.value for t in ScopeType]
-            raise ValueError(f"unknown scope type {typ_str!r}; valid types: {valid}")
+            raise ValueError(
+                f"unknown scope type {typ_str!r}; valid types: {valid}"
+            ) from None
 
         raw_path = path_and_sym
         symbol: str | None = None
@@ -76,7 +81,8 @@ class Scope:
                 sym_name, arity_str = sym_part.rsplit("/", 1)
                 if not arity_str.isdigit():
                     raise ValueError(
-                        f"arity must be a non-negative integer, got {arity_str!r} in {raw!r}"
+                        f"arity must be a non-negative integer, "
+                        f"got {arity_str!r} in {raw!r}"
                     )
                 symbol = sym_name
                 arity = int(arity_str)

@@ -1,5 +1,7 @@
 """I-1.1: scope-Parser/Serializer/Normalizer."""
+
 import pytest
+
 from core.scope import Scope, ScopeType
 
 
@@ -49,20 +51,31 @@ class TestScopeParse:
 
 class TestScopeFormat:
     def test_file(self):
-        assert Scope(typ=ScopeType.file, path="src/auth.py").format() == "file:src/auth.py"
+        assert (
+            Scope(typ=ScopeType.file, path="src/auth.py").format() == "file:src/auth.py"
+        )
 
     def test_repo(self):
         assert Scope(typ=ScopeType.repo, path="").format() == "repo:"
 
     def test_module(self):
-        assert Scope(typ=ScopeType.module, path="src/auth").format() == "module:src/auth"
+        assert (
+            Scope(typ=ScopeType.module, path="src/auth").format() == "module:src/auth"
+        )
 
     def test_symbol_with_arity(self):
-        s = Scope(typ=ScopeType.symbol, path="src/auth/auth.py", symbol="Login.validate", arity=2)
+        s = Scope(
+            typ=ScopeType.symbol,
+            path="src/auth/auth.py",
+            symbol="Login.validate",
+            arity=2,
+        )
         assert s.format() == "symbol:src/auth/auth.py#Login.validate/2"
 
     def test_symbol_without_arity(self):
-        s = Scope(typ=ScopeType.symbol, path="src/auth/auth.py", symbol="Login.validate")
+        s = Scope(
+            typ=ScopeType.symbol, path="src/auth/auth.py", symbol="Login.validate"
+        )
         assert s.format() == "symbol:src/auth/auth.py#Login.validate"
 
     def test_with_repo_prefix(self):
@@ -71,14 +84,17 @@ class TestScopeFormat:
 
 
 class TestScopeRoundtrip:
-    @pytest.mark.parametrize("raw", [
-        "repo:",
-        "file:src/auth.py",
-        "module:src/auth",
-        "symbol:src/auth/auth.py#Login.validate/2",
-        "symbol:src/auth/auth.py#Login.validate",
-        "backend::file:src/main.py",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "repo:",
+            "file:src/auth.py",
+            "module:src/auth",
+            "symbol:src/auth/auth.py#Login.validate/2",
+            "symbol:src/auth/auth.py#Login.validate",
+            "backend::file:src/main.py",
+        ],
+    )
     def test_parse_format_roundtrip(self, raw):
         assert Scope.parse(raw).format() == raw
 

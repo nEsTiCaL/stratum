@@ -1,18 +1,19 @@
 """I-1.0: Schema-Vertrag. result_det/prob-Validierung und Events-Diskriminator."""
+
 import pytest
 from pydantic import ValidationError
 
-from core.models.provenance_schema import Provenance
-from core.models.result_det_schema import ResultDet
-from core.models.result_prob_schema import ResultProb
 from core.models.events_schema import (
-    Event,
     ErrorEvent,
+    Event,
     FindingEvent,
     PartialEvent,
     ProgressEvent,
     ResultEvent,
 )
+from core.models.provenance_schema import Provenance
+from core.models.result_det_schema import ResultDet
+from core.models.result_prob_schema import ResultProb
 
 _PROV_DET = {
     "schema_version": "1",
@@ -139,25 +140,31 @@ class TestResultProb:
 
 
 class TestScopePattern:
-    @pytest.mark.parametrize("scope", [
-        "repo:",
-        "file:src/auth.py",
-        "module:src/auth",
-        "symbol:src/auth.py#Login.validate/2",
-        "symbol:src/auth.py#Login.validate",
-        "backend::file:src/main.py",
-    ])
+    @pytest.mark.parametrize(
+        "scope",
+        [
+            "repo:",
+            "file:src/auth.py",
+            "module:src/auth",
+            "symbol:src/auth.py#Login.validate/2",
+            "symbol:src/auth.py#Login.validate",
+            "backend::file:src/main.py",
+        ],
+    )
     def test_valid_scopes_accepted(self, scope):
         p = Provenance(**{**_PROV_DET, "scope": scope})
         assert p.scope == scope
 
-    @pytest.mark.parametrize("bad_scope", [
-        "unknown:src/foo.py",  # unbekannter Typ
-        "src/foo.py",          # kein Typ-Praefix
-        "",                    # leer
-        # Hinweis: "file:" (leerer Pfad) wird vom Regex akzeptiert;
-        # die Anforderung "non-repo-Typen brauchen Pfad" prueft I-1.1.
-    ])
+    @pytest.mark.parametrize(
+        "bad_scope",
+        [
+            "unknown:src/foo.py",  # unbekannter Typ
+            "src/foo.py",  # kein Typ-Praefix
+            "",  # leer
+            # Hinweis: "file:" (leerer Pfad) wird vom Regex akzeptiert;
+            # die Anforderung "non-repo-Typen brauchen Pfad" prueft I-1.1.
+        ],
+    )
     def test_invalid_scopes_rejected(self, bad_scope):
         with pytest.raises(ValidationError):
             Provenance(**{**_PROV_DET, "scope": bad_scope})

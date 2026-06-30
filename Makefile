@@ -6,7 +6,7 @@ PY_OUT      := core/models
 GO_OUT      := cli/schema/generated.go
 GO_PKG      := schema
 
-.PHONY: codegen codegen-py codegen-go check-drift migrate test
+.PHONY: codegen codegen-py codegen-go check-drift migrate test lint fmt check
 
 codegen: codegen-py codegen-go
 
@@ -40,6 +40,21 @@ check-drift: codegen
 migrate:
 	uv run python -m core.db migrate
 
+# Lint-/Format-Gate (I-1.12). Laeuft ueber den ganzen Baum; Ausschluesse
+# (core/models generiert, tests/fixtures Testdaten) stehen in pyproject.toml.
+# Reines Dev-/CI-Gate fuer Stratums eigenen Code, kein Produktfeature.
+lint:
+	uv run --extra dev ruff check .
+	uv run --extra dev ruff format --check .
+
+# Code formatieren + Autofixes anwenden (lokaler Komfort, nicht im Gate).
+fmt:
+	uv run --extra dev ruff format .
+	uv run --extra dev ruff check --fix .
+
 # Schnelle det-Testsuite (echtes Postgres via testcontainers, Docker noetig).
 test:
 	uv run --extra dev pytest -q
+
+# CI-Reihenfolge: erst das schnelle Lint-Gate, dann die Testsuite.
+check: lint test

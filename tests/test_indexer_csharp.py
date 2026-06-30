@@ -8,6 +8,7 @@ Behoben ggue. erstem Wurf: Interface-Member -> public (generischer Nachlauf);
 const-Felder -> const (const_strategy=modifier). Verbleibende S1-Naeherung:
 namespace-Sichtbarkeit -> private (bedeutungslos, default_private; akzeptiert).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,48 +25,160 @@ _FIXTURES = Path(__file__).parent / "fixtures" / "csharp"
 _IMPORT_FILE = "src/App/Mod.cs"
 
 _SYMBOLS = [
-    {"name": "App.Core", "kind": "namespace", "signature": None, "span": [4, 44],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "IShape", "kind": "interface", "signature": None, "span": [6, 9],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "Area", "kind": "method", "signature": "()", "span": [8, 8],
-     "parent": "IShape", "visibility": "public", "docstring": None},
-    {"name": "Box", "kind": "class", "signature": None, "span": [11, 36],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "secret", "kind": "var", "signature": None, "span": [13, 13],
-     "parent": "Box", "visibility": "private", "docstring": None},
-    {"name": "Name", "kind": "property", "signature": None, "span": [14, 14],
-     "parent": "Box", "visibility": "public", "docstring": None},
-    {"name": "MAX", "kind": "const", "signature": None, "span": [15, 15],
-     "parent": "Box", "visibility": "public", "docstring": None},
-    {"name": "Box", "kind": "constructor", "signature": "(int id)", "span": [17, 20],
-     "parent": "Box", "visibility": "public", "docstring": None},
-    {"name": "Area", "kind": "method", "signature": "()", "span": [22, 25],
-     "parent": "Box", "visibility": "public", "docstring": None},
-    {"name": "Compute", "kind": "method", "signature": "()", "span": [27, 30],
-     "parent": "Box", "visibility": "private", "docstring": None},
-    {"name": "Compute", "kind": "method", "signature": "(int n)", "span": [32, 35],
-     "parent": "Box", "visibility": "private", "docstring": None},
-    {"name": "Color", "kind": "enum", "signature": None, "span": [38, 38],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "Util", "kind": "class", "signature": None, "span": [40, 43],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "Helper", "kind": "method", "signature": "()", "span": [42, 42],
-     "parent": "Util", "visibility": "public", "docstring": None},
+    {
+        "name": "App.Core",
+        "kind": "namespace",
+        "signature": None,
+        "span": [4, 44],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "IShape",
+        "kind": "interface",
+        "signature": None,
+        "span": [6, 9],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Area",
+        "kind": "method",
+        "signature": "()",
+        "span": [8, 8],
+        "parent": "IShape",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Box",
+        "kind": "class",
+        "signature": None,
+        "span": [11, 36],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "secret",
+        "kind": "var",
+        "signature": None,
+        "span": [13, 13],
+        "parent": "Box",
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Name",
+        "kind": "property",
+        "signature": None,
+        "span": [14, 14],
+        "parent": "Box",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "MAX",
+        "kind": "const",
+        "signature": None,
+        "span": [15, 15],
+        "parent": "Box",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Box",
+        "kind": "constructor",
+        "signature": "(int id)",
+        "span": [17, 20],
+        "parent": "Box",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Area",
+        "kind": "method",
+        "signature": "()",
+        "span": [22, 25],
+        "parent": "Box",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Compute",
+        "kind": "method",
+        "signature": "()",
+        "span": [27, 30],
+        "parent": "Box",
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Compute",
+        "kind": "method",
+        "signature": "(int n)",
+        "span": [32, 35],
+        "parent": "Box",
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Color",
+        "kind": "enum",
+        "signature": None,
+        "span": [38, 38],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "Util",
+        "kind": "class",
+        "signature": None,
+        "span": [40, 43],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Helper",
+        "kind": "method",
+        "signature": "()",
+        "span": [42, 42],
+        "parent": "Util",
+        "visibility": "public",
+        "docstring": None,
+    },
 ]
 
 _IMPORTS = [
     {"raw": "System", "target": "System", "kind": "module", "span": [1, 1]},
-    {"raw": "System.Collections.Generic", "target": "System.Collections.Generic",
-     "kind": "module", "span": [2, 2]},
+    {
+        "raw": "System.Collections.Generic",
+        "target": "System.Collections.Generic",
+        "kind": "module",
+        "span": [2, 2],
+    },
     {"raw": "App.Models", "target": "App.Models", "kind": "module", "span": [3, 3]},
 ]
 
 _CALLS = [
-    {"caller": "C.A", "callee_raw": "this.B", "callee_ref": "C.B",
-     "span": [7, 7], "confidence": 0.6},
-    {"caller": "C.B", "callee_raw": "Console.WriteLine", "callee_ref": None,
-     "span": [12, 12], "confidence": 0.0},
+    {
+        "caller": "C.A",
+        "callee_raw": "this.B",
+        "callee_ref": "C.B",
+        "span": [7, 7],
+        "confidence": 0.6,
+    },
+    {
+        "caller": "C.B",
+        "callee_raw": "Console.WriteLine",
+        "callee_ref": None,
+        "span": [12, 12],
+        "confidence": 0.0,
+    },
 ]
 
 
@@ -87,9 +200,11 @@ class TestSymbols:
 
     def test_modifier_visibility(self):
         by = {(s["name"], s["parent"]): s for s in _SYMBOLS}
-        assert by[("secret", "Box")]["visibility"] == "private"   # private modifier
-        assert by[("Name", "Box")]["visibility"] == "public"      # public modifier
-        assert by[("Util", None)]["visibility"] == "private"      # static -> default internal
+        assert by[("secret", "Box")]["visibility"] == "private"  # private modifier
+        assert by[("Name", "Box")]["visibility"] == "public"  # public modifier
+        assert (
+            by[("Util", None)]["visibility"] == "private"
+        )  # static -> default internal
 
     def test_const_field_and_interface_member_fixed(self):
         by = {(s["name"], s["parent"]): s for s in _SYMBOLS}
@@ -116,8 +231,10 @@ class TestCalls:
 class TestResultAndStore:
     def test_producer(self):
         result = symbol_index_result(
-            "file:src/App/Mod.cs", _read("symbols_basic.cs"),
-            source_hash="c1", language="csharp",
+            "file:src/App/Mod.cs",
+            _read("symbols_basic.cs"),
+            source_hash="c1",
+            language="csharp",
         )
         assert result.provenance.producer == "tree-sitter-cs"
         assert result.content["symbols"] == _SYMBOLS

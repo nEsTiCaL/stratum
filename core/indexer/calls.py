@@ -14,12 +14,13 @@ Heuristik (rein dateilokal, deterministisch):
   - `<self>.m()` in Klasse -> Klasse.m, wenn m Methode dieser Klasse ist (SELF_METHOD).
   - sonst                 -> callee_ref NULL, confidence 0.
 """
+
 from __future__ import annotations
 
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import Any
 
@@ -57,7 +58,9 @@ def extract_calls(source: str | bytes, language: str = "python") -> CallExtracti
 
     symbols = extract_symbols(src, language).symbols
     module_defs = {
-        s["name"] for s in symbols if s["parent"] is None and s["kind"] in _TOP_LEVEL_REF
+        s["name"]
+        for s in symbols
+        if s["parent"] is None and s["kind"] in _TOP_LEVEL_REF
     }
     # Top-Level-Funktionen separat: Ziel des Datei-als-Klasse-Fallbacks
     # (self.m() ohne umschliessende Klasse, profile.self_module_fallback).
@@ -86,7 +89,12 @@ def extract_calls(source: str | bytes, language: str = "python") -> CallExtracti
             enclosing["parent"] if enclosing and enclosing["kind"] == "method" else None
         )
         callee_ref, confidence = _resolve(
-            callee_raw, enclosing_class, module_defs, module_funcs, class_methods, profile
+            callee_raw,
+            enclosing_class,
+            module_defs,
+            module_funcs,
+            class_methods,
+            profile,
         )
         rows.append(
             {
@@ -119,7 +127,7 @@ def call_graph_result(
         producer=producer_name(language),
         producer_version=_TS_VERSION,
         producer_class="det",
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
         artifact_type="call_graph",
         scope=scope,
     )
@@ -148,7 +156,9 @@ def _innermost(enclosers: list[dict[str, Any]], line: int) -> dict[str, Any] | N
 def _qualified(symbol: dict[str, Any] | None) -> str | None:
     if symbol is None:
         return None
-    return f"{symbol['parent']}.{symbol['name']}" if symbol["parent"] else symbol["name"]
+    return (
+        f"{symbol['parent']}.{symbol['name']}" if symbol["parent"] else symbol["name"]
+    )
 
 
 def _resolve(

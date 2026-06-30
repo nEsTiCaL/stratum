@@ -3,6 +3,7 @@
 Akzeptanz: geaenderte Datei -> Re-Index -> neue Artefakte, alte superseded;
 Watch und Hook loesen identische Ingestion aus.
 """
+
 from __future__ import annotations
 
 from watchdog.events import FileModifiedEvent

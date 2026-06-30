@@ -5,6 +5,7 @@ einen injizierten Callback (die Ingestion). Die Verdrahtung mit einem Observer
 ist duenne Glue. Portabilitaet: inotify feuert nur im WSL2-FS zuverlaessig
 (nicht unter /mnt/c|d); fuer solche Faelle Polling-Fallback (use_polling=True).
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -67,7 +68,9 @@ def watch(
     observer = (PollingObserver if use_polling else Observer)()
     handler = IngestEventHandler(
         repo_root,
-        lambda rel: ingest_file(repo, repo_root, rel, source_hash=source_hash, scan=scan),
+        lambda rel: ingest_file(
+            repo, repo_root, rel, source_hash=source_hash, scan=scan
+        ),
         suffixes=suffixes,
     )
     observer.schedule(handler, str(repo_root), recursive=True)

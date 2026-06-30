@@ -3,6 +3,7 @@
 Der Handler bildet fs-Events auf rel_path ab; der reale inotify-/Polling-Observer
 ist Glue (WSL2-FS-abhaengig) und nicht Teil der schnellen det-Suite.
 """
+
 from __future__ import annotations
 
 from watchdog.events import DirModifiedEvent, FileCreatedEvent, FileModifiedEvent
@@ -39,7 +40,9 @@ def test_non_python_ignored(tmp_path):
 
 def test_directory_event_ignored(tmp_path):
     calls: list[str] = []
-    IngestEventHandler(tmp_path, calls.append).on_modified(DirModifiedEvent(str(tmp_path)))
+    IngestEventHandler(tmp_path, calls.append).on_modified(
+        DirModifiedEvent(str(tmp_path))
+    )
     assert calls == []
 
 

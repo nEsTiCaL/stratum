@@ -4,6 +4,7 @@ Golden je Artefakt (byte-exakt) + Store-Durchstich. Belegt zusammen mit dem
 git-diff von calls.py (leer), dass eine neue Sprache ohne Kern-Aenderung
 auskommt: JS lebt in queries/javascript/*.scm + profiles.py.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,28 +25,105 @@ _FIXTURES = Path(__file__).parent / "fixtures" / "javascript"
 _IMPORT_FILE = "src/app/mod.js"
 
 _SYMBOLS = [
-    {"name": "MAX", "kind": "const", "signature": None, "span": [1, 1],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "counter", "kind": "var", "signature": None, "span": [2, 2],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "greet", "kind": "function", "signature": "(name)", "span": [4, 6],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "_helper", "kind": "function", "signature": "()", "span": [8, 10],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "add", "kind": "function", "signature": "(a, b)", "span": [12, 12],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "Widget", "kind": "class", "signature": None, "span": [14, 29],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "kind", "kind": "var", "signature": None, "span": [15, 15],
-     "parent": "Widget", "visibility": "public", "docstring": None},
-    {"name": "#secret", "kind": "var", "signature": None, "span": [16, 16],
-     "parent": "Widget", "visibility": "private", "docstring": None},
-    {"name": "constructor", "kind": "method", "signature": "(id)", "span": [18, 20],
-     "parent": "Widget", "visibility": "public", "docstring": None},
-    {"name": "render", "kind": "method", "signature": "()", "span": [22, 24],
-     "parent": "Widget", "visibility": "public", "docstring": None},
-    {"name": "#hidden", "kind": "method", "signature": "()", "span": [26, 28],
-     "parent": "Widget", "visibility": "private", "docstring": None},
+    {
+        "name": "MAX",
+        "kind": "const",
+        "signature": None,
+        "span": [1, 1],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "counter",
+        "kind": "var",
+        "signature": None,
+        "span": [2, 2],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "greet",
+        "kind": "function",
+        "signature": "(name)",
+        "span": [4, 6],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "_helper",
+        "kind": "function",
+        "signature": "()",
+        "span": [8, 10],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "add",
+        "kind": "function",
+        "signature": "(a, b)",
+        "span": [12, 12],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Widget",
+        "kind": "class",
+        "signature": None,
+        "span": [14, 29],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "kind",
+        "kind": "var",
+        "signature": None,
+        "span": [15, 15],
+        "parent": "Widget",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "#secret",
+        "kind": "var",
+        "signature": None,
+        "span": [16, 16],
+        "parent": "Widget",
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "constructor",
+        "kind": "method",
+        "signature": "(id)",
+        "span": [18, 20],
+        "parent": "Widget",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "render",
+        "kind": "method",
+        "signature": "()",
+        "span": [22, 24],
+        "parent": "Widget",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "#hidden",
+        "kind": "method",
+        "signature": "()",
+        "span": [26, 28],
+        "parent": "Widget",
+        "visibility": "private",
+        "docstring": None,
+    },
 ]
 
 _IMPORTS = [
@@ -53,22 +131,52 @@ _IMPORTS = [
     {"raw": "../b/c", "target": "src/b/c", "kind": "module", "span": [2, 2]},
     {"raw": "pkg", "target": None, "kind": "module", "span": [3, 3]},
     {"raw": "./side", "target": "src/app/side", "kind": "module", "span": [4, 4]},
-    {"raw": "./reexport", "target": "src/app/reexport", "kind": "module", "span": [5, 5]},
+    {
+        "raw": "./reexport",
+        "target": "src/app/reexport",
+        "kind": "module",
+        "span": [5, 5],
+    },
     {"raw": "./cjs", "target": "src/app/cjs", "kind": "module", "span": [6, 6]},
     {"raw": "./dyn", "target": "src/app/dyn", "kind": "module", "span": [7, 7]},
 ]
 
 _CALLS = [
-    {"caller": "top", "callee_raw": "helper", "callee_ref": "helper",
-     "span": [6, 6], "confidence": 0.5},
-    {"caller": "top", "callee_raw": "log", "callee_ref": None,
-     "span": [7, 7], "confidence": 0.0},
-    {"caller": "C.a", "callee_raw": "this.b", "callee_ref": "C.b",
-     "span": [12, 12], "confidence": 0.6},
-    {"caller": "C.b", "callee_raw": "helper", "callee_ref": "helper",
-     "span": [16, 16], "confidence": 0.5},
-    {"caller": None, "callee_raw": "helper", "callee_ref": "helper",
-     "span": [20, 20], "confidence": 0.5},
+    {
+        "caller": "top",
+        "callee_raw": "helper",
+        "callee_ref": "helper",
+        "span": [6, 6],
+        "confidence": 0.5,
+    },
+    {
+        "caller": "top",
+        "callee_raw": "log",
+        "callee_ref": None,
+        "span": [7, 7],
+        "confidence": 0.0,
+    },
+    {
+        "caller": "C.a",
+        "callee_raw": "this.b",
+        "callee_ref": "C.b",
+        "span": [12, 12],
+        "confidence": 0.6,
+    },
+    {
+        "caller": "C.b",
+        "callee_raw": "helper",
+        "callee_ref": "helper",
+        "span": [16, 16],
+        "confidence": 0.5,
+    },
+    {
+        "caller": None,
+        "callee_raw": "helper",
+        "callee_ref": "helper",
+        "span": [20, 20],
+        "confidence": 0.5,
+    },
 ]
 
 
@@ -114,8 +222,10 @@ class TestCalls:
 class TestResultAndStore:
     def test_symbol_result_producer(self):
         result = symbol_index_result(
-            "file:src/app/mod.js", _read("symbols_basic.js"),
-            source_hash="c1", language="javascript",
+            "file:src/app/mod.js",
+            _read("symbols_basic.js"),
+            source_hash="c1",
+            language="javascript",
         )
         assert isinstance(result, ResultDet)
         assert result.provenance.producer == "tree-sitter-js"
@@ -125,16 +235,25 @@ class TestResultAndStore:
         repo = Repository(conn)
         scope = "file:src/app/mod.js"
         repo.put_artifact(
-            symbol_index_result(scope, _read("symbols_basic.js"),
-                                 source_hash="c1", language="javascript")
+            symbol_index_result(
+                scope,
+                _read("symbols_basic.js"),
+                source_hash="c1",
+                language="javascript",
+            )
         )
         repo.put_artifact(
-            dependency_graph_result(scope, _read("imports_basic.js"),
-                                    source_hash="c1", language="javascript")
+            dependency_graph_result(
+                scope,
+                _read("imports_basic.js"),
+                source_hash="c1",
+                language="javascript",
+            )
         )
         repo.put_artifact(
-            call_graph_result(scope, _read("calls_basic.js"),
-                              source_hash="c1", language="javascript")
+            call_graph_result(
+                scope, _read("calls_basic.js"), source_hash="c1", language="javascript"
+            )
         )
         assert repo.get_current(scope, "symbol_index") is not None
         assert repo.get_current(scope, "call_graph") is not None

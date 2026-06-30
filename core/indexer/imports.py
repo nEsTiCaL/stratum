@@ -8,16 +8,17 @@ umschliessendes Statement) und die Profil-Achse import_resolution. KEINE
 Knotentypen. Grenze (R1): bei relative_path werden nur eindeutige relative Pfade
 aufgeloest; Absolutes -> target None. Keine transitive Huelle (kommt S4).
 """
+
 from __future__ import annotations
 
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import Any
 
-from tree_sitter import Node, QueryCursor
+from tree_sitter import QueryCursor
 
 from core.indexer.profiles import LanguageProfile
 from core.indexer.registry import get_parser, get_profile, get_query, producer_name
@@ -106,7 +107,7 @@ def dependency_graph_result(
         producer=producer_name(language),
         producer_version=_TS_VERSION,
         producer_class="det",
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
         artifact_type="dependency_graph",
         scope=scope,
     )

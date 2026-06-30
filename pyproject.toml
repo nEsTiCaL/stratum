@@ -22,6 +22,7 @@ dev = [
     "pytest>=8.0",
     "testcontainers[postgres]>=4.0",
     "datamodel-code-generator>=0.25",
+    "ruff>=0.15",
 ]
 
 # Workspace ist (noch) kein installierbares Paket -> uv installiert nur die
@@ -32,3 +33,26 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+# Lint-/Format-Gate (I-1.12). Reines Dev-/CI-Gate fuer Stratums EIGENEN Code,
+# kein Produktfeature. Laeuft ueber den ganzen Baum (make lint = ruff check .),
+# damit kuenftiger Python-Code (z.B. interfaces/web) automatisch erfasst wird.
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+# Generierter Code (haengt am Drift-Gate, codegen schreibt Single-Quotes ->
+# ruff format darf ihn nicht reformatieren) und absichtlich pathologische
+# Test-Fixtures (kaputte Syntax, import *, ungenutzte Imports = Testdaten)
+# bleiben aussen vor. extend-exclude behaelt ruffs Defaults (.venv etc.).
+extend-exclude = ["core/models", "tests/fixtures"]
+
+[tool.ruff.lint]
+# Minimal: pyflakes, pycodestyle-Errors, isort, pyupgrade, bugbear.
+select = ["F", "E", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core"]
+
+[tool.ruff.format]
+# Deckt sich mit .editorconfig/.gitattributes (LF erzwungen).
+line-ending = "lf"

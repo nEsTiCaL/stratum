@@ -3,6 +3,7 @@
 Golden-Test des deterministischen Extraktor-Kerns plus der vertikale Durchstich
 Fixture -> ResultDet -> Store -> get_current.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,26 +21,87 @@ def _by_name(symbols: list[dict]) -> dict[str, dict]:
 
 # Erwarteter symbol_index der Fixture, von Hand bestimmt (Golden).
 _EXPECTED = [
-    {"name": "CONST", "kind": "const", "signature": None, "span": [4, 4],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "counter", "kind": "var", "signature": None, "span": [5, 5],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "top_level", "kind": "function", "signature": "(a, b=1, *args)",
-     "span": [8, 10], "parent": None, "visibility": "public",
-     "docstring": "Funktion auf Modulebene."},
-    {"name": "_hidden", "kind": "function", "signature": "()", "span": [13, 14],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "Login", "kind": "class", "signature": None, "span": [17, 27],
-     "parent": None, "visibility": "public", "docstring": "Eine Klasse."},
-    {"name": "timeout", "kind": "var", "signature": None, "span": [20, 20],
-     "parent": "Login", "visibility": "public", "docstring": None},
-    {"name": "validate", "kind": "method", "signature": "(self, token)",
-     "span": [22, 24], "parent": "Login", "visibility": "public",
-     "docstring": "Prueft das Token."},
-    {"name": "_private", "kind": "method", "signature": "(self)", "span": [26, 27],
-     "parent": "Login", "visibility": "private", "docstring": None},
-    {"name": "Sub", "kind": "class", "signature": "(Login)", "span": [30, 31],
-     "parent": None, "visibility": "public", "docstring": None},
+    {
+        "name": "CONST",
+        "kind": "const",
+        "signature": None,
+        "span": [4, 4],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "counter",
+        "kind": "var",
+        "signature": None,
+        "span": [5, 5],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "top_level",
+        "kind": "function",
+        "signature": "(a, b=1, *args)",
+        "span": [8, 10],
+        "parent": None,
+        "visibility": "public",
+        "docstring": "Funktion auf Modulebene.",
+    },
+    {
+        "name": "_hidden",
+        "kind": "function",
+        "signature": "()",
+        "span": [13, 14],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Login",
+        "kind": "class",
+        "signature": None,
+        "span": [17, 27],
+        "parent": None,
+        "visibility": "public",
+        "docstring": "Eine Klasse.",
+    },
+    {
+        "name": "timeout",
+        "kind": "var",
+        "signature": None,
+        "span": [20, 20],
+        "parent": "Login",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "validate",
+        "kind": "method",
+        "signature": "(self, token)",
+        "span": [22, 24],
+        "parent": "Login",
+        "visibility": "public",
+        "docstring": "Prueft das Token.",
+    },
+    {
+        "name": "_private",
+        "kind": "method",
+        "signature": "(self)",
+        "span": [26, 27],
+        "parent": "Login",
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Sub",
+        "kind": "class",
+        "signature": "(Login)",
+        "span": [30, 31],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
 ]
 
 
@@ -99,7 +161,9 @@ class TestResultAndStore:
     def test_roundtrip_through_store(self, conn):
         source = (_FIXTURES / "symbols_basic.py").read_text(encoding="utf-8")
         repo = Repository(conn)
-        repo.put_artifact(symbol_index_result("file:src/auth.py", source, source_hash="c1"))
+        repo.put_artifact(
+            symbol_index_result("file:src/auth.py", source, source_hash="c1")
+        )
 
         got = repo.get_current("file:src/auth.py", "symbol_index")
         assert got is not None

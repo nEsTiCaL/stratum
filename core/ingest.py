@@ -6,6 +6,7 @@ superseded, jede Stufe im Trace. Wahrheitsquelle ist der Working Tree;
 Trigger (Watch / git-Hook, siehe core/watch.py) sind entkoppelt und rufen
 dieselbe Ingestion.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -79,7 +80,9 @@ def ingest_content(
     src = content.encode("utf-8") if isinstance(content, str) else content
     language = language_for_path(path)
 
-    repo.write_trace(session_id, "ingestion", detail={"scope": scope, "source_hash": source_hash})
+    repo.write_trace(
+        session_id, "ingestion", detail={"scope": scope, "source_hash": source_hash}
+    )
 
     artifact_ids: dict[str, int] = {}
     for builder in _BUILDER_SETS[language]:
@@ -87,14 +90,17 @@ def ingest_content(
         art_id = repo.put_artifact(result)
         artifact_ids[result.artifact_type.value] = art_id
         repo.write_trace(
-            session_id, "index", artifact_id=art_id,
+            session_id,
+            "index",
+            artifact_id=art_id,
             detail={"artifact_type": result.artifact_type.value},
         )
 
     scan = scan or NoopSecretScan()
     scan_result = scan.scan(src, scope)
     repo.write_trace(
-        session_id, "scan",
+        session_id,
+        "scan",
         detail={
             "scanner": scan_result.scanner,
             "stub": scan_result.stub,
@@ -102,7 +108,9 @@ def ingest_content(
         },
     )
     return IngestResult(
-        scope=scope, artifact_ids=artifact_ids, sensitivity=scan_result.sensitivity.value
+        scope=scope,
+        artifact_ids=artifact_ids,
+        sensitivity=scan_result.sensitivity.value,
     )
 
 
@@ -122,9 +130,12 @@ def ingest_file(
     content = abs_path.read_bytes()
     norm = abs_path.resolve().relative_to(root.resolve()).as_posix()
     return ingest_content(
-        repo, norm, content,
+        repo,
+        norm,
+        content,
         source_hash=source_hash or resolve_source_hash(root),
-        scan=scan, session_id=session_id,
+        scan=scan,
+        session_id=session_id,
     )
 
 
@@ -133,7 +144,9 @@ def resolve_source_hash(repo_root: str | Path) -> str:
     try:
         out = subprocess.run(
             ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()

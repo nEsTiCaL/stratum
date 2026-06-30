@@ -13,12 +13,13 @@ in profiles.py. Grenzziehung: memory/indexer/sprachagnostik.md.
 Grenze (tree-sitter, syntaktisch): Signaturen sind nicht typaufgeloest, parent
 ist der umschliessende Scope laut .scm, Semantik bleibt Approximation (LSP spaeter).
 """
+
 from __future__ import annotations
 
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import Any
 
@@ -111,7 +112,7 @@ def symbol_index_result(
         producer=producer_name(language),
         producer_version=_TS_VERSION,
         producer_class="det",
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
         artifact_type="symbol_index",
         scope=scope,
     )

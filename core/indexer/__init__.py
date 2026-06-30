@@ -3,6 +3,7 @@
 Sprachagnostischer Kern (I-1.85): Sprachspezifisches steckt nur in
 queries/<sprache>/*.scm und in profiles.py, nicht im Extraktor-Kern.
 """
+
 from core.indexer.calls import CallExtraction, call_graph_result, extract_calls
 from core.indexer.imports import (
     ImportExtraction,

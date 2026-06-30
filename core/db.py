@@ -3,6 +3,7 @@
 Einzige Stelle, die Verbindungs-DSN und yoyo kennt. Das Repository (core/repository.py)
 ist das einzige Modul mit SQL; hier liegt nur Connect + Schema-Migration.
 """
+
 from __future__ import annotations
 
 import os
@@ -32,7 +33,9 @@ def _yoyo_dsn(dsn: str) -> str:
     return dsn
 
 
-def apply_migrations(dsn: str | None = None, migrations_dir: str | Path | None = None) -> None:
+def apply_migrations(
+    dsn: str | None = None, migrations_dir: str | Path | None = None
+) -> None:
     """Wendet alle ausstehenden Migrationen an (idempotent, yoyo-getrackt)."""
     from yoyo import get_backend, read_migrations
 

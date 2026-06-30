@@ -3,6 +3,7 @@
 Akzeptanz (DoD): Stufe erzeugt Trace-Zeile mit stage/detail; Trace einer
 Session chronologisch abfragbar.
 """
+
 from __future__ import annotations
 
 import psycopg

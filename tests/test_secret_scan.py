@@ -2,6 +2,7 @@
 
 Akzeptanz: Stub liefert none; Schalter-Mechanik testbar (noch ohne Egress).
 """
+
 from __future__ import annotations
 
 from core.secret_scan import (

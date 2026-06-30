@@ -18,7 +18,7 @@ Bei I-2.1 (Modell-Matrix/Router) bzw. dem task_type review entscheiden.
 
 Das hier ist Stratum, das FREMDEN Code analysiert: ein deterministischer Linter
 als Producer von Findings. NICHT unser eigenes Dev-/CI-Lint-Gate -- das ist
-I-1.12 (ruff auf core/+tests/).
+I-1.12 (ruff, [[lint-format-gate]]).
 
 ## Kern der Idee
 

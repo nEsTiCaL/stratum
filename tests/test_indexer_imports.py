@@ -3,6 +3,7 @@
 Golden-Test des Extraktors plus Store-Durchstich. Relative Imports werden gegen
 den Pfad der importierenden Datei aufgeloest; absolute bleiben target=NULL.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +26,12 @@ _EXPECTED = [
     {"raw": "x", "target": None, "kind": "symbol", "span": [5, 5]},
     {"raw": "x.y", "target": None, "kind": "symbol", "span": [6, 6]},
     {"raw": ".", "target": "src/pkg", "kind": "relative", "span": [7, 7]},
-    {"raw": ".helpers", "target": "src/pkg/helpers", "kind": "relative", "span": [8, 8]},
+    {
+        "raw": ".helpers",
+        "target": "src/pkg/helpers",
+        "kind": "relative",
+        "span": [8, 8],
+    },
     {"raw": "..common", "target": "src/common", "kind": "relative", "span": [9, 9]},
     {"raw": "collections", "target": None, "kind": "symbol", "span": [10, 10]},
 ]
@@ -63,7 +69,9 @@ class TestRelativeResolution:
 class TestErrorTolerance:
     def test_partial_flag(self):
         # gueltige Imports vor dem ERROR-Knoten ueberleben
-        result = extract_imports("import os\nimport sys\ndef broken(:\n    pass", "a.py")
+        result = extract_imports(
+            "import os\nimport sys\ndef broken(:\n    pass", "a.py"
+        )
         assert result.partial is True
         raws = {i["raw"] for i in result.imports}
         assert {"os", "sys"} <= raws
@@ -72,7 +80,9 @@ class TestErrorTolerance:
 class TestResultAndStore:
     def test_shape(self):
         source = (_FIXTURES / "imports_basic.py").read_text(encoding="utf-8")
-        result = dependency_graph_result("file:src/pkg/mod.py", source, source_hash="c1")
+        result = dependency_graph_result(
+            "file:src/pkg/mod.py", source, source_hash="c1"
+        )
         assert isinstance(result, ResultDet)
         assert result.artifact_type.value == "dependency_graph"
         assert result.content["imports"] == _EXPECTED

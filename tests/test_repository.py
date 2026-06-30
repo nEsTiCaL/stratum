@@ -3,6 +3,7 @@
 Akzeptanz (DoD): put -> get_current liefert es; superseded-Logik (neue Version
 verdraengt alte); input_hash-Treffer = aktuell.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -134,20 +135,28 @@ class TestStaleness:
     def test_matching_input_hash_is_current(self, conn):
         repo = Repository(conn)
         repo.put_artifact(_det(input_hash="in-001"))
-        assert repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-001") is True
+        assert (
+            repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-001") is True
+        )
 
     def test_other_input_hash_is_stale(self, conn):
         repo = Repository(conn)
         repo.put_artifact(_det(input_hash="in-001"))
-        assert repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-999") is False
+        assert (
+            repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-999") is False
+        )
 
     def test_superseded_input_hash_no_longer_current(self, conn):
         repo = Repository(conn)
         repo.put_artifact(_det(input_hash="in-001"))
         repo.put_artifact(_det(input_hash="in-002"))
         # alter Hash zeigt auf superseded -> nicht aktuell
-        assert repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-001") is False
-        assert repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-002") is True
+        assert (
+            repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-001") is False
+        )
+        assert (
+            repo.staleness_lookup("file:src/auth.py", "symbol_index", "in-002") is True
+        )
 
     def test_absent_scope_is_stale(self, conn):
         repo = Repository(conn)

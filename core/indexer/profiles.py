@@ -12,6 +12,7 @@ Achsen (Grenzziehung in memory/indexer/sprachagnostik.md):
   import_resolution    - target-Aufloesung unterscheidet sich fundamental.
   const_strategy       - const-Erkennung; nur fuer Sprachen OHNE const-Keyword.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

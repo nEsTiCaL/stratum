@@ -12,6 +12,7 @@ function/parent None (Datei-als-Klasse-Zuordnung im Symbol-Modell erst S4);
 bare `extends ClassName` ohne Pfad -> keine Datei-Abhaengigkeit (class_name-
 Tabelle erst S4).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,59 +25,181 @@ from tests._invariants import check_calls, check_symbols
 _FIXTURES = Path(__file__).parent / "fixtures" / "gdscript"
 
 _SYMBOLS = [
-    {"name": "Player", "kind": "class", "signature": "Node", "span": [2, 2],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "health_changed", "kind": "signal", "signature": "(amount)", "span": [4, 4],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "MAX_HP", "kind": "const", "signature": None, "span": [6, 6],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "hp", "kind": "var", "signature": None, "span": [7, 7],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "_secret", "kind": "var", "signature": None, "span": [8, 8],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "speed", "kind": "var", "signature": None, "span": [10, 10],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "State", "kind": "enum", "signature": None, "span": [12, 12],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "_ready", "kind": "function", "signature": "()", "span": [14, 15],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "take_damage", "kind": "function", "signature": "(amount)", "span": [17, 18],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "_internal", "kind": "function", "signature": "()", "span": [20, 21],
-     "parent": None, "visibility": "private", "docstring": None},
-    {"name": "Inner", "kind": "class", "signature": "RefCounted", "span": [23, 26],
-     "parent": None, "visibility": "public", "docstring": None},
-    {"name": "x", "kind": "var", "signature": None, "span": [24, 24],
-     "parent": "Inner", "visibility": "public", "docstring": None},
-    {"name": "helper", "kind": "method", "signature": "()", "span": [25, 26],
-     "parent": "Inner", "visibility": "public", "docstring": None},
+    {
+        "name": "Player",
+        "kind": "class",
+        "signature": "Node",
+        "span": [2, 2],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "health_changed",
+        "kind": "signal",
+        "signature": "(amount)",
+        "span": [4, 4],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "MAX_HP",
+        "kind": "const",
+        "signature": None,
+        "span": [6, 6],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "hp",
+        "kind": "var",
+        "signature": None,
+        "span": [7, 7],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "_secret",
+        "kind": "var",
+        "signature": None,
+        "span": [8, 8],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "speed",
+        "kind": "var",
+        "signature": None,
+        "span": [10, 10],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "State",
+        "kind": "enum",
+        "signature": None,
+        "span": [12, 12],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "_ready",
+        "kind": "function",
+        "signature": "()",
+        "span": [14, 15],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "take_damage",
+        "kind": "function",
+        "signature": "(amount)",
+        "span": [17, 18],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "_internal",
+        "kind": "function",
+        "signature": "()",
+        "span": [20, 21],
+        "parent": None,
+        "visibility": "private",
+        "docstring": None,
+    },
+    {
+        "name": "Inner",
+        "kind": "class",
+        "signature": "RefCounted",
+        "span": [23, 26],
+        "parent": None,
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "x",
+        "kind": "var",
+        "signature": None,
+        "span": [24, 24],
+        "parent": "Inner",
+        "visibility": "public",
+        "docstring": None,
+    },
+    {
+        "name": "helper",
+        "kind": "method",
+        "signature": "()",
+        "span": [25, 26],
+        "parent": "Inner",
+        "visibility": "public",
+        "docstring": None,
+    },
 ]
 
 _CALLS = [
-    {"caller": "process", "callee_raw": "helper", "callee_ref": "helper",
-     "span": [5, 5], "confidence": 0.5},
+    {
+        "caller": "process",
+        "callee_raw": "helper",
+        "callee_ref": "helper",
+        "span": [5, 5],
+        "confidence": 0.5,
+    },
     # self.cleanup() loest jetzt auf: Datei-als-Klasse-Fallback gegen Top-Level-
     # Funktion cleanup (lenient match frisst die Klammern). SELF_METHOD 0.6.
-    {"caller": "process", "callee_raw": "self.cleanup()", "callee_ref": "cleanup",
-     "span": [6, 6], "confidence": 0.6},
-    {"caller": "process", "callee_raw": "queue_free", "callee_ref": None,
-     "span": [7, 7], "confidence": 0.0},
+    {
+        "caller": "process",
+        "callee_raw": "self.cleanup()",
+        "callee_ref": "cleanup",
+        "span": [6, 6],
+        "confidence": 0.6,
+    },
+    {
+        "caller": "process",
+        "callee_raw": "queue_free",
+        "callee_ref": None,
+        "span": [7, 7],
+        "confidence": 0.0,
+    },
 ]
 
 # importierende Datei (logischer Repo-Pfad; res_path ignoriert ihn, res:// = Wurzel)
 _IMPORT_FILE = "scenes/hero.gd"
 _IMPORTS = [
-    {"raw": "res://actors/base_actor.gd", "target": "actors/base_actor.gd",
-     "kind": "module", "span": [1, 1]},
-    {"raw": "res://weapons/bullet.gd", "target": "weapons/bullet.gd",
-     "kind": "module", "span": [4, 4]},
-    {"raw": "res://ui/menu.tscn", "target": "ui/menu.tscn",
-     "kind": "module", "span": [5, 5]},
+    {
+        "raw": "res://actors/base_actor.gd",
+        "target": "actors/base_actor.gd",
+        "kind": "module",
+        "span": [1, 1],
+    },
+    {
+        "raw": "res://weapons/bullet.gd",
+        "target": "weapons/bullet.gd",
+        "kind": "module",
+        "span": [4, 4],
+    },
+    {
+        "raw": "res://ui/menu.tscn",
+        "target": "ui/menu.tscn",
+        "kind": "module",
+        "span": [5, 5],
+    },
     # user:// (nicht res://) bleibt unaufgeloest, aber als Referenz erfasst.
     {"raw": "user://save.dat", "target": None, "kind": "module", "span": [6, 6]},
     # preload in Funktion: Datei-Abhaengigkeit unabhaengig vom Ort.
-    {"raw": "res://weapons/bullet.gd", "target": "weapons/bullet.gd",
-     "kind": "module", "span": [9, 9]},
+    {
+        "raw": "res://weapons/bullet.gd",
+        "target": "weapons/bullet.gd",
+        "kind": "module",
+        "span": [9, 9],
+    },
 ]
 
 
@@ -92,13 +215,13 @@ class TestSymbols:
 
     def test_gdscript_specifics(self):
         by = {s["name"]: s for s in _SYMBOLS}
-        assert by["health_changed"]["kind"] == "signal"     # neues kind
-        assert by["MAX_HP"]["kind"] == "const"               # const_statement strukturell
-        assert by["Player"]["signature"] == "Node"           # Datei-extends -> signature
-        assert by["Inner"]["signature"] == "RefCounted"      # inline extends -> signature
-        assert by["_secret"]["visibility"] == "private"      # underscore_prefix
-        assert by["_ready"]["visibility"] == "private"       # Engine-Callback-Naeherung
-        assert by["speed"]["kind"] == "var"                  # @export-Annotation kein Symbol
+        assert by["health_changed"]["kind"] == "signal"  # neues kind
+        assert by["MAX_HP"]["kind"] == "const"  # const_statement strukturell
+        assert by["Player"]["signature"] == "Node"  # Datei-extends -> signature
+        assert by["Inner"]["signature"] == "RefCounted"  # inline extends -> signature
+        assert by["_secret"]["visibility"] == "private"  # underscore_prefix
+        assert by["_ready"]["visibility"] == "private"  # Engine-Callback-Naeherung
+        assert by["speed"]["kind"] == "var"  # @export-Annotation kein Symbol
 
 
 class TestCalls:
@@ -128,11 +251,16 @@ class TestFullBuilderSet:
     def test_ingest_produces_three_artifacts(self, conn):
         repo = Repository(conn)
         result = ingest_content(
-            repo, "scenes/player.gd", _read("imports_basic.gd"),
-            source_hash="h1", session_id="gd1",
+            repo,
+            "scenes/player.gd",
+            _read("imports_basic.gd"),
+            source_hash="h1",
+            session_id="gd1",
         )
         assert set(result.artifact_ids) == {
-            "symbol_index", "dependency_graph", "call_graph"
+            "symbol_index",
+            "dependency_graph",
+            "call_graph",
         }
         dep = repo.get_current("file:scenes/player.gd", "dependency_graph")
         assert dep is not None
@@ -167,7 +295,9 @@ class TestRealCodeSmoke:
         # self.check_death() in der Top-Level-Funktion hurt loest gegen die
         # Top-Level-Funktion check_death auf (Datei-als-Klasse-Fallback).
         result = extract_calls(self._REAL, "gdscript")
-        self_calls = [c for c in result.calls if c["callee_raw"] == "self.check_death()"]
+        self_calls = [
+            c for c in result.calls if c["callee_raw"] == "self.check_death()"
+        ]
         assert len(self_calls) == 1
         assert self_calls[0]["callee_ref"] == "check_death"
         assert self_calls[0]["confidence"] == 0.6
