@@ -28,7 +28,7 @@ Vor N1-Queries: WSL-Repo muss aktuell sein (commit -> push -> git pull, siehe
 
 **DB bereit?** (einmalig pro Container-Neustart oder frischer DB)
 ```bash
-wsl -d Debian -- bash -c "cd /home/stratum/stratum && \
+wsl -d Debian -- bash -c "cd ~/stratum && \
   PYTHONPATH=. .venv/bin/python -m core.db migrate"
 ```
 Idempotent. Schlägt fehl wenn Container nicht läuft.
@@ -37,7 +37,7 @@ NICHT `uv run` — uv ist im WSL-PATH nach Kaltstart oft nicht verfügbar.
 
 **Index aktuell?** (einmalig pro Session, falls neue Dateien seit letztem Lauf)
 ```bash
-wsl -d Debian -- bash -c "cd /home/stratum/stratum && PYTHONPATH=. .venv/bin/python -c \"
+wsl -d Debian -- bash -c "cd ~/stratum && PYTHONPATH=. .venv/bin/python -c \"
 from core.ingest import ingest_file
 from core.repository import Repository
 from core.db import connect
@@ -67,7 +67,7 @@ PYTHONPATH=. .venv/bin/python -m interfaces.devcli index core/<modul>.py --json
 PYTHONPATH=. .venv/bin/python -m interfaces.devcli dependency_map core/<modul>.py --json
 ```
 
-Vollständiger WSL-Aufruf: `wsl -d Debian -- bash -c "cd /home/stratum/stratum && PYTHONPATH=. .venv/bin/python -m interfaces.devcli <cmd>"`
+Vollständiger WSL-Aufruf: `wsl -d Debian -- bash -c "cd ~/stratum && PYTHONPATH=. .venv/bin/python -m interfaces.devcli <cmd>"`
 
 ## Fallstricke (aus erster Nutzung, 2026-06-30)
 

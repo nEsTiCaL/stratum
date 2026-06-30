@@ -57,7 +57,7 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
 ## Editier- und Sync-Workflow (Claude + WSL)
 
 Claude schreibt Dateien auf den Windows-Pfad (E:\Projekte\AI Coding\Stratum).
-Das Bauen und Testen laeuft im WSL-Repo (/home/stratum/stratum). Beide sind
+Das Bauen und Testen laeuft im WSL-Repo (~/stratum). Beide sind
 getrennte Klone; Git ist der einzige Sync-Kanal.
 
 Verbindliche Reihenfolge vor jedem Test-Lauf:
@@ -66,7 +66,7 @@ Verbindliche Reihenfolge vor jedem Test-Lauf:
 2. git -C "E:/Projekte/AI Coding/Stratum" add <dateien>
    git -C "E:/Projekte/AI Coding/Stratum" commit -m "..."
    git -C "E:/Projekte/AI Coding/Stratum" push
-3. wsl -d Debian -- bash -c "cd /home/stratum/stratum && git pull"
+3. wsl -d Debian -- bash -c "cd ~/stratum && git pull"
 4. Tests laufen lassen (s.u.)
 ```
 
@@ -80,8 +80,8 @@ als aktuell gelten.
   Git Bash NICHT lauffaehig -> immer ueber WSL.
 - Default-WSL-Distro ist 'docker-desktop' (kein bash/python). Die Bauumgebung ist
   'Debian' -> explizit adressieren: wsl -d Debian.
-- WSL-Repo-Pfad: /home/stratum/stratum
-- Aufruf: wsl -d Debian -- bash -c "cd /home/stratum/stratum &&
+- WSL-Repo-Pfad: ~/stratum
+- Aufruf: wsl -d Debian -- bash -c "cd ~/stratum &&
   PYTHONPATH=. .venv/bin/python -m pytest -q"
 - uv fehlt im WSL-PATH -> .venv/bin/python -m <tool> statt uv run <tool>
 - DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon; Docker Desktop
