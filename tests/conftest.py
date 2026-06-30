@@ -30,4 +30,4 @@ def pg_dsn() -> str:
 def conn(pg_dsn: str):
     with psycopg.connect(pg_dsn, autocommit=True) as c:
         yield c
-        c.execute("TRUNCATE artifacts, trace RESTART IDENTITY CASCADE")
+        c.execute("TRUNCATE artifacts, trace, queue RESTART IDENTITY CASCADE")

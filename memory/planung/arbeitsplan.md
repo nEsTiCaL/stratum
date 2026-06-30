@@ -97,7 +97,7 @@ ID      Haeppchen                      Kl    dep       Detail
 I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, [[i-2-0-capacity-lifecycle]]   fertig
 I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, [[i-2-1-matrix-router]]   fertig
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2             fertig
-I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)
+I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)             fertig
 I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-matrix-router]] (Konsumenten-Vertrag!)
 I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS
 I-2.6   Klassifikation + Detektor-Stub gem   I-2.5     R2

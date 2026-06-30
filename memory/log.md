@@ -1,5 +1,6 @@
 # Log
 
+## [2026-06-30] decision | I-2.3 abgeschlossen: SQL-Queue (core/queue.py: Queue.enqueue/claim/complete/fail), Migration 0002 (queue-Tabelle, SKIP LOCKED, depends_on jsonb, flags jsonb, CHECK constraint), 15 Tests gruen (256 gesamt). Nebenlaeuflgkeit (SKIP LOCKED, 2 Claimer -> 1 Gewinner) getestet. Abhaengigkeits-Blockade (depends_on) und pre-done-Knoten verifiziert.
 ## [2026-06-30] finding | N1-Kaltstart-Workflow etabliert: migrate via python -m core.db migrate (nicht yoyo/uv), ingest_file(repo, Path('.'), str(f)), devcli symbol_lookup/index/dependency_map. Spart ~35% Input-Tokens; dient zugleich als Index-Debugging. Klass heisst Repository (nicht StratumRepository). Befunde fuer I-2.3: DagNode-Struktur, connect()-Signatur, template_registry importiert nur stdlib. -> n1-kaltstart.md, arbeitsplan Schritt 5 ergaenzt
 ## [2026-06-29] decision | Repo-Ordnerstruktur: Core / Schalen / Vertraege, nicht nach Phase
 ## [2026-06-29] decision | TDD-Methodik: det test-driven, prob entwickler-verifiziert (Model-Seam)
