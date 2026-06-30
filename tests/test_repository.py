@@ -11,7 +11,7 @@ import pytest
 from core.models.provenance_schema import Provenance
 from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
-from core.repository import Repository
+from core.repository import Repository, SymbolHit
 
 
 def _prov(**overrides) -> Provenance:
@@ -161,3 +161,89 @@ class TestStaleness:
     def test_absent_scope_is_stale(self, conn):
         repo = Repository(conn)
         assert repo.staleness_lookup("file:nope.py", "symbol_index", "in-001") is False
+
+
+def _sym(
+    name,
+    kind="function",
+    span=None,
+    parent=None,
+    visibility="public",
+    signature=None,
+    docstring=None,
+):
+    return {
+        "name": name,
+        "kind": kind,
+        "span": span if span is not None else [1, 1],
+        "parent": parent,
+        "visibility": visibility,
+        "signature": signature,
+        "docstring": docstring,
+    }
+
+
+def _index(scope, symbols, input_hash="in-100") -> ResultDet:
+    return _det(scope=scope, input_hash=input_hash, content={"symbols": symbols})
+
+
+class TestFindSymbol:
+    """I-D.0: Quer-Suche ueber alle aktuellen symbol_index-Artefakte."""
+
+    def test_single_hit(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_index("file:src/auth.py", [_sym("login", span=[10, 20])]))
+
+        hits = repo.find_symbol("login")
+        assert len(hits) == 1
+        hit = hits[0]
+        assert isinstance(hit, SymbolHit)
+        assert hit.scope == "file:src/auth.py"
+        assert hit.name == "login"
+        assert hit.kind == "function"
+        assert hit.span == [10, 20]
+
+    def test_across_files_ordered_by_scope(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_index("file:src/b.py", [_sym("run")], input_hash="b"))
+        repo.put_artifact(_index("file:src/a.py", [_sym("run")], input_hash="a"))
+
+        hits = repo.find_symbol("run")
+        assert [h.scope for h in hits] == ["file:src/a.py", "file:src/b.py"]
+
+    def test_no_match_returns_empty(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_index("file:src/auth.py", [_sym("login")]))
+        assert repo.find_symbol("logout") == []
+
+    def test_kind_filter(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(
+            _index(
+                "file:src/m.py",
+                [_sym("Foo", kind="class"), _sym("Foo", kind="function")],
+            )
+        )
+
+        hits = repo.find_symbol("Foo", kind="class")
+        assert len(hits) == 1
+        assert hits[0].kind == "class"
+
+    def test_ignores_superseded(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_index("file:src/x.py", [_sym("old")], input_hash="v1"))
+        repo.put_artifact(_index("file:src/x.py", [_sym("new")], input_hash="v2"))
+
+        assert repo.find_symbol("old") == []
+        assert [h.name for h in repo.find_symbol("new")] == ["new"]
+
+    def test_only_searches_symbol_index(self, conn):
+        # Ein Artefakt OHNE 'symbols'-Schluessel darf weder matchen noch die
+        # jsonb_array_elements-Abfrage sprengen.
+        repo = Repository(conn)
+        repo.put_artifact(_prob(scope="file:src/auth.py"))  # review_findings
+        repo.put_artifact(_index("file:src/auth.py", [_sym("login")]))
+
+        hits = repo.find_symbol("login")
+        assert len(hits) == 1
+        assert hits[0].name == "login"

@@ -82,8 +82,9 @@ I-1.11b GDScript Paritaet (3 Builder+self) det I-1.11   gdscript-umsetzung   fer
 I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11b    lint-format-gate      fertig
 ```
 
-Schritt 1 (Substrat) damit VOLLSTAENDIG. Naechstes: Schritt 2 (Orchestrator-Kern),
-Einstieg I-2.0 (Capacity-Profil + Lifecycle); davor ggf. I-D.0 (Dev-Harness, N1).
+Schritt 1 (Substrat) damit VOLLSTAENDIG. I-D.0 (Dev-Harness, N1) fertig:
+N1-Dogfooding nutzbar ([[i-d0-dev-harness]]). Naechstes: Schritt 2
+(Orchestrator-Kern), Einstieg I-2.0 (Capacity-Profil + Lifecycle).
 
 ## Schritt 2: Orchestrator-Kern  (Spec: S2)
 
@@ -142,7 +143,7 @@ I-5.5   Canary + Regression + Eval     gem   I-5.4     R5, T
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-D.0   Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N
+I-D.0   Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N, [[i-d0-dev-harness]]   fertig
 I-D.1   VSCode-Extension               gem   I-2.5     DP, IZ(VSCode)
 I-D.2   Web-GUI (FastAPI im Kern)      gem   I-2.7     DP
 I-D.3   manual-Adapter (Copy-Paste)    det   I-3.1     DP, R3
