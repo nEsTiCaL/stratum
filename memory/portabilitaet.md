@@ -54,15 +54,36 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
    noetig, sonst blockt die Firewall. Detail: scripts/README.md.
 ```
 
+## Editier- und Sync-Workflow (Claude + WSL)
+
+Claude schreibt Dateien auf den Windows-Pfad (E:\Projekte\AI Coding\Stratum).
+Das Bauen und Testen laeuft im WSL-Repo (/home/stratum/stratum). Beide sind
+getrennte Klone; Git ist der einzige Sync-Kanal.
+
+Verbindliche Reihenfolge vor jedem Test-Lauf:
+```
+1. Dateien auf Windows schreiben/editieren
+2. git -C "E:/Projekte/AI Coding/Stratum" add <dateien>
+   git -C "E:/Projekte/AI Coding/Stratum" commit -m "..."
+   git -C "E:/Projekte/AI Coding/Stratum" push
+3. wsl -d Debian -- bash -c "cd /home/stratum/stratum && git pull"
+4. Tests laufen lassen (s.u.)
+```
+
+Kein manuelles cp, kein /mnt/-Trick. WSL-Repo darf erst nach git pull
+als aktuell gelten.
+
 ## Tests ausfuehren (Dev, dieses Setup)
 
 ```
-- Die Projekt-.venv ist eine LINUX-venv (home=/usr/bin, python3.13). Aus Windows
+- Die Projekt-.venv ist eine LINUX-venv (python3.13). Aus Windows
   Git Bash NICHT lauffaehig -> immer ueber WSL.
 - Default-WSL-Distro ist 'docker-desktop' (kein bash/python). Die Bauumgebung ist
   'Debian' -> explizit adressieren: wsl -d Debian.
-- Aufruf: wsl -d Debian -- bash -lc "cd /mnt/d/AI\ Development/stratum &&
-  PYTHONPATH=. .venv/bin/python -m pytest -q".
+- WSL-Repo-Pfad: /home/stratum/stratum
+- Aufruf: wsl -d Debian -- bash -c "cd /home/stratum/stratum &&
+  PYTHONPATH=. .venv/bin/python -m pytest -q"
+- uv fehlt im WSL-PATH -> .venv/bin/python -m <tool> statt uv run <tool>
 - DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon; Docker Desktop
   mountet den Socket dann nach /var/run/docker.sock in Debian.
 ```
