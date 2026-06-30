@@ -92,7 +92,7 @@ N1-Dogfooding nutzbar ([[i-d0-dev-harness]]). Naechstes: Schritt 2
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
 I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, [[i-2-0-capacity-lifecycle]]   fertig
-I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2
+I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, [[i-2-1-matrix-router]]   fertig
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2
 I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)
 I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T
@@ -108,7 +108,7 @@ ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
 I-3.2   Bundling + det. Serialisierung det   I-1.5/1.6 R3
 I-3.3   Redaction-Gate Stub + Egress   det   I-1.8     R3
-I-3.1   Claude-Adapter (API)           gem   I-3.2/3.3 R3, SK(7), claude-api
+I-3.1   Cloud-Adapter (Multi-Provider) gem   I-3.2/3.3 R3, SK(7), claude-api
 I-3.4   Detektor-Bibliothek + scharf   det   I-3.3     R3   [HARTES GATE]
 I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)
 ```

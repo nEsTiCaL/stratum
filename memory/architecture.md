@@ -55,6 +55,21 @@ tags-Konvention abgeleitet. Sprachunabhaengiger Extraktor-Kern, Sprachspezifisch
 nur in .scm-Dateien. Fehlertolerant (ERROR-Knoten ueberspringen, partiell
 vermerken). Kein inkrementelles Parsen in Schritt 1.
 
+## Cloud-Eskalation: Multi-Provider, abgestuft
+
+Cloud ist nicht an einen Anbieter gebunden (ersetzt die fruehere Anthropic-only-
+Festlegung). Die Eskalation ueber lokale Modelle hinaus laeuft eine Kosten-/
+Faehigkeitsleiter ab: Gratis-Tier (Tageskontingent, opt-in, nur Sensitivitaet
+none/low wegen Datenschutz) vor bezahlt-guenstig vor -mittel vor -teuer. Je Tier
+gibt es einen Standard und gleichrangige Ausweich-Anbieter.
+
+- Default-Baseline: Anthropic (haiku -> sonnet -> opus), zuerst gewirkt.
+- Opt-in je Tier: OpenAI, Google, Gratis (Gemini/Groq u.a.).
+- Die Modell-/Anbieter-Auswahl trifft das Capability-Modell des Routers
+  (Achsen-Baender), nicht eine harte Liste. Cloud-Namen sind logisch; echte
+  Modell-IDs, Quota-Tracking und der pro-Anbieter-Adapter sind Schritt-3-Sache
+  (Multi-Adapter, Tageskappung). Realer Egress erst nach scharfem Redaction-Gate.
+
 ## Modul-Strategie: ein Kern, duenne Schalen
 
 EIN Kern, duenne Schalen pro Modul. Module sind KEINE Forks. Der Kern ist

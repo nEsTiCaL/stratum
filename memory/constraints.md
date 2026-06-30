@@ -51,8 +51,10 @@ Schicht 0  Baseline (einmalig)
   Py     : ollama/httpx-Client
 
 +S3 Cloud
-  Py     : anthropic SDK, Detektor-Libs (regex/entropy)
-  Secret : ANTHROPIC_API_KEY (Env/Secret, nie im Code/Image)
+  Py     : anthropic SDK (Baseline), Detektor-Libs (regex/entropy); opt-in je
+           Anbieter openai/google-genai SDK bzw. OpenAI-kompatibler Client
+  Secret : ANTHROPIC_API_KEY (Baseline); opt-in OPENAI_API_KEY/GEMINI_API_KEY/
+           Gratis-Tier-Keys (Env/Secret, nie im Code/Image)
 
 +S4 Graph
   DB     : CREATE EXTENSION vector (Migration); Indizes src/dst

@@ -20,7 +20,8 @@ Zwischenergebnis ist ein nachpruefbares Artefakt mit Provenance.
 Sprache-Split: Python-Kern (volatil) plus Go-CLI (stabil, Single-Binary),
 Bruecke ueber JSON-Lines. Persistenz in PostgreSQL (jsonb-Artefakte, SQL-Queue,
 pgvector). Analyse ueber tree-sitter mit .scm-Queries. Lokale Modelle via Ollama,
-Cloud via Anthropic Messages-API.
+Cloud abgestuft ueber mehrere Anbieter (Anthropic-Baseline, OpenAI/Google +
+Gratis-Tier opt-in), Auswahl ueber das Capability-Modell des Routers.
 
 Module sind duenne Schalen ueber EINEM Kern, keine Forks: Desktop (Phase 1)
 vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in

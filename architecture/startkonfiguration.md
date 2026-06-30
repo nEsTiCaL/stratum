@@ -323,21 +323,34 @@ max Kosten/Anfrage: Default, von UUID-Capability je Nutzer
 ueberschrieben.
 ```
 
-## 7. Claude-API-Zugang
+## 7. Cloud-API-Zugang (Multi-Provider)
+
+Cloud ist abgestuft und anbieteruebergreifend (s. architecture.md, Cloud-
+Eskalation). Anthropic ist die Default-Baseline; OpenAI/Google und ein
+Gratis-Tier sind opt-in. Die Auswahl trifft der Capability-Router; pro Anbieter
+ein Adapter (Multi-Adapter, I-3.1).
 
 ```
-Zugang  : API-Key als Umgebungsvariable/Secret im Kern-Container.
+Zugang  : API-Key je Anbieter als Umgebungsvariable/Secret im Kern-Container.
           NIE im Code, NIE im Image. Nur Orchestrator liest ihn.
-Backend : Messages-API (Schritt-3-Entscheidung)
+Backend : pro Anbieter ein Adapter (Anthropic Messages-API zuerst); logische
+          Modellnamen -> konkrete IDs loest der Adapter auf.
+Gratis  : Tageskontingent (z.B. Gemini-Free/Groq), opt-in, NUR Sensitivitaet
+          none/low (Gratis-Tiers trainieren ggf. auf Eingaben), hinter dem
+          Redaction-Gate. Quota erschoepft -> Durchfallen auf naechste Stufe.
 ```
 
 ```
-Stufe    | Zweck                    | Modell-ID (gegen Doku pruefen!)
----------+--------------------------+-------------------------------
-guenstig | Klassif.-Fallback, leicht| claude-haiku-4-5-...
-mittel   | review/test/refactor     | claude-sonnet-4-...
-schwer   | debug/architecture (Top) | claude-opus-4-...
+Tier        | Zweck                  | Anbieter (Baseline / opt-in)
+------------+------------------------+--------------------------------------
+free        | leichte Tasks, gratis  | Gemini-Free / Groq            (opt-in)
+paid_cheap  | Klassif.-Fallback,leicht| haiku / gpt-mini
+paid_mid    | review/test/refactor   | sonnet / gpt / gemini-pro
+paid_top    | debug/architecture(Top)| opus
 ```
+
+Anthropic-Modell-IDs (Baseline, gegen Doku pruefen): claude-haiku-4-5-...,
+claude-sonnet-4-..., claude-opus-4-...
 
 ```
 Caching : prompt caching (cache_control) fuer stabiles Core Bundle,
@@ -368,6 +381,7 @@ Wissensstand und koennen ueberholt sein.
              | Auto-Detect + Override, Startup-Validierung
 6 Schwellen  | confidence 0.65 (crypto 0.85), Budgets,
              | r1-distill 180s Kappung
-7 Claude     | Messages-API, IDs gegen Doku pruefen, Caching+Batch,
-             | Tageskappung, Key als Secret
+7 Cloud      | Multi-Provider abgestuft (Anthropic-Baseline, OpenAI/Google +
+             | Gratis-Tier opt-in), pro Anbieter ein Adapter, logische Namen
+             | -> IDs im Adapter, Caching+Batch, Tageskappung, Keys als Secret
 ```

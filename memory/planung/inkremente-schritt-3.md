@@ -49,17 +49,22 @@ Akzeptanz (det): default-Flags -> Cloud blockiert; unsafe_test_egress=true ->
 Klasse  : det
 ```
 
-## I-3.1  Claude-Adapter (API-Backend)
+## I-3.1  Cloud-Adapter (Multi-Provider, Anthropic zuerst)
 
 ```
-Modul   : Adapter-Interface, API-Backend (Messages), Modellwahl je Stufe,
-          effort/Fast-Mode, Caching (cache_control), Batch, Kostenzaehlung
+Modul   : Adapter-Interface (provider-agnostisch), Backends pro Anbieter
+          (Anthropic Messages zuerst; OpenAI/Google + Gratis-Tier opt-in),
+          logischer Name -> konkrete Modell-ID je Adapter, effort/Fast-Mode,
+          Caching (cache_control), Batch, Kostenzaehlung, free-Quota-Tracking
+          + Durchfallen bei Erschoepfung
 Akzeptanz (det, gegen aufgenommene API-Antwort): Kostenrechnung Input/Output;
-          Stufe->Modell-ID-Mapping; Caching-Markierung am stabilen Core Bundle;
-          Retry; Antwort -> Result-Objekt (Schema aus S1)
-Dev-verif: reale Claude-Antworten (Qualitaet/Eskalationsnutzen)
-Hinweis : Modell-IDs/Pricing/Caching VOR Scharfschalten gegen Anthropic-Doku
-          pruefen (claude-api). Key als Secret, nie im Code/Image.
+          logischer-Name->ID-Mapping je Anbieter; Caching-Markierung am stabilen
+          Core Bundle; Retry; Antwort -> Result-Objekt (Schema aus S1)
+Dev-verif: reale Antworten je Anbieter (Qualitaet/Eskalationsnutzen)
+Hinweis : Multi-Provider-Entscheidung in [[i-2-1-matrix-router]] (Capability-
+          Router) + architecture.md (Cloud-Eskalation). Modell-IDs/Pricing/
+          Caching/Gratis-Quota VOR Scharfschalten gegen die jeweilige Anbieter-
+          Doku pruefen (Anthropic: claude-api). Keys als Secret, nie im Code.
 Klasse  : gemischt
 ```
 

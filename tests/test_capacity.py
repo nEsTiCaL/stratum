@@ -145,7 +145,11 @@ class TestAutoDetect:
         # budget = 80% von 16000 = 12800; phi+coder passen -> resident
         assert r.policy.budget_mb == 12800
         assert r.policy.resident_set == ("phi-4-mini", "qwen2.5-coder")
-        assert set(r.policy.allowed_models) == set(ALL)
+        # allowed = alle Modelle, die einzeln ins Budget passen -> 32B (20 GB) raus
+        assert "phi-4-mini" in r.policy.allowed_models
+        assert "qwen2.5-coder-14b" in r.policy.allowed_models
+        assert "qwen2.5-coder-32b" not in r.policy.allowed_models
+        assert "qwen3-32b" not in r.policy.allowed_models
         assert r.max_parallel == 2
 
     def test_cpu_default_no_policy(self):

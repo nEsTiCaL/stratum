@@ -49,7 +49,11 @@ MODEL_CONFIG: dict[str, ModelCost] = {
     "phi-4-mini": ModelCost("phi-4-mini", 3000, 8192, "-1"),
     "qwen2.5-coder": ModelCost("qwen2.5-coder", 5000, 8192, "-1"),
     "qwen3-8b": ModelCost("qwen3-8b", 6000, 8192, "5m"),
+    "qwen2.5-coder-14b": ModelCost("qwen2.5-coder-14b", 9000, 8192, "5m"),
+    "qwen3-14b": ModelCost("qwen3-14b", 9000, 8192, "5m"),
     "r1-distill": ModelCost("r1-distill", 6000, 12288, "5m"),
+    "qwen2.5-coder-32b": ModelCost("qwen2.5-coder-32b", 20000, 8192, "5m"),
+    "qwen3-32b": ModelCost("qwen3-32b", 20000, 8192, "5m"),
     "qwen3-8b-q8": ModelCost("qwen3-8b-q8", 9000, 8192, "0", exclusive=True),
 }
 
