@@ -5,7 +5,7 @@ type: decision
 status: active
 created: 2026-06-30
 updated: 2026-06-30
-tags: [n1, dogfooding, kaltstart, devcli, workflow]
+tags: [n1, dogfooding, kaltstart, devcli, workflow, i-2-4]
 related: ["[[arbeitsplan]]", "[[nutzstufen]]", "[[i-d0-dev-harness]]"]
 ---
 
@@ -17,9 +17,14 @@ Das spart ~35 % der Input-Tokens pro Session (Schätzung: 5-8 k tokens).
 
 ## Wann nutzen
 
-Vor jedem Häppchen aus Schritt 2+, wenn ich andernfalls 3+ Quelldateien
-vollständig lesen würde, um Interface-Muster, Typ-Definitionen oder
-Import-Abhängigkeiten zu verstehen.
+Ab Schritt 2: **sofort zu Sessionbeginn**, noch bevor das Häppchen feststeht.
+Preflight (migrate + index) ist idempotent und kostet ~5 s. Danach gilt:
+
+- Interface-Muster, Typ-Definitionen, Methodensignaturen -> symbol_lookup / index
+- Zirkelimport-Check vor neuem Modul -> dependency_map
+- Prüfen ob ein Symbol schon existiert -> symbol_lookup -> []?
+- Quelldateien nur lesen, wenn N1 keine ausreichende Antwort liefert (leere
+  Ausgabe oder das Haeppchen nennt die Datei explizit in der Detail-Spalte)
 
 ## Voraussetzungen prüfen
 
@@ -91,6 +96,54 @@ Zirkelimport-Check vor neuem Modul     dependency_map core/<modul>.py
 Prüfen ob Symbol noch nicht existiert  symbol_lookup <neuer_Name>  -> []?
 Methoden einer Klasse                  index core/<modul>.py  (parent-Filter)
 ```
+
+## Befunde aus I-2.4-Kaltstart (2026-06-30) — N1-validiert
+
+Für I-2.4 (Validator + Eskalation), via devcli index / dependency_map:
+
+**ResultDet** (core/models/result_det_schema.py L20-27):
+```python
+class ResultDet(BaseModel):
+    artifact_type: ...   # ArtifactType StrEnum: symbol_index | dependency_graph | call_graph
+    scope: str
+    content: ...
+    provenance: ...
+    # KEIN confidence-Feld -> det-Validierung = pydantic-Parse, kein Schwellen-Check
+```
+
+**ResultProb** (core/models/result_prob_schema.py L38-49):
+```python
+class ResultProb(BaseModel):
+    artifact_type: ...   # ArtifactType StrEnum: code_summary | code_explanation | review_findings
+                         #   | refactor_plan | debug_analysis | test_generation | docstring
+    scope: str
+    content: ...
+    confidence: float    # Pflicht; gegen CONFIDENCE_THRESHOLDS[task_type] prüfen
+    findings: ...
+    risks: ...
+    recommendations: ...
+    provenance: ...
+```
+
+**det-Erkennung** (core/router.py): `TASK_REQUIREMENTS[task_type].deterministic_model is not None`
+
+**Candidate** (core/router.py L221-230): `model: str`, `provider: Provider`, `cost_tier: CostTier`,
+`is_cloud: bool` (property, = provider != local)
+
+**Zirkelimport-Check** (dependency_map core/router.py):
+router.py importiert nur `core.capacity` + `core.secret_scan` + stdlib.
+-> core/validator.py kann `core.router` (TaskType, TASK_REQUIREMENTS, Candidate) frei importieren.
+
+**Noch nicht vorhanden** (symbol_lookup -> []):
+`Validator`, `EscalationOutcome`, `EscalationLoop`, `ContextExceededError` -> alle neu in I-2.4.
+
+**Lehre (nach Testlauf I-2.4): symbol_lookup/index liefern nur Top-Level-
+Klassenfelder, nicht automatisch verschachtelte Sub-Modelle (z.B. Provenance
+als Feld auf ResultDet/ResultProb).** Vollstaendiges Pflichtfeld-Set eines
+Sub-Modells per N1 NICHT als vollstaendig annehmen -> zusaetzlich
+`model_json_schema()["$defs"]` pruefen oder `model_validate_json` gegen eine
+Test-Fixture laufen lassen. Konkreter Provenance-Feldbefund: [[architecture]]
+Abschnitt "Schema-Vertrag".
 
 ## Befunde aus I-2.3-Kaltstart (2026-06-30) — quellcode-validiert
 

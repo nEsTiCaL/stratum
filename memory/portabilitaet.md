@@ -57,21 +57,34 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
 ## Editier- und Sync-Workflow (Claude + WSL)
 
 Claude schreibt Dateien auf den Windows-Pfad (E:\Projekte\AI Coding\Stratum).
-Das Bauen und Testen laeuft im WSL-Repo (~/stratum). Beide sind
-getrennte Klone; Git ist der einzige Sync-Kanal.
+Das Bauen und Testen laeuft im WSL-Repo (~/stratum). Beide sind getrennte
+Klone. Zwei getrennte Phasen mit unterschiedlichem Sync-Mechanismus:
 
-Verbindliche Reihenfolge vor jedem Test-Lauf:
+**Phase A: Iteration (TDD rot/gruen, kein Commit pro Schritt)**
 ```
 1. Dateien auf Windows schreiben/editieren
-2. git -C "E:/Projekte/AI Coding/Stratum" add <dateien>
-   git -C "E:/Projekte/AI Coding/Stratum" commit -m "..."
-   git -C "E:/Projekte/AI Coding/Stratum" push
-3. wsl -d Debian -- bash -c "cd ~/stratum && git pull"
-4. Tests laufen lassen (s.u.)
+2. Geaenderte Datei(en) gezielt nach WSL kopieren (Quelle Windows-Pfad ueber
+   /mnt/e, AUSFUEHRUNG bleibt im WSL-nativen Pfad ~/stratum):
+   wsl -d Debian -- bash -c "cp '/mnt/e/Projekte/AI Coding/Stratum/<pfad>' \
+     ~/stratum/<pfad>"
+3. Tests in WSL laufen lassen (s.u.)
+4. 1-3 wiederholen bis gruen. Kein Commit, kein push/pull noetig.
+```
+Das ist kein Verstoss gegen "kein /mnt-Trick": jener Punkt verbietet, AUS
+/mnt/e heraus zu bauen/zu testen (inotify/case-sensitivity-Bruch). Reines
+Kopieren einzelner Dateien nach ~/stratum vor dem Testlauf ist unkritisch,
+da Ausfuehrung weiter im WSL-nativen FS passiert.
+
+**Phase B: Abnahme (Häppchen fertig, Tests gruen)**
+```
+1. Commit-Message mit Nutzer besprechen (CLAUDE.md)
+2. Commit + push AUS WSL (~/stratum) -- WSL ist die zuletzt getestete,
+   massgebliche Quelle
+3. Windows-Repo nachziehen: git -C "E:/Projekte/AI Coding/Stratum" pull
 ```
 
-Kein manuelles cp, kein /mnt/-Trick. WSL-Repo darf erst nach git pull
-als aktuell gelten.
+Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den
+Klonen), aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf.
 
 ## Tests ausfuehren (Dev, dieses Setup)
 
@@ -83,7 +96,12 @@ als aktuell gelten.
 - WSL-Repo-Pfad: ~/stratum
 - Aufruf: wsl -d Debian -- bash -c "cd ~/stratum &&
   PYTHONPATH=. .venv/bin/python -m pytest -q"
-- uv fehlt im WSL-PATH -> .venv/bin/python -m <tool> statt uv run <tool>
+- `uv` ist nicht im PATH nicht-interaktiver `bash -c`-Aufrufe, liegt aber nativ
+  (Linux-Build) unter `~/.local/bin/uv` -> absoluten Pfad nutzen:
+  `~/.local/bin/uv run --extra dev ruff check .`. NICHT `uv.exe` (Windows-Build
+  via WSL-Interop aus dem Winget-PATH) verwenden -- zerstoert/verwirrt das
+  Linux-`.venv` (Details: `.local/notes.md`). Fuer reine Python-Aufrufe ohne uv
+  weiterhin: `.venv/bin/python -m <tool>`
 - DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon; Docker Desktop
   mountet den Socket dann nach /var/run/docker.sock in Debian.
 ```

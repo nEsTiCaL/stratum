@@ -11,11 +11,9 @@ from __future__ import annotations
 import threading
 
 import psycopg
-import pytest
 
 from core.queue import Queue, QueueItem
 from core.template_registry import DagNode, TaskDag
-
 
 # ---------------------------------------------------------------------------
 # Hilfsfunktionen
@@ -126,7 +124,7 @@ class TestClaim:
         q = Queue(conn)
         dag = _dag(
             nodes=[
-                _node("n1", status="done"),           # wird uebersprungen
+                _node("n1", status="done"),  # wird uebersprungen
                 _node("n2", depends_on=("n1",)),
             ]
         )

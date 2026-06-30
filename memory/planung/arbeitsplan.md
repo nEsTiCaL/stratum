@@ -4,7 +4,7 @@ title: Arbeitsplan (Haeppchen-Index)
 type: decision
 status: active
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-06-30
 tags: [index, bau, dispatch]
 related: ["[[_core]]", "[[tdd-methodik]]", "[[nutzstufen]]"]
 ---
@@ -17,14 +17,19 @@ ohne Code oder alle Docs zu lesen.
 
 ## Kaltstart einer Session (Workflow)
 
+**Kein Quelltext beim Kaltstart.** core/, interfaces/, tests/, queries/ NICHT
+lesen. Interface-Fragen, Typ-Definitionen, Zirkelimport-Checks -> N1-Query
+(symbol_lookup / index / dependency_map). Erst wenn N1 nicht reicht und die
+Haeppchen-Zeile eine konkrete Datei nennt, direkt lesen.
+
 ```
 1. CLAUDE.md -> memory-rules.md (kurz), dann diesen Arbeitsplan
-2. Haeppchen-Zeile finden: Status, depends_on, Detail-Quellen
-3. Basis-Kontext lesen (immer): C, T, A  (siehe Legende)
-4. NUR die in der Zeile gelisteten Detail-Quellen lesen
-5. N1-Queries (ab Schritt 2): [[n1-kaltstart]] — Migration+Index pruefen,
-   dann symbol_lookup/index/dependency_map statt Dateien lesen.
-   Spart ~35% Input-Tokens, ist zugleich Debugging-Check.
+2. N1-Preflight sofort (ab Schritt 2): [[n1-kaltstart]] lesen; Migration +
+   Index pruefen (idempotent, ~5 s). Danach N1-Queries fuer alle
+   Interface-Fragen nutzen statt Quelldateien zu lesen.
+3. Haeppchen-Zeile finden: Status, depends_on, Detail-Quellen
+4. Basis-Kontext lesen (immer): C, T, A  (nur Memory-Dateien, kein Quelltext)
+5. NUR die in der Zeile gelisteten Detail-Quellen lesen  (ebenfalls Memory)
 6. Preflight (V): depends_on fertig UND Voraussetzungs-Schicht erfuellt
    (Tools/Dienste/Modelle/Env/Build-Vorstufen); sonst zuerst herstellen
 7. Bauen nach Klasse: det test-driven (Test zuerst), prob
@@ -98,7 +103,7 @@ I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, [[i-2-0
 I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, [[i-2-1-matrix-router]]   fertig
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2             fertig
 I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)             fertig
-I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-matrix-router]] (Konsumenten-Vertrag!)
+I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-matrix-router]] (Konsumenten-Vertrag!)   fertig
 I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS
 I-2.6   Klassifikation + Detektor-Stub gem   I-2.5     R2
 I-2.7   Intent-Zerlegung + Plan        gem   I-2.2/2.6 R2, DP

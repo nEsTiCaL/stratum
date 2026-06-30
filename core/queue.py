@@ -114,7 +114,9 @@ class Queue:
                               SELECT 1 FROM queue dep
                               WHERE dep.dag_id = q.dag_id
                                 AND dep.node_id = ANY(
-                                    ARRAY(SELECT jsonb_array_elements_text(q.depends_on))
+                                    ARRAY(
+                                        SELECT jsonb_array_elements_text(q.depends_on)
+                                    )
                                 )
                                 AND dep.status != 'done'
                           )

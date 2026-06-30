@@ -34,6 +34,12 @@ Ein Generierungslauf erzeugt beide Seiten: pydantic-Modelle (Python) und structs
   committen, CI prueft auf Drift via Neugenerierung
 - schema_version (text) in Provenance, damit alte Artefakte interpretierbar
   bleiben
+- Provenance-Pflichtfelder (verifiziert via model_json_schema(), 2026-06-30,
+  I-2.4): schema_version, source_hash, input_hash, producer, producer_version,
+  producer_class, timestamp (date-time, ISO 8601 mit Zeitzone), artifact_type,
+  scope. artifact_type/scope sind damit auf ResultDet/ResultProb UND in
+  Provenance dupliziert (Top-Level fuer Store/Query, in Provenance fuer
+  Selbstbeschreibung des Artefakts unabhaengig vom Container).
 
 ## scope-Namensschema
 
