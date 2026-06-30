@@ -23,6 +23,11 @@ Import-Abhängigkeiten zu verstehen.
 
 ## Voraussetzungen prüfen
 
+Vor N1-Queries: sicherstellen dass das WSL-Repo aktuell ist:
+```bash
+wsl -d Debian -- bash -c "cd /home/stratum/stratum && git pull"
+```
+
 **DB bereit?** (einmalig pro Container-Neustart oder frischer DB)
 ```bash
 wsl -d Debian -- bash -c "cd /home/stratum/stratum && \
