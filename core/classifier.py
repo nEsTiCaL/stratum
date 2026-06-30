@@ -21,6 +21,18 @@ _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
     Sensitivity.high: 2,
 }
 
+def _load_json(raw: str):
+    """Parst erstes JSON-Objekt/Array; toleriert Fences und Trailing-Garbage."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].strip() if "\n" in raw else raw
+    for i, ch in enumerate(raw):
+        if ch in ("{", "["):
+            val, _ = json.JSONDecoder().raw_decode(raw, i)
+            return val
+    return json.loads(raw)
+
+
 _PROMPT_TEMPLATE = """\
 You are a software-engineering task classifier. \
 Reply with a JSON object only — no prose, no markdown fences.
@@ -66,7 +78,7 @@ class Classifier:
 
     def classify(self, prompt: str) -> ClassificationResult:
         raw = self._model.complete(_PROMPT_TEMPLATE.format(prompt=prompt))
-        parsed = json.loads(raw)
+        parsed = _load_json(raw)
         model_sens = Sensitivity(parsed["sensitivity"])
         detector_sens = self._detector_sensitivity(prompt)
         sensitivity, src = _merge_sensitivity(model_sens, detector_sens)

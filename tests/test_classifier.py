@@ -97,3 +97,12 @@ def test_classify_sensitivity_src_both_none():
     result = Classifier(model).classify("summarize this file")
     assert result.sensitivity == Sensitivity.none
     assert result.sensitivity_src == "both"
+
+
+def test_classify_strips_markdown_fences():
+    """Modell liefert ```json...``` trotz Instruktion – soll trotzdem parsen."""
+    fenced = f"```json\n{_fake_response('explain', 'low', 100, 'none')}\n```"
+    model = FakeModel(responses=[fenced])
+    result = Classifier(model).classify("explain quicksort")
+    assert result.task_type == TaskType.explain
+    assert result.complexity == "low"

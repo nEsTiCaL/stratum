@@ -54,8 +54,20 @@ class Plan:
     large: bool  # weiche Warnung (>= LARGE_PLAN_THRESHOLD goals)
 
 
+def _load_json(raw: str):
+    """Parst erstes JSON-Objekt/Array; toleriert Fences und Trailing-Garbage."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].strip() if "\n" in raw else raw
+    for i, ch in enumerate(raw):
+        if ch in ("{", "["):
+            val, _ = json.JSONDecoder().raw_decode(raw, i)
+            return val
+    return json.loads(raw)
+
+
 def _parse_goals(raw: str) -> list[GoalItem]:
-    items = json.loads(raw)
+    items = _load_json(raw)
     return [
         GoalItem(
             task_type=TaskType(g["task_type"]),

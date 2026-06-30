@@ -122,6 +122,24 @@ def test_build_dag_two_goals_chained():
     assert "g0_n2" in g1_root.depends_on
 
 
+def test_decompose_strips_markdown_fences():
+    """Modell liefert ```json...``` trotz Instruktion – soll trotzdem parsen."""
+    fenced = f"```json\n{_goals_resp(_goal('explain', 'module:auth'))}\n```"
+    model = FakeModel(responses=[fenced])
+    plan = IntentDecomposer(model).decompose("explain auth")
+    assert len(plan.goals) == 1
+    assert plan.goals[0].task_type == TaskType.explain
+
+
+def test_decompose_tolerates_trailing_garbage():
+    """Modell haengt spurious } nach ] – raw_decode soll ignorieren."""
+    garbage = f"{_goals_resp(_goal('summarize', 'module:auth'))}\n}}"
+    model = FakeModel(responses=[garbage])
+    plan = IntentDecomposer(model).decompose("summarize auth")
+    assert len(plan.goals) == 1
+    assert plan.goals[0].task_type == TaskType.summarize
+
+
 def test_build_dag_empty_plan():
     model = FakeModel(responses=[])
     planner = IntentDecomposer(model)
