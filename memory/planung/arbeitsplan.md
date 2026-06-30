@@ -107,6 +107,7 @@ I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-mat
 I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS             fertig
 I-2.6   Klassifikation + Detektor-Stub gem   I-2.5     R2             fertig
 I-2.7   Intent-Zerlegung + Plan        gem   I-2.2/2.6 R2, DP          fertig
+I-2.8   Inferenz-Metrik-Erfassung      det   I-2.5     -              fertig
 ```
 
 ## Schritt 3: Cloud-Bruecke  (Spec: S3)   Reihenfolge: 3.2,3.3,3.1,3.4,3.5

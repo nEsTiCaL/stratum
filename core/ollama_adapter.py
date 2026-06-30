@@ -7,6 +7,7 @@ Wirft ContextExceededError wenn Ollama einen "context"-Fehler meldet.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 
 import httpx
 
@@ -23,6 +24,7 @@ class OllamaAdapter:
         host: str | None = None,
         client: httpx.Client | None = None,
         timeout: float = 120.0,
+        on_metrics: Callable[[str, float, int], None] | None = None,
     ) -> None:
         self.model = model
         self._host = (
@@ -30,6 +32,7 @@ class OllamaAdapter:
         ).rstrip("/")
         self._client = client
         self._timeout = timeout
+        self._on_metrics = on_metrics
 
     def complete(self, prompt: str) -> str:
         own_client = self._client is None
@@ -58,6 +61,11 @@ class OllamaAdapter:
                 if "context" in msg.lower():
                     raise ContextExceededError(msg)
                 raise RuntimeError(msg)
+            if self._on_metrics:
+                ec = data.get("eval_count")
+                ed = data.get("eval_duration")
+                if ec and ed:
+                    self._on_metrics(self.model, ec / (ed / 1e9), ec)
             return data["response"]
         finally:
             if own_client:
