@@ -22,11 +22,14 @@ ohne Code oder alle Docs zu lesen.
 2. Haeppchen-Zeile finden: Status, depends_on, Detail-Quellen
 3. Basis-Kontext lesen (immer): C, T, A  (siehe Legende)
 4. NUR die in der Zeile gelisteten Detail-Quellen lesen
-5. Preflight (V): depends_on fertig UND Voraussetzungs-Schicht erfuellt
+5. N1-Queries (ab Schritt 2): [[n1-kaltstart]] — Migration+Index pruefen,
+   dann symbol_lookup/index/dependency_map statt Dateien lesen.
+   Spart ~35% Input-Tokens, ist zugleich Debugging-Check.
+6. Preflight (V): depends_on fertig UND Voraussetzungs-Schicht erfuellt
    (Tools/Dienste/Modelle/Env/Build-Vorstufen); sonst zuerst herstellen
-6. Bauen nach Klasse: det test-driven (Test zuerst), prob
+7. Bauen nach Klasse: det test-driven (Test zuerst), prob
    entwickler-verifiziert (Model-Seam, FakeModel/Replay)
-7. Nach Abnahme: Status hier auf "fertig", Zeile in log.md, commit
+8. Nach Abnahme: Status hier auf "fertig", Zeile in log.md, commit
    (Message vorher besprechen, keine Co-Authored-By-Zeile)
 ```
 

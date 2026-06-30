@@ -1,5 +1,6 @@
 # Log
 
+## [2026-06-30] finding | N1-Kaltstart-Workflow etabliert: migrate via python -m core.db migrate (nicht yoyo/uv), ingest_file(repo, Path('.'), str(f)), devcli symbol_lookup/index/dependency_map. Spart ~35% Input-Tokens; dient zugleich als Index-Debugging. Klass heisst Repository (nicht StratumRepository). Befunde fuer I-2.3: DagNode-Struktur, connect()-Signatur, template_registry importiert nur stdlib. -> n1-kaltstart.md, arbeitsplan Schritt 5 ergaenzt
 ## [2026-06-29] decision | Repo-Ordnerstruktur: Core / Schalen / Vertraege, nicht nach Phase
 ## [2026-06-29] decision | TDD-Methodik: det test-driven, prob entwickler-verifiziert (Model-Seam)
 ## [2026-06-29] decision | Ausfuehrungsplan: 5 Schritte + Schalen in vertikale Inkremente zerlegt
