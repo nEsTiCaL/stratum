@@ -59,6 +59,11 @@ def extract_calls(source: str | bytes, language: str = "python") -> CallExtracti
     module_defs = {
         s["name"] for s in symbols if s["parent"] is None and s["kind"] in _TOP_LEVEL_REF
     }
+    # Top-Level-Funktionen separat: Ziel des Datei-als-Klasse-Fallbacks
+    # (self.m() ohne umschliessende Klasse, profile.self_module_fallback).
+    module_funcs = {
+        s["name"] for s in symbols if s["parent"] is None and s["kind"] == "function"
+    }
     class_methods: dict[str, set[str]] = {}
     for s in symbols:
         if s["kind"] == "method" and s["parent"]:
@@ -81,7 +86,7 @@ def extract_calls(source: str | bytes, language: str = "python") -> CallExtracti
             enclosing["parent"] if enclosing and enclosing["kind"] == "method" else None
         )
         callee_ref, confidence = _resolve(
-            callee_raw, enclosing_class, module_defs, class_methods, profile
+            callee_raw, enclosing_class, module_defs, module_funcs, class_methods, profile
         )
         rows.append(
             {
@@ -150,6 +155,7 @@ def _resolve(
     callee_raw: str,
     enclosing_class: str | None,
     module_defs: set[str],
+    module_funcs: set[str],
     class_methods: dict[str, set[str]],
     profile: LanguageProfile,
 ) -> tuple[str | None, float]:
@@ -158,8 +164,19 @@ def _resolve(
             return callee_raw, _CONF_LOCAL_DEF
         return None, _CONF_UNRESOLVED
     self_keyword = profile.self_keyword
-    if self_keyword and enclosing_class is not None:
-        match = re.fullmatch(re.escape(self_keyword) + r"\.(\w+)", callee_raw)
-        if match and match.group(1) in class_methods.get(enclosing_class, set()):
-            return f"{enclosing_class}.{match.group(1)}", _CONF_SELF_METHOD
+    if self_keyword:
+        # lenient: callee_raw traegt die Aufruf-Klammern (Grammar ohne function:-
+        # Feld, z.B. GDScript "self.m()") -> Praefix-Match statt fullmatch.
+        matcher = re.match if profile.self_call_match == "lenient" else re.fullmatch
+        match = matcher(re.escape(self_keyword) + r"\.(\w+)", callee_raw)
+        if match:
+            name = match.group(1)
+            if enclosing_class is not None and name in class_methods.get(
+                enclosing_class, set()
+            ):
+                return f"{enclosing_class}.{name}", _CONF_SELF_METHOD
+            # Datei-als-Klasse: self.m() ohne Klassen-Scope gegen Top-Level-
+            # Funktionen (GDScript). callee_ref = bare Name (analog LOCAL_DEF-Scope).
+            if profile.self_module_fallback and name in module_funcs:
+                return name, _CONF_SELF_METHOD
     return None, _CONF_UNRESOLVED

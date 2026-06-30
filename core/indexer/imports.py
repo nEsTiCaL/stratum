@@ -33,6 +33,20 @@ _KINDS = ("module", "symbol", "relative")
 # fuehrende Punkte + Modul-Rest eines relativen Imports (".", ".mod", "..pkg").
 _RELATIVE = re.compile(r"^(\.+)(.*)$")
 
+# res://-Praefix = Projektwurzel (GDScript). user://, dynamische Pfade etc. bleiben
+# unaufgeloest.
+_RES_PREFIX = "res://"
+
+
+def _unquote(raw: str) -> str:
+    """Strippt ein umschliessendes Anfuehrungszeichen-Paar (wertbasiert, KEINE
+    Knotentyp-Logik). Greift nur, wenn @name ein Quote-Literal ist (GDScript-String-
+    Knoten hat kein string_content-Kind wie JS string_fragment); andere Sprachen
+    capturen quotenfreie Bezeichner -> unveraendert."""
+    if len(raw) >= 2 and raw[0] in "\"'" and raw[-1] == raw[0]:
+        return raw[1:-1]
+    return raw
+
 
 @dataclass(frozen=True)
 class ImportExtraction:
@@ -60,7 +74,7 @@ def extract_imports(
         if not name_nodes or kind is None:
             continue
         stmt = caps[f"{_IMPORT_PREFIX}{kind}"][0]
-        raw = name_nodes[0].text.decode()
+        raw = _unquote(name_nodes[0].text.decode())
         rows.append(
             {
                 "raw": raw,
@@ -113,12 +127,24 @@ def _resolve_target(
     namespace_passthrough: target = rohe Namespace-Id; FS-Aufloesung erst S4.
     """
     resolution = profile.import_resolution
+    if resolution == "res_path":
+        return _resolve_res_path(raw)
     if resolution == "relative_path_ext":
         return _resolve_relative_ext(raw, file_path)
     if kind == "relative":
         return _resolve_relative(raw, file_path)
     if resolution == "namespace_passthrough":
         return raw
+    return None
+
+
+def _resolve_res_path(raw: str) -> str | None:
+    """GDScript res://-Pfad (I-1.11b): res:// IST die Repo-Wurzel -> Praefix
+    abschneiden ergibt den repo-relativen Pfad. Alles andere (user://, relativ,
+    dynamisch) ist in S1 nicht aufloesbar -> None. Keine Endungs-Disambiguierung
+    noetig (GDScript-Pfade tragen die Endung; volle Layout-Aufloesung erst S4)."""
+    if raw.startswith(_RES_PREFIX):
+        return raw[len(_RES_PREFIX) :] or None
     return None
 
 

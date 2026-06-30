@@ -54,6 +54,33 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
    noetig, sonst blockt die Firewall. Detail: scripts/README.md.
 ```
 
+## Tests ausfuehren (Dev, dieses Setup)
+
+```
+- Die Projekt-.venv ist eine LINUX-venv (home=/usr/bin, python3.13). Aus Windows
+  Git Bash NICHT lauffaehig -> immer ueber WSL.
+- Default-WSL-Distro ist 'docker-desktop' (kein bash/python). Die Bauumgebung ist
+  'Debian' -> explizit adressieren: wsl -d Debian.
+- Aufruf: wsl -d Debian -- bash -lc "cd /mnt/d/AI\ Development/stratum &&
+  PYTHONPATH=. .venv/bin/python -m pytest -q".
+- DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon; Docker Desktop
+  mountet den Socket dann nach /var/run/docker.sock in Debian.
+```
+
+## Lehre: einfache Ursachen zuerst (2026-06-30)
+
+Symptom war "testcontainers findet keinen Docker-Daemon" (FileNotFoundError auf
+dem Socket). Erste Vermutung war WSL-Integration/Socket-Pfade - die EINFACHE und
+richtige Ursache war: Docker Desktop lief schlicht nicht (kein Autostart
+eingerichtet). Konsequenz:
+- Das System SOLLTE vorbereitet sein: laufende Dienste (Postgres-Container via
+  Docker, Ollama ab S2) sind ein Preflight-Punkt ([[constraints]]). Vor dem Bauen
+  pruefen, nicht erst beim Fehlschlag.
+- Bei Infrastruktur-Fehlern zuerst die billigste Ursache pruefen (Laeuft der
+  Dienst ueberhaupt?), bevor man Integration/Konfiguration/Pfade debuggt.
+- Offen/optional: Docker-Desktop-Autostart einrichten, damit der Preflight ohne
+  manuellen Schritt erfuellt ist.
+
 ## Bereits umgesetzt
 
 ```

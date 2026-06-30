@@ -8,8 +8,19 @@
 ; NICHT als Symbol erfasst. Sichtbarkeit per Profil underscore_prefix.
 
 ; ---- Datei-Klasse (class_name X) ----
+; Eigenstaendiges Pattern (Dateien ohne extends) ZUERST, danach die beiden
+; kombinierten Pattern fuer die extends-Signatur: hoeherer Pattern-Index gewinnt
+; im Dedup -> die Variante mit @signature verdraengt die signaturlose. class_name
+; und extends sind Geschwister auf source-Ebene und kommen in BEIDER Reihenfolge
+; vor -> je ein Pattern. extends-Ziel: (type) oder (string) ("res://.." = I-1.11b).
 (class_name_statement
   name: (name) @name) @definition.class
+(source
+  (extends_statement [(type) (string)] @signature)
+  (class_name_statement name: (name) @name) @definition.class)
+(source
+  (class_name_statement name: (name) @name) @definition.class
+  (extends_statement [(type) (string)] @signature))
 
 ; ---- Innere Klasse (optionales inline extends als signature) ----
 (class_definition

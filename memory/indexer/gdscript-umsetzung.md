@@ -23,6 +23,61 @@ Member parent None). Golden + Real-Code-Smoke + 2-Builder-ingest-Test.
 
 Findings + Plan unten als Referenz.
 
+## I-1.11b: GDScript auf Paritaet (ERLEDIGT 2026-06-30)
+
+Folge-Inkrement, weil die Reduktion (kein dependency_graph, self-Calls unaufgeloest)
+GDScripts det-Graph systematisch duenner machte als bei C#/Python -> schlechtere
+Grundierung des Agenten auf GDScript-Repos. Der Reduktions-Beleg (Builder-Set-
+Dispatch traegt 2 vs 3) war erbracht, also Promotion zum First-Class-Buerger. 160
+Tests gruen.
+
+### Sondierung (neue Knoten-Shapes, has_error=False)
+- `extends "res://x.gd"` -> `(extends_statement (string))`; der `string`-Knoten hat
+  KEIN `string_content`-Kind (anders als JS `string_fragment`), nur zwei `"`-Token
+  + anonymer Inhalt -> Text inkl. Quotes, im Kern wertbasiert strippen.
+- `extends BaseActor` -> `(extends_statement (type (identifier)))` (kein Pfad).
+- `preload(...)`/`load(...)` -> gewoehnliche `(call (identifier) (arguments (string)))`;
+  preload/load sind KEINE Keywords -> `#eq?`-Praedikat (wie JS require()).
+- `class_name` und `extends` sind Geschwister auf `source`-Ebene, BEIDE Reihenfolgen
+  kommen vor (extends-first ist haeufig).
+
+### Drei Workstreams
+- A self-Calls: zwei neue Profil-Achsen statt Sprachname im Kern (Agnostik gewahrt):
+  `self_call_match` (strict|lenient; GDScript lenient, weil callee_raw die Klammern
+  traegt -> re.match statt fullmatch) und `self_module_fallback` (bool; GDScript True:
+  self.m() ohne Klassen-Scope loest gegen Top-Level-Funktionen = Datei-als-Klasse).
+  Py/JS/TS/C# erben die Defaults (strict/False) -> null Regression.
+- B extends-Signatur: Datei-Klasse traegt jetzt die Basisklasse. Zwei kombinierte
+  source-Pattern (je Reihenfolge) + Standalone; hoeherer Pattern-Index gewinnt im
+  Dedup -> Variante mit @signature verdraengt die signaturlose. Rein .scm.
+- C dependency_graph: queries/gdscript/imports.scm (extends-String + preload/load
+  via #eq?) + neue import_resolution-Strategie `res_path` (res:// = Repo-Wurzel,
+  Praefix abschneiden; user:///dynamisch -> target None) + generisches `_unquote`
+  im Kern (wertbasiert, trifft nur GDScript) + ingest .gd -> 3 Builder (_ALL_THREE).
+
+### Bewusst NICHT gemacht: Datei-als-Klasse im Symbol-Modell (-> S4)
+Die saubere Loesung (Top-Level-Funktionen als kind=method, parent=class_name) wurde
+verworfen, weil sie: (1) die bare-Call-LOCAL_DEF-Aufloesung BRICHT (module_defs
+filtert parent is None), (2) ohne class_name unvollstaendig ist (anonyme Datei-
+Klassen), (3) eine bewusste S1-Grenze halb und ohne die projektweite class_name-
+Tabelle vorzieht. Der calls.py-Fallback loest den Aufruf, ohne kind/parent
+umzustellen. OFFEN fuer S4: Datei-als-Klasse ganzheitlich modellieren (mit
+class_name-Tabelle, cross-file). Bis dahin: Top-Level-Member parent None,
+callee_ref des self-Calls = bare Funktionsname. Artefakte sind Cache -> S4
+re-indiziert, keine Migration.
+
+### Akzeptierte S1-Grenzen (Rest)
+- bare `extends ClassName` (kein Pfad) -> keine Datei-Abhaengigkeit (class_name-
+  Tabelle erst S4).
+- self.m() callee_ref = bare Name (nicht "Klasse.m"), weil Datei-Klasse ggf.
+  namenlos; zeigt korrekt auf das Top-Level-Funktionssymbol.
+
+### Wichtige Folge fuer die Agnostik-Erzaehlung
+calls.py ist ab I-1.11b NICHT mehr git-diff-leer. Der Beleg "5 Sprachen, calls.py
+nie angefasst" endet hier - durch eine GENERISCHE, profilgesteuerte Aenderung (kein
+language-inlining), also Agnostik intakt. Regel angeglichen an symbols.py/imports.py
+(seit I-1.9 generisch erweiterbar). Siehe [[sprachagnostik]] (aktualisiert).
+
 ---
 
 Vorab-Analyse + Bauplan. GDScript ist bewusst REDUZIERT: nur symbol_index +

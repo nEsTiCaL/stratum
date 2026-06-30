@@ -1,23 +1,22 @@
-"""I-1.11: GDScript (reduziert) durch den unveraenderten Kern.
+"""I-1.11 / I-1.11b: GDScript durch den profilgesteuerten Kern.
 
-Reduzierter Umfang: nur symbol_index + call_graph (2 Builder, KEIN
-dependency_graph). Belegt, dass das Modell auch bei reduziertem Artefakt-Set
-traegt und die ingest-Sprach-Dispatch (Builder-Set je Sprache) konkret wird.
-calls.py bleibt git-diff leer.
+I-1.11b hebt GDScript auf Paritaet mit den anderen Sprachen:
+- dependency_graph ueber res://-Pfade (extends/preload/load) -> 3 Builder.
+- self.m() loest auf (self_call_match=lenient + self_module_fallback: Datei-als-
+  Klasse, self gegen Top-Level-Funktionen).
+- Datei-extends als Klassen-Signatur (sibling class_name/extends -> ein Symbol).
 
 Akzeptierte S1-Naeherungen (dokumentiert): _ready/_process u.ae. -> private
-(fuehrender _; faktisch Engine-Callbacks, public); Datei-Klasse via class_name,
-top-level-Member parent None (Zugehoerigkeit semantisch); member-Calls
-(self.x()) callee_ref NULL (grobe calls); Datei-extends nicht als Klassen-
-signature (sibling-Statement).
+(fuehrender _; faktisch Engine-Callbacks, public); Top-Level-Funktionen als
+function/parent None (Datei-als-Klasse-Zuordnung im Symbol-Modell erst S4);
+bare `extends ClassName` ohne Pfad -> keine Datei-Abhaengigkeit (class_name-
+Tabelle erst S4).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from core.indexer import extract_calls, extract_symbols
+from core.indexer import extract_calls, extract_imports, extract_symbols
 from core.ingest import ingest_content
 from core.repository import Repository
 from tests._invariants import check_calls, check_symbols
@@ -25,7 +24,7 @@ from tests._invariants import check_calls, check_symbols
 _FIXTURES = Path(__file__).parent / "fixtures" / "gdscript"
 
 _SYMBOLS = [
-    {"name": "Player", "kind": "class", "signature": None, "span": [2, 2],
+    {"name": "Player", "kind": "class", "signature": "Node", "span": [2, 2],
      "parent": None, "visibility": "public", "docstring": None},
     {"name": "health_changed", "kind": "signal", "signature": "(amount)", "span": [4, 4],
      "parent": None, "visibility": "public", "docstring": None},
@@ -56,10 +55,28 @@ _SYMBOLS = [
 _CALLS = [
     {"caller": "process", "callee_raw": "helper", "callee_ref": "helper",
      "span": [5, 5], "confidence": 0.5},
-    {"caller": "process", "callee_raw": "self.cleanup()", "callee_ref": None,
-     "span": [6, 6], "confidence": 0.0},
+    # self.cleanup() loest jetzt auf: Datei-als-Klasse-Fallback gegen Top-Level-
+    # Funktion cleanup (lenient match frisst die Klammern). SELF_METHOD 0.6.
+    {"caller": "process", "callee_raw": "self.cleanup()", "callee_ref": "cleanup",
+     "span": [6, 6], "confidence": 0.6},
     {"caller": "process", "callee_raw": "queue_free", "callee_ref": None,
      "span": [7, 7], "confidence": 0.0},
+]
+
+# importierende Datei (logischer Repo-Pfad; res_path ignoriert ihn, res:// = Wurzel)
+_IMPORT_FILE = "scenes/hero.gd"
+_IMPORTS = [
+    {"raw": "res://actors/base_actor.gd", "target": "actors/base_actor.gd",
+     "kind": "module", "span": [1, 1]},
+    {"raw": "res://weapons/bullet.gd", "target": "weapons/bullet.gd",
+     "kind": "module", "span": [4, 4]},
+    {"raw": "res://ui/menu.tscn", "target": "ui/menu.tscn",
+     "kind": "module", "span": [5, 5]},
+    # user:// (nicht res://) bleibt unaufgeloest, aber als Referenz erfasst.
+    {"raw": "user://save.dat", "target": None, "kind": "module", "span": [6, 6]},
+    # preload in Funktion: Datei-Abhaengigkeit unabhaengig vom Ort.
+    {"raw": "res://weapons/bullet.gd", "target": "weapons/bullet.gd",
+     "kind": "module", "span": [9, 9]},
 ]
 
 
@@ -77,6 +94,7 @@ class TestSymbols:
         by = {s["name"]: s for s in _SYMBOLS}
         assert by["health_changed"]["kind"] == "signal"     # neues kind
         assert by["MAX_HP"]["kind"] == "const"               # const_statement strukturell
+        assert by["Player"]["signature"] == "Node"           # Datei-extends -> signature
         assert by["Inner"]["signature"] == "RefCounted"      # inline extends -> signature
         assert by["_secret"]["visibility"] == "private"      # underscore_prefix
         assert by["_ready"]["visibility"] == "private"       # Engine-Callback-Naeherung
@@ -90,21 +108,38 @@ class TestCalls:
         assert result.calls == _CALLS
 
 
-class TestReducedBuilderSet:
-    """Beleg der Sprach-Dispatch: GDScript erzeugt NUR 2 Artefakte."""
+class TestImports:
+    def test_golden(self):
+        result = extract_imports(_read("imports_basic.gd"), _IMPORT_FILE, "gdscript")
+        assert result.partial is False
+        assert result.imports == _IMPORTS
 
-    def test_ingest_produces_two_artifacts_no_dependency_graph(self, conn):
+    def test_res_path_resolution(self):
+        by_raw = {i["raw"]: i for i in _IMPORTS}
+        # res:// = Repo-Wurzel -> Praefix abgeschnitten
+        assert by_raw["res://ui/menu.tscn"]["target"] == "ui/menu.tscn"
+        # user:// nicht aufloesbar in S1
+        assert by_raw["user://save.dat"]["target"] is None
+
+
+class TestFullBuilderSet:
+    """I-1.11b: GDScript erzeugt jetzt alle 3 Artefakte (inkl. dependency_graph)."""
+
+    def test_ingest_produces_three_artifacts(self, conn):
         repo = Repository(conn)
         result = ingest_content(
-            repo, "scenes/player.gd", _read("symbols_basic.gd"),
+            repo, "scenes/player.gd", _read("imports_basic.gd"),
             source_hash="h1", session_id="gd1",
         )
-        assert set(result.artifact_ids) == {"symbol_index", "call_graph"}
-        assert "dependency_graph" not in result.artifact_ids
-        assert repo.get_current("file:scenes/player.gd", "dependency_graph") is None
-        # Trace: ingestion, 2x index, scan
+        assert set(result.artifact_ids) == {
+            "symbol_index", "dependency_graph", "call_graph"
+        }
+        dep = repo.get_current("file:scenes/player.gd", "dependency_graph")
+        assert dep is not None
+        assert len(dep.content["imports"]) == len(_IMPORTS)
+        # Trace: ingestion, 3x index, scan
         stages = [t.stage for t in repo.get_trace("gd1")]
-        assert stages == ["ingestion", "index", "index", "scan"]
+        assert stages == ["ingestion", "index", "index", "index", "scan"]
 
 
 class TestRealCodeSmoke:
@@ -116,7 +151,7 @@ class TestRealCodeSmoke:
         "\n"
         "func hurt(amount):\n"
         "\thealth -= amount\n"
-        "\tcheck_death()\n"
+        "\tself.check_death()\n"
         "\n"
         "func check_death():\n"
         "\tif health <= 0:\n"
@@ -127,3 +162,12 @@ class TestRealCodeSmoke:
         names = check_symbols(self._REAL, "gdscript")
         assert {"Enemy", "health", "hurt", "check_death"} <= names
         check_calls(self._REAL, names, "gdscript")
+
+    def test_self_call_resolves_via_file_class(self):
+        # self.check_death() in der Top-Level-Funktion hurt loest gegen die
+        # Top-Level-Funktion check_death auf (Datei-als-Klasse-Fallback).
+        result = extract_calls(self._REAL, "gdscript")
+        self_calls = [c for c in result.calls if c["callee_raw"] == "self.check_death()"]
+        assert len(self_calls) == 1
+        assert self_calls[0]["callee_ref"] == "check_death"
+        assert self_calls[0]["confidence"] == 0.6

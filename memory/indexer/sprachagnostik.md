@@ -4,7 +4,7 @@ title: Sprachagnostik des Extraktor-Kerns - Befund und Grenzziehung
 type: decision
 status: active
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-06-30
 status: active
 tags: [indexer, tree-sitter, multilang]
 related: ["[[_core]]", "[[inkremente-schritt-1]]"]
@@ -112,11 +112,26 @@ visibility_strategy | none | underscore_prefix | uppercase_export
 self_keyword        | "self" | "this" | "$this" | None
    warum: Selbst-Methoden-Aufloesung. Go: None (Receiver-Name beliebig,
    nicht aufloesbar). Nicht syntaktisch generisch fassbar.
-import_resolution   | namespace_passthrough (default) | relative_path | relative_path_ext
+import_resolution   | namespace_passthrough (default) | relative_path | relative_path_ext | res_path
    warum: Aufloesung des target unterscheidet sich fundamental. Default
    namespace_passthrough (target = rohe Modul-/Namespace-Id, KEINE
    FS-Aufloesung) deckt Java/C#/C++/Go/Rust/PHP. relative_path = Python.
-   relative_path_ext = JS/TS (./x -> x.js | x/index.js).
+   relative_path_ext = JS/TS (./x -> x.js | x/index.js). res_path = GDScript
+   (res:// = Repo-Wurzel -> Praefix abschneiden; user:///dynamisch -> None; I-1.11b).
+self_call_match     | strict (default) | lenient
+   warum: callee_raw eines Selbst-Aufrufs traegt bei manchen Grammatiken die
+   Argument-Klammern, weil sie KEIN function:-Feld haben und der ganze
+   attribute-Knoten gecaptured wird (GDScript self.m() -> "self.m()"). strict =
+   fullmatch (function:-Feld liefert reinen Callee, Py/JS/TS/C#); lenient =
+   re.match (Trailing erlaubt, GDScript). Nicht .scm-faehig: kein Knoten umspannt
+   genau "<self>.<name>" ohne Argumente.
+self_module_fallback| False (default) | True
+   warum: Datei-als-Klasse (GDScript): jede .gd IST eine Klasse, Top-Level-
+   Funktionen sind ihre Methoden. self.m() ohne umschliessendes Klassen-Scope
+   loest gegen die Top-Level-Funktionen auf. True nur GDScript. Saubere Symbol-
+   Modellierung (Top-Level -> method der class_name-Klasse) braucht die
+   projektweite class_name-Tabelle -> S4; der Fallback loest hier, ohne kind/
+   parent vorzeitig umzustellen (I-1.11b, [[gdscript-umsetzung]]).
 const_strategy      | none (default) | uppercase_name
    warum: const-Erkennung ist NICHT universell. Sprachen MIT const-Keyword
    (Go, JS/TS, C#, Rust) druecken const strukturell in der .scm aus
@@ -225,11 +240,16 @@ extract_symbols; kuenftig liefert die Tabelle auch die Spans fuer Containment).
 5. Tests zweigleisig (siehe Teststrategie): Golden-Fixtures (byte-exakt) UND
    Real-Code-Smoke (kleines echtes Beispiel, Invarianten via tests/_invariants.py)
    unter tests/fixtures/<lang>/, test_*_<lang>.
-6. KERN-DIFF: calls.py bleibt strikt git-diff leer (der harte Agnostik-Beleg).
-   symbols.py/imports.py duerfen NUR generische, profilgesteuerte Erweiterungen
-   bekommen (neue visibility_strategy/import_resolution-Werte, parent-bewusste
-   Logik) - NIE sprachspezifisches Inlinen. Jede solche Erweiterung hier
-   dokumentieren.
+6. KERN-DIFF: symbols/imports/calls.py duerfen NUR generische, profilgesteuerte
+   Erweiterungen bekommen (neue Achsen-Werte, parent-bewusste Logik, wertbasierte
+   Normalisierung) - NIE sprachspezifisches Inlinen (kein `if language == ...`,
+   kein Sprach-Knotentyp). Jede solche Erweiterung hier dokumentieren.
+   HINWEIS: bis I-1.11 galt calls.py als STRIKT diff-leer (harter Beleg ueber 5
+   Sprachen). Aufgehoben mit I-1.11b: GDScript self-Calls brauchten zwei generische
+   Profil-Achsen (self_call_match, self_module_fallback) IN calls.py. Das ist
+   profilgesteuert, kein language-inlining -> Agnostik intakt; calls.py liegt jetzt
+   auf demselben Niveau wie symbols.py/imports.py (seit I-1.9 generisch erweiterbar).
+   Der Beleg "calls.py nie angefasst" hatte seinen Zweck erfuellt; Paritaet ging vor.
 ```
 
 ## Teststrategie je Artefakt/Sprache (zweigleisig)
@@ -267,11 +287,19 @@ in den Kern inlinen. Genau dieser Test (Kern unberuehrt) ist die Abnahme von
 I-1.9. Sprach-Besonderheiten je Increment stehen in [[inkremente-schritt-1]]
 (I-1.9/1.10/1.11).
 
-Verfeinerung (I-1.9, mit Nutzer): "Kern git-diff leer" gilt strikt fuer calls.py.
+Verfeinerung (I-1.9, mit Nutzer): "Kern git-diff leer" galt strikt fuer calls.py.
 symbols.py/imports.py duerfen GENERISCHE, profilgesteuerte Erweiterungen bekommen
 (der hier genannte Ausweg), kein language-inlining. Konkret bei I-1.9:
 _visibility parent-bewusst + export-Strategie (korrekte JS-Sichtbarkeit war
 Vorgabe), relative_path_ext. Details: [[js-ts-umsetzung]].
+
+Verfeinerung (I-1.11b, mit Nutzer): die strikte calls.py-Diff-leer-Regel ist
+aufgehoben. GDScript-self-Calls (Datei-als-Klasse, attribute_call ohne function:-
+Feld) erzwangen zwei generische Profil-Achsen in calls.py. Bewusste Entscheidung:
+Paritaet von GDScript (sonst messbar schlechterer det-Graph) vor dem Diff-leer-
+Beleg, der seinen Zweck (Abstraktion traegt ueber 5 Sprachen) erfuellt hatte.
+calls.py bleibt agnostisch (profilgesteuert, kein language-inlining). Details:
+[[gdscript-umsetzung]].
 
 ## Quellen
 

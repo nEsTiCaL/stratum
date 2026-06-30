@@ -89,6 +89,11 @@ Zuweisungen und Docstrings sind in dieser Grammar-Version KEINE
 - Heuristik-Aufloesung (dateilokal, deterministisch): bare Name in module_defs
   (Funktion/Klasse der Datei) -> LOCAL_DEF 0.5; `self.m()` in Klasse und m ist
   Methode -> "Klasse.m" SELF_METHOD 0.6; sonst callee_ref NULL, confidence 0.
+- I-1.11b: self-Aufloesung profilgesteuert (calls.py NICHT mehr git-diff leer,
+  siehe [[sprachagnostik]]): self_call_match=lenient (re.match statt fullmatch,
+  wenn callee_raw die Klammern traegt, GDScript "self.m()"); self_module_fallback
+  (GDScript: self.m() ohne Klassen-Scope -> Top-Level-Funktion, Datei-als-Klasse,
+  callee_ref = bare Name, 0.6).
 - Symboltabelle dafuer aus extract_symbols (Komposition der det-Artefakte).
 - Grammar: attribute-Felder object/attribute; Module-Calls direkt unter module
   (kein expression_statement-Wrapper).
@@ -108,10 +113,13 @@ KEINE Python-Knotentypen mehr in symbols/imports/calls.py (grep-verifiziert).
 Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
 [[sprachagnostik]]. Verteilung der Sprach-Spezifika:
 - queries/<lang>/*.scm: Knotentypen, Pattern, Felder (alles Strukturelle).
-- core/indexer/profiles.py: 4 Achsen (visibility_strategy, self_keyword,
-  import_resolution, const_strategy), je Eintrag mit Begruendung "warum nicht
-  .scm". const_strategy kam dazu, weil Go eine universelle ALL_CAPS->const-Regel
-  verbietet (dort ist Grossschreibung Export); Keyword-Sprachen = none.
+- core/indexer/profiles.py: 6 Achsen (visibility_strategy, self_keyword,
+  import_resolution, const_strategy, self_call_match, self_module_fallback), je
+  Eintrag mit Begruendung "warum nicht .scm". const_strategy kam dazu, weil Go eine
+  universelle ALL_CAPS->const-Regel verbietet (dort ist Grossschreibung Export);
+  Keyword-Sprachen = none. self_call_match + self_module_fallback kamen mit I-1.11b
+  (GDScript self-Calls, Datei-als-Klasse) dazu; beide Defaults (strict/False)
+  lassen Py/JS/TS/C# unberuehrt.
 - registry.py: get_profile (re-exportiert) + producer_name(lang) ("tree-sitter-py").
 - Kern-generisch geblieben (nicht Profil): kind=Suffix von @definition.*;
   Doc-Delimiter-Stripper; Dedup nach Definitionsknoten (hoeherer Pattern-Index
@@ -140,10 +148,13 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   import-Keyword). calls.py weiter diff-leer. Verbleibend akzeptiert: C#
   namespace-Sichtbarkeit private (bedeutungslos), TS exportierte namespace-Member
   als Top-Level.
-- I-1.11 GDScript FERTIG: queries/gdscript/{symbols,calls}.scm + Profil
-  (underscore_prefix, self, const strukturell). ingest .gd -> 2 Builder (kein
-  dependency_graph) -> Sprach-Dispatch konkret. neues kind 'signal'. calls.py
-  weiter git-diff LEER (Agnostik ueber 5 Sprachen Py/JS/TS/C#/GDScript). grobe
-  calls: member self.x() callee_ref NULL. Details: [[gdscript-umsetzung]].
+- I-1.11 GDScript FERTIG (reduziert): queries/gdscript/{symbols,calls}.scm +
+  Profil. ingest .gd -> 2 Builder. neues kind 'signal'. Details:
+  [[gdscript-umsetzung]].
+- I-1.11b GDScript Paritaet FERTIG (2026-06-30): dependency_graph (imports.scm +
+  res_path-Strategie + generisches _unquote im Kern) -> 3 Builder (_ALL_THREE);
+  self-Calls loesen auf (2 neue Profil-Achsen, calls.py NICHT mehr git-diff leer,
+  bewusst); Datei-extends als Klassen-Signatur (.scm). 160 Tests gruen. OFFEN S4:
+  Datei-als-Klasse im Symbol-Modell (Top-Level-Member -> method der class_name-
+  Klasse, mit cross-file class_name-Tabelle). Details: [[gdscript-umsetzung]].
 - Schritt 1 fast fertig: nur noch I-1.12 (ruff Lint-/Format-Gate) offen.
-- Danach I-1.10 C#, I-1.11 GDScript (reduziert, 2 Builder).

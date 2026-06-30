@@ -271,6 +271,40 @@ Klasse  : det
 C/C++ bleibt offen gehalten (Praeprozessor/#include -> spaeter).
 ```
 
+## I-1.11b  GDScript auf Paritaet (First-Class)
+
+Details + Sondierung: [[gdscript-umsetzung]]. Folge-Inkrement, weil die Reduktion
+GDScripts det-Graph systematisch duenner machte (kein dependency_graph, self-Calls
+unaufgeloest) -> schlechtere Agent-Grundierung auf GDScript-Repos. Reduktions-Beleg
+war erbracht -> Promotion.
+
+```
+Ziel    : GDScript-Graph auf Paritaet mit C#/Python; bewusster Trade-off
+          calls.py-Diff-leer-Beleg gegen echte Paritaet (mit Nutzer entschieden).
+Workstreams:
+  A self-Calls: zwei GENERISCHE Profil-Achsen (kein Sprachname im Kern):
+    self_call_match (strict|lenient) + self_module_fallback (bool). GDScript:
+    lenient (callee_raw traegt Klammern, attribute_call ohne function:-Feld) +
+    True (Datei-als-Klasse: self.m() -> Top-Level-Funktion). Py/JS/TS/C# erben
+    Defaults -> null Regression.
+  B extends-Signatur: Datei-Klasse (class_name + sibling extends) traegt Basis;
+    zwei kombinierte source-Pattern (beide Reihenfolgen) + Standalone, Dedup ueber
+    Pattern-Index. Rein .scm.
+  C dependency_graph: imports.scm (extends-String + preload/load via #eq?) +
+    import_resolution=res_path (res:// = Repo-Wurzel; user:///dynamisch -> None) +
+    generisches _unquote im Kern (wertbasiert) + ingest .gd -> 3 Builder.
+Akzeptanz: Golden (symbol_index mit extends-Signatur, call_graph mit self-Calls,
+          dependency_graph) + Real-Code-Smoke + 3-Builder-ingest-Test. KERN-DIFF:
+          calls.py NICHT mehr diff-leer (generisch/profilgesteuert, dokumentiert in
+          [[sprachagnostik]]); kein language-inlining.
+OFFEN S4 : Datei-als-Klasse im Symbol-Modell (Top-Level-Member -> method der
+          class_name-Klasse, cross-file class_name-Tabelle). Bewusst NICHT in S1:
+          braeche bare-Call-Aufloesung, unvollstaendig ohne class_name, zieht S4
+          halb vor. Artefakte sind Cache -> S4 re-indiziert.
+Klasse  : det
+Status  : fertig (2026-06-30), 160 Tests gruen.
+```
+
 ## I-1.12  Lint-/Format-Gate (Schritt-1-Abschluss vor Phase 2)
 
 Letzter Schritt von Schritt 1: Code-Qualitaet von Stratum selbst haerten, bevor

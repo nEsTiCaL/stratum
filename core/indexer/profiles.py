@@ -29,6 +29,26 @@ class LanguageProfile:
     self_keyword:
         Bezeichner des Empfaengers fuer Selbst-Methoden-Aufrufe ("self"/"this"/
         "$this") oder None, wenn nicht aufloesbar (z.B. Go: Receiver-Name frei).
+    self_call_match:
+        "strict"   callee_raw des Selbst-Aufrufs traegt KEINE Argument-Klammern
+                   (die Grammar hat ein function:-Feld, das den reinen Callee
+                   liefert). fullmatch gegen <self>.<name>. Default fuer Py/JS/TS/C#.
+        "lenient"  callee_raw enthaelt die Aufruf-Klammern, weil die Grammar kein
+                   function:-Feld hat und der ganze attribute-Knoten gecaptured wird
+                   (GDScript: self.m() -> "self.m()"). match (Trailing erlaubt).
+                   Warum nicht .scm: die Grammar bietet keinen Knoten, der genau
+                   "<self>.<name>" (ohne Argumente) umspannt.
+    self_module_fallback:
+        True   loest <self>.<name> auch dann auf, wenn KEIN umschliessendes
+               Klassen-Scope vorliegt - dann gegen die Top-Level-Funktionen der
+               Datei (Datei-als-Klasse-Semantik). Fuer GDScript: jede .gd-Datei IST
+               eine Klasse, Top-Level-Funktionen sind faktisch ihre Methoden.
+               Warum nicht .scm/Symbol-Modell: die saubere Zuordnung (Top-Level ->
+               Methode der class_name-Klasse) braucht die projektweite class_name-
+               Tabelle und folgt erst S4; der Fallback loest den Aufruf hier, ohne
+               die Symbol-Modellierung (kind/parent) vorzeitig umzustellen.
+        False  Default (Py/JS/TS/C#): self/this nur gegen das umschliessende Klassen-
+               Scope.
     import_resolution:
         "namespace_passthrough" target = rohe Modul-/Namespace-Id (Java/C#/Go/
                                 Rust/PHP); echte FS-Aufloesung erst S4.
@@ -54,6 +74,8 @@ class LanguageProfile:
     self_keyword: str | None
     import_resolution: str
     const_strategy: str
+    self_call_match: str = "strict"
+    self_module_fallback: bool = False
 
 
 _PROFILES: dict[str, LanguageProfile] = {
@@ -102,16 +124,20 @@ _PROFILES: dict[str, LanguageProfile] = {
         # von var trennbar -> aus dem erfassten Modifier-Set ableiten.
         const_strategy="modifier",
     ),
-    # GDScript (I-1.11, reduziert: nur symbol_index + call_graph). underscore_prefix
-    # (fuehrender _ -> private; _ready/_process u.a. sind Engine-Callbacks, als
-    # privat gewertet obwohl faktisch public - akzeptierte Approximation). self.
-    # const strukturell (const_statement) -> none. import_resolution UNBENUTZT
-    # (kein dependency_graph-Builder fuer GDScript), Platzhalter.
+    # GDScript (I-1.11/1.11b). underscore_prefix (fuehrender _ -> private;
+    # _ready/_process u.a. sind Engine-Callbacks, als privat gewertet obwohl
+    # faktisch public - akzeptierte Approximation). self. const strukturell
+    # (const_statement) -> none. self_call_match=lenient (attribute_call ohne
+    # function:-Feld -> callee_raw "self.m()" mit Klammern). self_module_fallback:
+    # Datei-als-Klasse, self.m() loest gegen Top-Level-Funktionen auf (I-1.11b).
+    # res_path: extends/preload/load("res://..") -> repo-relativ (res:// = Wurzel).
     "gdscript": LanguageProfile(
         visibility_strategy="underscore_prefix",
         self_keyword="self",
-        import_resolution="namespace_passthrough",
+        import_resolution="res_path",
         const_strategy="none",
+        self_call_match="lenient",
+        self_module_fallback=True,
     ),
 }
 

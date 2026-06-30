@@ -39,9 +39,10 @@ _BUILDER_SETS = {
     "javascript": _ALL_THREE,
     "typescript": _ALL_THREE,
     "csharp": _ALL_THREE,
-    # GDScript reduziert: KEIN dependency_graph -> 2 Builder. Macht die
-    # Sprach-Dispatch konkret (Builder-Set je Sprache).
-    "gdscript": (symbol_index_result, call_graph_result),
+    # GDScript ab I-1.11b vollwertig (dependency_graph ueber res://-Pfade). Der
+    # Builder-Set-je-Sprache-Mechanismus bleibt der Dispatch-Punkt (datengesteuert),
+    # auch wenn aktuell alle Sprachen _ALL_THREE nutzen.
+    "gdscript": _ALL_THREE,
 }
 _DEFAULT_LANGUAGE = "python"
 

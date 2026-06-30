@@ -78,7 +78,8 @@ I-1.85  Sprachagnostischer Kern        det  I-1.6      sprachagnostik    fertig
 I-1.9   JavaScript/TS (sym/imp/call)   det  I-1.85     js-ts-umsetzung   fertig
 I-1.10  C# voll                        det  I-1.85     R1, TG(3), sprachagn.   fertig
 I-1.11  GDScript (reduziert, 2 Builder) det  I-1.85     gdscript-umsetzung   fertig
-I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11     DS, V  (vor Phase 2)   offen   <- naechstes
+I-1.11b GDScript Paritaet (3 Builder+self) det I-1.11   gdscript-umsetzung   fertig
+I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11b    DS, V  (vor Phase 2)   offen   <- naechstes
 ```
 
 ## Schritt 2: Orchestrator-Kern  (Spec: S2)
@@ -152,10 +153,12 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 ## Status
 
-I-1.0 bis I-1.11 fertig. Schritt 1 noch offen: NUR I-1.12 (ruff Lint-/Format-Gate,
+I-1.0 bis I-1.11b fertig. Schritt 1 noch offen: NUR I-1.12 (ruff Lint-/Format-Gate,
 Abschluss vor Phase 2). Sprachagnostik belegt ueber 5 Sprachen (Py/JS/TS/C#/
-GDScript): calls.py durchgaengig git-diff leer, symbols.py/imports.py nur
-generische profilgesteuerte Erweiterungen. Befunde im Indexer-[[_core]].
+GDScript) profilgesteuert; calls.py war bis I-1.11 git-diff leer, ab I-1.11b
+generisch erweitert (GDScript self-Calls, 2 Profil-Achsen) - kein language-inlining,
+Agnostik intakt. GDScript ab I-1.11b First-Class (3 Builder). Befunde im
+Indexer-[[_core]] und [[gdscript-umsetzung]].
 Beim Abschluss eines Haeppchens Status hier
 aktualisieren (offen -> in arbeit -> fertig) und log.md ergaenzen. Dieser
 Plan ist die einzige Fortschritts-Wahrheit; nicht an mehreren Stellen pflegen.
