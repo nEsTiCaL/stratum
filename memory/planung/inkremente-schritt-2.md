@@ -83,6 +83,10 @@ Akzeptanz (det, via FakeModel): det -> nur Schema, Fail = Bug, KEINE
           Kontext gesprengt -> Eskalation; erschoepft -> unresolved;
           Trace je Knoten (validation_result, trigger, attempts, final_model)
 Klasse  : det (Logik) ueber Model-Seam
+Quelle  : [[i-2-1-matrix-router]] -> "Konsumenten-Vertrag (fuer I-2.4)". Der
+          Router ist v2 (Capability-Modell); R2/SK3 beschreiben die ueberholte
+          rank-Liste. Eskalation = naechster Candidate der candidates()-Liste;
+          Pre-S3-Cloud nicht real aufrufbar -> endet am letzten lokalen Modell.
 ```
 
 ## I-2.5  Worker + Model-Seam

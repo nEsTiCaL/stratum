@@ -122,6 +122,41 @@ Schicht 3 war der fehlende Knoten. Entscheidungen (mit Nutzer):
 - Cloud-Default = Anthropic-Baseline (haiku->sonnet->opus), free (Gemini/Groq) +
   OpenAI/Google opt-in je Tier.
 
+## Konsumenten-Vertrag (fuer I-2.4 Validator/Eskalation)
+
+I-2.4 ist das direkt abhaengige Paket. Es ruft NICHT mehr eine rank-Liste ab
+(R2/SK3 beschreiben das ueberholte v1-Modell), sondern den Capability-Router.
+Kaltstart-relevant:
+
+```
+Router().candidates(task_type, sensitivity=Sensitivity.none, prefs=RouterPrefs(),
+                    installed=frozenset(...)) -> list[Candidate]
+  [0] = Start, Rest = Eskalationspfad in dieser Reihenfolge. Leer -> unresolved.
+Candidate(model, provider, cost_tier); .is_cloud (= provider != local).
+ModelCapability.num_ctx verfuegbar (fuer "Kontext gesprengt").
+```
+
+- **Eskalation = naechster Listenindex**, NACH genau 1 Retry am selben Modell
+  (gleiches Modell, angepasster Prompt/niedrige Temp; R2 Komponente 5). Reihe
+  erschoepft -> status=unresolved.
+- **det vs prob ueber producer_class** (Provenance, S1): det -> nur Schema; Fail
+  = Bug, KEINE Eskalation. prob -> Schema + typabhaengig + confidence >= Schwelle.
+- **confidence-Schwelle ist task_type-abhaengig** (Startwerte SK6: 0.65 Standard,
+  0.85 crypto_audit, 0.55 document/explain). Ablage analog TASK_REQUIREMENTS
+  denkbar (Kaltstart-Entscheidung I-2.4); die TaskType-Enum liegt in core.router.
+- **Pre-S3-Cloud-Grenze (wichtig):** Cloud-Kandidaten (is_cloud) sind bis S3
+  nicht real aufrufbar - kein Adapter (I-3.1) und das Egress-Gate blockiert.
+  Praktisch endet die Eskalation am letzten LOKALEN Kandidaten; ist der erschoepft
+  -> unresolved (roadmap: "Eskalation endet am staerksten lokalen Modell" bis S3).
+  I-2.4 darf den Pfad voll modellieren; ob ein Cloud-Schritt ausgefuehrt wird,
+  entscheidet Worker/Adapter (I-2.5/S3) - vor S3 = "nicht verfuegbar" -> weiter.
+- **"Kontext gesprengt" -> Eskalation** zum naechsten Kandidaten (ggf. groesseres
+  num_ctx); det-Validierungsfehler eskalieren NIE.
+- **Trace je Knoten** (R2): validation_result (pass|fail|escalated), trigger,
+  attempts, final_model, confidence.
+- **Test ueber den Model-Seam** (FakeModel/ReplayModel, tdd-methodik): die
+  Validator-/Eskalations-Logik ist det und ohne echtes Modell pruefbar.
+
 ## Entscheidung: det-Linter weiter vertagt
 
 [[det-linter-review]] (eigener artifact_type lint_findings + Schema-Bump) bleibt
