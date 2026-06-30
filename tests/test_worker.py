@@ -164,6 +164,18 @@ class TestOllamaAdapterErrors:
         adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
         assert adapter.complete("prompt") == "hallo welt"
 
+    def test_http_500_includes_body_detail(self):
+        from core.ollama_adapter import OllamaAdapter
+
+        client = httpx.Client(
+            transport=_MockTransport(
+                {"error": "llama-server process has terminated"}, status_code=500
+            )
+        )
+        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        with pytest.raises(RuntimeError, match="llama-server"):
+            adapter.complete("prompt")
+
 
 # ---------------------------------------------------------------------------
 # LlmWorker: Plumbing mit FakeModel

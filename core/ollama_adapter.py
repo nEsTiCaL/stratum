@@ -43,10 +43,18 @@ class OllamaAdapter:
                 f"{self._host}/api/generate",
                 json={"model": self.model, "prompt": prompt, "stream": False},
             )
-            resp.raise_for_status()
-            data = resp.json()
+            # Body vor Status-Check lesen – Fehlerdetails gehen sonst verloren.
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            if not resp.is_success:
+                msg: str = data.get("error", resp.text)
+                if "context" in msg.lower():
+                    raise ContextExceededError(msg)
+                raise RuntimeError(f"Ollama {resp.status_code}: {msg}")
             if "error" in data:
-                msg: str = data["error"]
+                msg = data["error"]
                 if "context" in msg.lower():
                     raise ContextExceededError(msg)
                 raise RuntimeError(msg)
