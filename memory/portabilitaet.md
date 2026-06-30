@@ -52,6 +52,19 @@ Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
    WSL2 ueber die Bridge-IP (Default-Gateway). Windows 11: ohne Firewall-Regel
    erreichbar (getestet). Windows 10: Inbound-Allow-Regel fuer Port 11434
    noetig, sonst blockt die Firewall. Detail: scripts/README.md.
+
+11 Ollama GPU-Backend-Auswahl (Windows-Host): Falls CUDA defekt oder veraltet
+   (Symptom: "PTX was compiled with an unsupported toolchain"), vor dem
+   Ollama-Start setzen:
+     Windows-Umgebungsvariable: CUDA_VISIBLE_DEVICES = -1
+   Ollama faellt dann auf Vulkan zurueck (GTX1070 + Ollama 0.30.11 getestet,
+   funktioniert). Falls auch Vulkan nicht verfuegbar -> CPU-Modus, dann
+   capacity.toml auf Profil D setzen (total_vram_mb effektiv 0).
+   Alternativ CPU-Inferenz per Request erzwingen (kein Neustart noetig,
+   Modell-Gewicht landet im RAM statt VRAM):
+     {"model": "...", "prompt": "...", "options": {"num_gpu": 0}, "stream": false}
+   num_gpu=0 zwingt Ollama fuer genau diesen Request auf CPU. Getestet
+   2026-06-30 (GTX1070, Ollama 0.30.11, Windows 10).
 ```
 
 ## Editier- und Sync-Workflow (Claude + WSL)
