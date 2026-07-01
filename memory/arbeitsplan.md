@@ -37,6 +37,11 @@ Bauens (`method_tdd`, rot->gruen je Test) und einmal vollstaendig unmittelbar
 vor Schritt 8 als Abnahme-Beleg - ein zusaetzlicher Gruen-Check am Anfang
 verdoppelt das nur.
 
+> Caveat (2026-07-01, log finding): Die Gruen-Verbuergung deckt in der Praxis
+> nur `pytest` ab, NICHT das Lint-Gate. HEAD wurde mehrfach mit rotem
+> `ruff check`/`ruff format --check` und sogar veralteten Tests committet.
+> Abnahme (Schritt 8) = pytest UND `ruff check .` UND `ruff format --check .`.
+
 ## Quellen-Legende
 
 ```
