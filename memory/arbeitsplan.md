@@ -27,6 +27,16 @@ Haeppchen-Zeile eine konkrete Datei nennt, direkt lesen.
    (Message vorher besprechen, keine Co-Authored-By-Zeile)
 ```
 
+**Ausgangs-Annahme: HEAD ist gruen.** Ein Commit auf main heisst per Konvention
+"volle Testsuite bestanden" (Schritt 8 oben laeuft nie ohne gruen). Deshalb VOR
+Schritt 7 keine eigene volle Testsuite zur Kontrolle laufen lassen ("ist der
+Stand wirklich gruen?") - das ist bereits durch die letzte Abnahme verbuergt
+und kostet nur Zeit. N1-Preflight (Schritt 2) prueft NUR die Umgebung
+(Migration/Index), nicht die Tests. Die Suite laeuft ohnehin waehrend des
+Bauens (`method_tdd`, rot->gruen je Test) und einmal vollstaendig unmittelbar
+vor Schritt 8 als Abnahme-Beleg - ein zusaetzlicher Gruen-Check am Anfang
+verdoppelt das nur.
+
 ## Quellen-Legende
 
 ```

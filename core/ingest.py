@@ -10,6 +10,7 @@ dieselbe Ingestion.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -153,3 +154,45 @@ def resolve_source_hash(repo_root: str | Path) -> str:
     except (OSError, subprocess.SubprocessError):
         pass
     return "worktree"
+
+
+_DEFAULT_INGEST_GLOBS = ("core/**/*.py", "interfaces/**/*.py")
+
+
+def ingest_repo(
+    repo: Repository,
+    repo_root: str | Path,
+    *,
+    globs: Sequence[str] = _DEFAULT_INGEST_GLOBS,
+    scan: SecretScan | None = None,
+    session_id: str = "ingest",
+    resolve_hash: Callable[[Path], str] = resolve_source_hash,
+) -> list[IngestResult]:
+    """Ingestiert alle zu `globs` passenden Dateien in EINEM Lauf statt Datei
+    fuer Datei einzeln zu starten (N1-Preflight/Dogfooding, siehe ops_n1-queries).
+
+    source_hash wird EINMAL fuer den ganzen Lauf aufgeloest (git rev-parse ist
+    fuer alle Dateien gleich), nicht pro Datei -> aus N Prozessaufrufen wird
+    einer. resolve_hash injizierbar fuer Tests (kein echtes git noetig).
+    """
+    root = Path(repo_root)
+    source_hash = resolve_hash(root)
+
+    seen: set[str] = set()
+    rel_paths: list[str] = []
+    for pattern in globs:
+        for path in root.glob(pattern):
+            if not path.is_file():
+                continue
+            rel = path.resolve().relative_to(root.resolve()).as_posix()
+            if rel not in seen:
+                seen.add(rel)
+                rel_paths.append(rel)
+    rel_paths.sort()
+
+    return [
+        ingest_file(
+            repo, root, rel, source_hash=source_hash, scan=scan, session_id=session_id
+        )
+        for rel in rel_paths
+    ]

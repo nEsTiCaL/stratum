@@ -26,6 +26,39 @@ Akzeptanz (det): gleicher scope zweimal serialisiert -> BYTE-identisch
 Klasse  : det
 ```
 
+### Konsumenten-Vertrag (fuer I-3.1 Cloud-Adapter)
+
+core/bundling.py, abgeschlossen, noch NICHT verdrahtet (LlmWorker baut Prompts
+weiterhin direkt aus item.payload["prompt"]). I-3.1 ist der erste Konsument:
+
+```
+build_core_bundle(repo, scopes: Sequence[str]) -> CoreBundle
+  scopes sortiert+dedupliziert; je scope get_current() fuer symbol_index/
+  dependency_graph/call_graph (fehlend -> ausgelassen, kein Fehler).
+  .module_overview = {"files": [...], "symbol_count": int}, synthetisiert
+  aus bereits geladenem symbol_index (keine eigene Artefaktart).
+serialize_core_bundle(bundle) -> bytes   # deterministisch, Cache-Key-faehig
+
+TaskContext(question: str, prior_result: dict|None)
+serialize_task_context(ctx) -> bytes     # separat von Core, aendert Core-Bytes nicht
+
+select_hotspots(repo, scopes, source_provider: Callable[[str], str],
+                *, max_hotspots=20) -> tuple[Hotspot, ...]
+  Kandidaten NUR aus call_graph-Kanten mit gesetztem callee_ref (aufgeloest);
+  sortiert (scope, span, callee_ref), gekappt. source_provider ist die einzige
+  I/O-Nahtstelle (Datei-Lesen ist Aufgabe des Aufrufers) - Bundling selbst
+  bleibt I/O-frei.
+
+Bundle(core, task_context, hotspots)
+serialize_bundle(bundle) -> bytes        # 3 Segmente konkateniert, in Sende-
+                                          # Reihenfolge Core->Task->Hotspots
+```
+
+Feldnamen im `content` der drei det-Artefakte: `idx_content-schema`. Fuer den
+Adapter (I-3.1) relevant: serialize_core_bundle(bundle) ist der Cache-Key-
+Kandidat fuer Caching (cache_control) - Hash darueber bleibt stabil, solange
+sich der scope-Zustand nicht aendert, unabhaengig von Task-Kontext/Hotspots.
+
 ## I-3.3  Redaction-Gate (Stub, Vertrag fix) + fail-safe Egress
 
 ```

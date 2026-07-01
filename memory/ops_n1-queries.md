@@ -31,14 +31,16 @@ Idempotent. Schlaegt fehl wenn Container nicht laeuft. NICHT `yoyo` direkt
 
 Index aktuell? (einmalig pro Session, falls neue Dateien seit letztem Lauf):
 ```
-<REST> = -c "from core.ingest import ingest_file; from core.repository import Repository; \
+<REST> = -c "from core.ingest import ingest_repo; from core.repository import Repository; \
 from core.db import connect; from pathlib import Path; \
 conn = connect(); repo = Repository(conn); \
-files = list(Path('core').glob('**/*.py')) + list(Path('interfaces').glob('**/*.py')); \
-[ingest_file(repo, Path('.'), str(f)) for f in files]; \
-print(f'indexed {len(files)} files'); conn.close()"
+r = ingest_repo(repo, Path('.')); \
+print(f'indexed {len(r)} files'); conn.close()"
 ```
-Laufzeit ~2-5 s fuer ~25 Dateien. Idempotent (superseded-Mechanik).
+ingest_repo() (I-1.7-Erweiterung) ingestiert core/+interfaces/ in EINEM Lauf statt
+Datei fuer Datei: source_hash wird einmal aufgeloest (ein git rev-parse statt
+N), nicht mehr pro Datei ein eigener Prozessaufruf. Laufzeit ~2-5 s fuer ~30
+Dateien. Idempotent (superseded-Mechanik).
 
 ## Queries (devcli)
 

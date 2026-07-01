@@ -6,9 +6,11 @@ Watch und Hook loesen identische Ingestion aus.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from watchdog.events import FileModifiedEvent
 
-from core.ingest import file_scope, ingest_content, ingest_file
+from core.ingest import file_scope, ingest_content, ingest_file, ingest_repo
 from core.repository import Repository
 from core.watch import IngestEventHandler
 
@@ -100,3 +102,65 @@ class TestTriggersIdentical:
 
         assert hook_state == watch_state
         assert set(watch_state) == set(_ARTIFACT_TYPES)
+
+
+class TestIngestRepo:
+    def _make_tree(self, tmp_path: Path) -> None:
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "sub").mkdir()
+        (tmp_path / "interfaces").mkdir()
+        (tmp_path / "other").mkdir()
+        (tmp_path / "core" / "a.py").write_text(_SAMPLE, encoding="utf-8")
+        (tmp_path / "core" / "sub" / "b.py").write_text(_SAMPLE, encoding="utf-8")
+        (tmp_path / "interfaces" / "c.py").write_text(_SAMPLE, encoding="utf-8")
+        (tmp_path / "other" / "ignored.py").write_text(_SAMPLE, encoding="utf-8")
+
+    def test_ingests_all_matching_files_in_one_call(self, conn, tmp_path):
+        self._make_tree(tmp_path)
+        repo = Repository(conn)
+
+        results = ingest_repo(repo, tmp_path, resolve_hash=lambda _root: "h")
+
+        scopes = {r.scope for r in results}
+        assert scopes == {
+            "file:core/a.py",
+            "file:core/sub/b.py",
+            "file:interfaces/c.py",
+        }
+        assert repo.get_current("file:other/ignored.py", "symbol_index") is None
+
+    def test_resolves_source_hash_exactly_once(self, conn, tmp_path):
+        self._make_tree(tmp_path)
+        repo = Repository(conn)
+        calls: list[Path] = []
+
+        def _counting_resolver(root: Path) -> str:
+            calls.append(root)
+            return "fixed-hash"
+
+        ingest_repo(repo, tmp_path, resolve_hash=_counting_resolver)
+
+        assert len(calls) == 1
+        got = repo.get_current("file:core/a.py", "symbol_index")
+        assert got.provenance.source_hash == "fixed-hash"
+
+    def test_overlapping_globs_do_not_duplicate_ingestion(self, conn, tmp_path):
+        self._make_tree(tmp_path)
+        repo = Repository(conn)
+
+        results = ingest_repo(
+            repo,
+            tmp_path,
+            globs=("core/**/*.py", "core/a.py"),
+            resolve_hash=lambda _root: "h",
+        )
+
+        assert [r.scope for r in results].count("file:core/a.py") == 1
+
+    def test_result_order_is_deterministic(self, conn, tmp_path):
+        self._make_tree(tmp_path)
+        repo = Repository(conn)
+
+        results = ingest_repo(repo, tmp_path, resolve_hash=lambda _root: "h")
+
+        assert [r.scope for r in results] == sorted(r.scope for r in results)

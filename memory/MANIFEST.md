@@ -72,6 +72,8 @@ spec_i-2-1-router.md     | I-2.1 Capability-Router (Matrix v2): Achsen, Tiers, M
 spec_lint-gate.md        | I-1.12 ruff Lint-/Format-Gate (Schritt-1-Abschluss)                 | make lint/fmt/check, line-length 88
 idx_core.md              | Indexer-Kern: tree-sitter-API (0.25), Python-Grammar-Eigenheiten,   | querycursor, .scm, span-containment,
                          |   Symbol/dependency/call-Konventionen                               |   symbol_index, call_graph
+idx_content-schema.md    | jsonb-Content-Felder der 3 det-Artefakttypen (N1 zeigt sie nicht)   | symbols, imports, calls, callee_ref,
+                         |                                                                      |   confidence, span-Format
 idx_sprachagnostik.md    | Sprachagnostik: Capture-Vokabular, Profil-Achsen, Grenzziehung      | @definition, visibility_strategy,
                          |   ueber 15 Sprachen                                                 |   self_keyword, capture-konvention
 idx_js-ts.md             | JavaScript/TS-Umsetzung (I-1.9): Findings + Bauplan + Kern-Edits     | export-sichtbarkeit, esm/cjs, require
