@@ -46,7 +46,7 @@ class ModelCost:
 # Projektweite Modell-Kosten. Gleich auf jeder Maschine; nur capacity.toml
 # aendert sich pro Deployment. Kanonische Schluessel (I-2.1-Matrix zieht nach).
 MODEL_CONFIG: dict[str, ModelCost] = {
-    "phi-4-mini": ModelCost("phi-4-mini", 3000, 8192, "-1"),
+    "phi4-mini": ModelCost("phi4-mini", 3000, 8192, "-1"),
     "qwen2.5-coder": ModelCost("qwen2.5-coder", 5000, 8192, "-1"),
     "qwen3-8b": ModelCost("qwen3-8b", 6000, 8192, "5m"),
     "qwen2.5-coder-14b": ModelCost("qwen2.5-coder-14b", 9000, 8192, "5m"),
@@ -120,20 +120,20 @@ def default_policy(
     """Auto-Detect-Default ohne explizites Profil (startkonfiguration 5b)."""
     reserve = 1024
     if facts.total_vram_mb == 0:
-        # Profil D: CPU-only. Begrenzend ist Host-RAM; nur phi-4-mini lokal.
+        # Profil D: CPU-only. Begrenzend ist Host-RAM; nur phi4-mini lokal.
         budget = facts.total_ram_mb or 9000
         return CapacityPolicy(
             budget_mb=budget,
             max_parallel=1,
-            resident_set=("phi-4-mini",),
-            allowed_models=("phi-4-mini",),
+            resident_set=("phi4-mini",),
+            allowed_models=("phi4-mini",),
             reserve_mb=reserve,
         )
     budget = (facts.total_vram_mb * 80) // 100
-    phi = model_config["phi-4-mini"].vram_mb
+    phi = model_config["phi4-mini"].vram_mb
     coder = model_config["qwen2.5-coder"].vram_mb
     resident = (
-        ("phi-4-mini", "qwen2.5-coder") if phi + coder <= budget else ("phi-4-mini",)
+        ("phi4-mini", "qwen2.5-coder") if phi + coder <= budget else ("phi4-mini",)
     )
     allowed = tuple(m for m, c in model_config.items() if c.vram_mb <= budget)
     return CapacityPolicy(

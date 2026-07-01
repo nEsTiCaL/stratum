@@ -38,7 +38,7 @@ def _prob_response(confidence: float = 0.85) -> str:
             "recommendations": [],
             "provenance": {
                 "producer_class": "prob",
-                "producer": "phi-4-mini",
+                "producer": "phi4-mini",
                 "producer_version": "0.1",
                 "schema_version": "1",
                 "source_hash": "abc",
@@ -54,7 +54,7 @@ def _prob_response(confidence: float = 0.85) -> str:
 def _item(
     task_type: str = "explain",
     scope: str = "file:core/foo.py",
-    model: str = "phi-4-mini",
+    model: str = "phi4-mini",
     payload: dict | None = None,
 ) -> QueueItem:
     return QueueItem(
@@ -143,7 +143,7 @@ class TestOllamaAdapterErrors:
         client = httpx.Client(
             transport=_MockTransport({"error": "context length exceeded"})
         )
-        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         with pytest.raises(ContextExceededError):
             adapter.complete("langer prompt")
 
@@ -151,7 +151,7 @@ class TestOllamaAdapterErrors:
         from core.ollama_adapter import OllamaAdapter
 
         client = httpx.Client(transport=_MockTransport({"error": "model not found"}))
-        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         with pytest.raises(RuntimeError, match="model not found"):
             adapter.complete("prompt")
 
@@ -161,7 +161,7 @@ class TestOllamaAdapterErrors:
         client = httpx.Client(
             transport=_MockTransport({"response": "hallo welt", "done": True})
         )
-        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         assert adapter.complete("prompt") == "hallo welt"
 
     def test_http_500_includes_body_detail(self):
@@ -172,7 +172,7 @@ class TestOllamaAdapterErrors:
                 {"error": "llama-server process has terminated"}, status_code=500
             )
         )
-        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         with pytest.raises(RuntimeError, match="llama-server"):
             adapter.complete("prompt")
 
@@ -207,10 +207,10 @@ class TestLlmWorker:
 
     def test_unresolved_does_not_store_artifact(self):
         """Bei unresolved kein put_artifact. Factory gibt None fuer alle
-        anderen Kandidaten -> nur phi-4-mini versucht (beide low_confidence)."""
+        anderen Kandidaten -> nur phi4-mini versucht (beide low_confidence)."""
 
         def factory(name: str):
-            if name == "phi-4-mini":
+            if name == "phi4-mini":
                 return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
             return None
 
@@ -254,13 +254,13 @@ class TestWorkerLoop:
 
     def test_no_item_returns_false(self):
         loop, _ = self._make_loop(item=None)
-        assert loop.step("phi-4-mini") is False
+        assert loop.step("phi4-mini") is False
 
     def test_prob_task_calls_complete_on_success(self):
         prob_item = _item(task_type="explain")
         fake_model = FakeModel(responses=[_prob_response(0.9)])
         loop, queue = self._make_loop(prob_item, fake_model=fake_model)
-        assert loop.step("phi-4-mini") is True
+        assert loop.step("phi4-mini") is True
         assert queue.completed == [1]
         assert queue.failed == []
 
@@ -268,12 +268,12 @@ class TestWorkerLoop:
         prob_item = _item(task_type="explain")
 
         def factory(name: str):
-            if name == "phi-4-mini":
+            if name == "phi4-mini":
                 return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
             return None
 
         loop, queue = self._make_loop(prob_item, model_factory=factory)
-        loop.step("phi-4-mini")
+        loop.step("phi4-mini")
         assert queue.failed == [1]
         assert queue.completed == []
 
@@ -299,5 +299,5 @@ class TestWorkerLoop:
             queue=queue, repo=repo, det_worker=det_worker, llm_worker=llm_worker
         )
         with pytest.raises(RuntimeError):
-            loop.step("phi-4-mini")
+            loop.step("phi4-mini")
         assert queue.failed == [1]

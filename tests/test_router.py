@@ -46,7 +46,7 @@ class TestCapabilityBand:
     def test_explain_starts_local_no_free_by_default(self):
         cands = Router().candidates("explain")
         names = _names(cands)
-        assert names[0] == "phi-4-mini"  # kleinste in-Band general-Faehigkeit
+        assert names[0] == "phi4-mini"  # kleinste in-Band general-Faehigkeit
         # free-Tier ohne opt-in raus, bezahlte Cloud als Eskalation vorhanden
         assert "gemini-flash" not in names
         assert "haiku" in names
@@ -58,7 +58,7 @@ class TestCapabilityBand:
 
     def test_review_excludes_below_min(self):
         names = _names(Router().candidates("review"))
-        assert "phi-4-mini" not in names  # code 35 < min 55
+        assert "phi4-mini" not in names  # code 35 < min 55
         assert "qwen2.5-coder" in names
         assert "sonnet" in names
 
@@ -100,20 +100,20 @@ class TestFreeTierGate:
 class TestInstalledFilter:
     def test_laptop_review_goes_cloud(self):
         # nur phi installiert -> review hat lokal keinen Kandidaten
-        cands = Router().candidates("review", installed=frozenset({"phi-4-mini"}))
+        cands = Router().candidates("review", installed=frozenset({"phi4-mini"}))
         assert cands  # nicht leer
         assert all(c.is_cloud for c in cands)
         assert "sonnet" in _names(cands)
 
     def test_laptop_explain_keeps_phi(self):
-        cands = Router().candidates("explain", installed=frozenset({"phi-4-mini"}))
-        assert cands[0].model == "phi-4-mini"
+        cands = Router().candidates("explain", installed=frozenset({"phi4-mini"}))
+        assert cands[0].model == "phi4-mini"
         assert cands[0].is_cloud is False
 
     def test_filter_drops_not_installed_local(self):
         # nur kleinere Modelle installiert -> 32B taucht nicht auf
         installed = frozenset(
-            {"phi-4-mini", "qwen2.5-coder", "qwen3-8b", "qwen2.5-coder-14b"}
+            {"phi4-mini", "qwen2.5-coder", "qwen3-8b", "qwen2.5-coder-14b"}
         )
         names = _names(Router().candidates("review", installed=installed))
         assert "qwen2.5-coder-32b" not in names
@@ -176,7 +176,7 @@ class TestRecommendInstall:
         plan = _plan(0, ram=9000)
         assert plan.tier == "D"
         roles = _by_role(plan)
-        assert roles[Role.general].model == "phi-4-mini"
+        assert roles[Role.general].model == "phi4-mini"
         assert roles[Role.coding].model is None  # -> Cloud
         assert roles[Role.reasoning].model is None
 
@@ -184,7 +184,7 @@ class TestRecommendInstall:
         plan = _plan(8000)
         assert plan.tier == "A"
         roles = _by_role(plan)
-        assert roles[Role.general].model == "phi-4-mini"
+        assert roles[Role.general].model == "phi4-mini"
         assert roles[Role.coding].model == "qwen2.5-coder"
         assert roles[Role.coding].fits is True
 

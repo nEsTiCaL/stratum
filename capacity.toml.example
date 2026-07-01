@@ -2,7 +2,7 @@
 # Kopieren nach capacity.toml und an die Zielmaschine anpassen. Fehlt
 # capacity.toml, leitet Stratum ein konservatives Profil aus den gemessenen
 # Hardware-Fakten ab (Auto-Detect: GPU -> 80% Budget, CPU/total_vram=0 ->
-# Profil D mit nur phi-4-mini). Modell-Kosten (vram/num_ctx/...) stehen
+# Profil D mit nur phi4-mini). Modell-Kosten (vram/num_ctx/...) stehen
 # projektweit in core/capacity.py (MODEL_CONFIG), nicht hier.
 #
 # budget_mb meint VRAM (GPU) bzw. Host-RAM (CPU-Modus). Startup-Validierung:
@@ -12,7 +12,7 @@
 # Profil B (Standard 12-16 GB GPU). Siehe startkonfiguration.md 5b.
 budget_mb = 13000
 max_parallel = 2
-resident_set = ["phi-4-mini", "qwen2.5-coder"]
-allowed_models = ["phi-4-mini", "qwen2.5-coder", "qwen3-8b", "r1-distill", "qwen3-8b-q8"]
+resident_set = ["phi4-mini", "qwen2.5-coder"]
+allowed_models = ["phi4-mini", "qwen2.5-coder", "qwen3-8b", "r1-distill", "qwen3-8b-q8"]
 reserve_mb = 1024
 gpu_id = 0

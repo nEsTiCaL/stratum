@@ -143,7 +143,7 @@ class TestModelFactory:
     def test_factory_returns_none_for_optin_or_local_name(self):
         factory = cloud_model_factory(ReplayCloudSender({}))
         assert factory("gpt") is None  # opt-in, unverdrahtet
-        assert factory("phi-4-mini") is None  # lokal, kein Cloud-Spec
+        assert factory("phi4-mini") is None  # lokal, kein Cloud-Spec
 
 
 _RESULT_PROB_JSON = """

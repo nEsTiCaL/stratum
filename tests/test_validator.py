@@ -53,7 +53,7 @@ _PROB_RESULT_OK = json.dumps(
         "recommendations": [],
         "provenance": {
             "producer_class": "prob",
-            "producer": "phi-4-mini",
+            "producer": "phi4-mini",
             "producer_version": "0.1",
             "schema_version": "1",
             "source_hash": "abc",
@@ -230,7 +230,7 @@ class TestEscalationLoopDet:
 class TestEscalationLoopProb:
     def test_first_response_passes(self):
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi-4-mini")]
+        candidates = [_candidate("phi4-mini")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
@@ -239,7 +239,7 @@ class TestEscalationLoopProb:
             model_factory=lambda _: FakeModel(responses=[_prob_result(0.9)]),
         )
         assert outcome.status == "done"
-        assert outcome.final_model == "phi-4-mini"
+        assert outcome.final_model == "phi4-mini"
         assert outcome.attempts == 1
 
     def test_low_confidence_retries_once_then_escalates(self):
@@ -248,14 +248,14 @@ class TestEscalationLoopProb:
 
         def factory(name: str):
             call_log.append(name)
-            if name == "phi-4-mini":
+            if name == "phi4-mini":
                 # beide Versuche schlagen fehl
                 return FakeModel(responses=[_prob_result(0.3), _prob_result(0.3)])
             # naechster Kandidat liefert gutes Ergebnis
             return FakeModel(responses=[_prob_result(0.9)])
 
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi-4-mini"), _candidate("qwen3-8b")]
+        candidates = [_candidate("phi4-mini"), _candidate("qwen3-8b")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
@@ -269,7 +269,7 @@ class TestEscalationLoopProb:
 
     def test_exhausted_candidates_is_unresolved(self):
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi-4-mini")]
+        candidates = [_candidate("phi4-mini")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
@@ -284,10 +284,10 @@ class TestEscalationLoopProb:
 
     def test_context_exceeded_skips_to_next_candidate(self):
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi-4-mini"), _candidate("qwen3-8b")]
+        candidates = [_candidate("phi4-mini"), _candidate("qwen3-8b")]
 
         def factory(name: str):
-            if name == "phi-4-mini":
+            if name == "phi4-mini":
                 return FakeModel(responses=[], raise_context_exceeded=True)
             return FakeModel(responses=[_prob_result(0.9)])
 
@@ -306,12 +306,12 @@ class TestEscalationLoopProb:
         """Cloud-Kandidat (factory=None) wird uebersprungen."""
         loop = EscalationLoop(Validator())
         candidates = [
-            _candidate("phi-4-mini"),
+            _candidate("phi4-mini"),
             _candidate("sonnet", cloud=True),  # cloud, nicht verfuegbar
         ]
 
         def factory(name: str):
-            if name == "phi-4-mini":
+            if name == "phi4-mini":
                 return FakeModel(responses=[_prob_result(0.1), _prob_result(0.1)])
             return None  # cloud: nicht verfuegbar
 
@@ -331,7 +331,7 @@ class TestEscalationLoopProb:
             task_type=TaskType.explain,
             producer_class="prob",
             prompt="p",
-            candidates=[_candidate("phi-4-mini")],
+            candidates=[_candidate("phi4-mini")],
             model_factory=lambda _: FakeModel(responses=[_prob_result(0.9)]),
         )
         assert outcome.status == "done"

@@ -191,7 +191,7 @@ if want s2; then
     warn "VRAM ${VRAM_MiB} MiB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein"
   else
     # Kein nvidia-smi / keine GPU -> CPU-only-Profil (memory/modell-cpu-profil.md).
-    # Lokal nur phi-4-mini (leichte NL + Klassifikation); Coden/Reasoning -> Cloud.
+    # Lokal nur phi4-mini (leichte NL + Klassifikation); Coden/Reasoning -> Cloud.
     OLLAMA_MODELS=( "phi4-mini" )
     warn "Keine NVIDIA-GPU erkannt -> CPU-only-Profil: nur phi4-mini lokal (Coden/Reasoning via Cloud)."
   fi

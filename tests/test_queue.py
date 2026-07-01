@@ -53,7 +53,7 @@ def _dag(dag_id: str = "dag1", nodes: list[DagNode] | None = None) -> TaskDag:
 class TestEnqueue:
     def test_pending_node_inserted(self, conn):
         q = Queue(conn)
-        ids = q.enqueue(_dag(), model="phi-4-mini")
+        ids = q.enqueue(_dag(), model="phi4-mini")
         assert len(ids) == 1
 
     def test_done_node_skipped(self, conn):
@@ -64,13 +64,13 @@ class TestEnqueue:
                 _node("n2", depends_on=("n1",)),
             ]
         )
-        ids = q.enqueue(dag, model="phi-4-mini")
+        ids = q.enqueue(dag, model="phi4-mini")
         assert len(ids) == 1  # nur n2; n1 war schon done (Store-Treffer)
 
     def test_multiple_nodes_all_pending(self, conn):
         q = Queue(conn)
         dag = _dag(nodes=[_node("n1"), _node("n2"), _node("n3")])
-        ids = q.enqueue(dag, model="phi-4-mini")
+        ids = q.enqueue(dag, model="phi4-mini")
         assert len(ids) == 3
 
     def test_flags_exclusive_preserved(self, conn):
@@ -90,8 +90,8 @@ class TestEnqueue:
 class TestClaim:
     def test_claim_returns_item(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag(), model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None
         assert isinstance(item, QueueItem)
         assert item.task_type == "explain"
@@ -99,11 +99,11 @@ class TestClaim:
 
     def test_claim_empty_queue_returns_none(self, conn):
         q = Queue(conn)
-        assert q.claim("phi-4-mini") is None
+        assert q.claim("phi4-mini") is None
 
     def test_claim_wrong_model_returns_none(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag(), model="phi-4-mini")
+        q.enqueue(_dag(), model="phi4-mini")
         assert q.claim("qwen-coder") is None
 
     def test_depends_on_blocks_claim(self, conn):
@@ -114,8 +114,8 @@ class TestClaim:
                 _node("n2", depends_on=("n1",)),
             ]
         )
-        q.enqueue(dag, model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(dag, model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None
         assert item.node_id == "n1"  # n2 blockiert durch n1
 
@@ -128,8 +128,8 @@ class TestClaim:
                 _node("n2", depends_on=("n1",)),
             ]
         )
-        q.enqueue(dag, model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(dag, model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None
         assert item.node_id == "n2"
 
@@ -141,26 +141,26 @@ class TestClaim:
                 _node("n2", depends_on=("n1",)),
             ]
         )
-        q.enqueue(dag, model="phi-4-mini")
-        n1 = q.claim("phi-4-mini")
+        q.enqueue(dag, model="phi4-mini")
+        n1 = q.claim("phi4-mini")
         assert n1 is not None and n1.node_id == "n1"
         q.complete(n1.id)
-        n2 = q.claim("phi-4-mini")
+        n2 = q.claim("phi4-mini")
         assert n2 is not None
         assert n2.node_id == "n2"
 
     def test_priority_higher_claimed_first(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag("d1", [_node("n1")]), model="phi-4-mini", priority=0)
-        q.enqueue(_dag("d2", [_node("n1")]), model="phi-4-mini", priority=10)
-        item = q.claim("phi-4-mini")
+        q.enqueue(_dag("d1", [_node("n1")]), model="phi4-mini", priority=0)
+        q.enqueue(_dag("d2", [_node("n1")]), model="phi4-mini", priority=10)
+        item = q.claim("phi4-mini")
         assert item is not None
         assert item.dag_id == "d2"
 
     def test_skip_locked_exactly_one_winner(self, pg_dsn):
         """Zwei nebenlaeufige Claimer, ein Task -> genau einer gewinnt."""
         with psycopg.connect(pg_dsn, autocommit=True) as setup:
-            Queue(setup).enqueue(_dag(), model="phi-4-mini")
+            Queue(setup).enqueue(_dag(), model="phi4-mini")
 
         results: list[QueueItem | None] = []
         barrier = threading.Barrier(2)
@@ -170,7 +170,7 @@ class TestClaim:
             with psycopg.connect(pg_dsn, autocommit=True) as c:
                 q = Queue(c)
                 barrier.wait()
-                item = q.claim("phi-4-mini")
+                item = q.claim("phi4-mini")
             with lock:
                 results.append(item)
 
@@ -192,27 +192,27 @@ class TestClaim:
 class TestCompleteAndFail:
     def test_complete_sets_done(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag(), model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None
         q.complete(item.id)
-        assert q.claim("phi-4-mini") is None
+        assert q.claim("phi4-mini") is None
 
     def test_fail_back_to_pending(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag(), model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None
         q.fail(item.id)
-        retry = q.claim("phi-4-mini")
+        retry = q.claim("phi4-mini")
         assert retry is not None
 
     def test_fail_increments_attempts(self, conn):
         q = Queue(conn)
-        q.enqueue(_dag(), model="phi-4-mini")
-        item = q.claim("phi-4-mini")
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
         assert item is not None and item.attempts == 0
         q.fail(item.id)
-        retry = q.claim("phi-4-mini")
+        retry = q.claim("phi4-mini")
         assert retry is not None
         assert retry.attempts == 1

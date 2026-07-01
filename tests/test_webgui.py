@@ -67,7 +67,7 @@ def client(conn):
 def client_with_task(conn):
     queue = Queue(conn)
     repo = Repository(conn)
-    (item_id,) = queue.enqueue(_dag(), model="phi-4-mini")
+    (item_id,) = queue.enqueue(_dag(), model="phi4-mini")
     conn.execute(
         "UPDATE queue SET payload = %s WHERE id = %s",
         (json.dumps({"prompt": "erklaere queue.py"}), item_id),

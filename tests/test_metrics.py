@@ -21,10 +21,10 @@ class _MockTransport(httpx.BaseTransport):
 class TestMetricsStore:
     def test_record_and_latest(self, conn):
         store = MetricsStore(conn)
-        store.record(InferenceSample("phi-4-mini", 42.5, 100))
-        latest = store.latest("phi-4-mini")
+        store.record(InferenceSample("phi4-mini", 42.5, 100))
+        latest = store.latest("phi4-mini")
         assert latest is not None
-        assert latest.model == "phi-4-mini"
+        assert latest.model == "phi4-mini"
         assert latest.tok_per_s == pytest.approx(42.5, rel=1e-3)
         assert latest.eval_count == 100
 
@@ -33,33 +33,33 @@ class TestMetricsStore:
 
     def test_avg_tok_per_s(self, conn):
         store = MetricsStore(conn)
-        store.record(InferenceSample("phi-4-mini", 40.0, 80))
-        store.record(InferenceSample("phi-4-mini", 60.0, 120))
-        assert store.avg_tok_per_s("phi-4-mini") == pytest.approx(50.0, rel=1e-3)
+        store.record(InferenceSample("phi4-mini", 40.0, 80))
+        store.record(InferenceSample("phi4-mini", 60.0, 120))
+        assert store.avg_tok_per_s("phi4-mini") == pytest.approx(50.0, rel=1e-3)
 
     def test_avg_returns_none_for_no_data(self, conn):
-        assert MetricsStore(conn).avg_tok_per_s("phi-4-mini") is None
+        assert MetricsStore(conn).avg_tok_per_s("phi4-mini") is None
 
     def test_avg_uses_last_n(self, conn):
         store = MetricsStore(conn)
         for _ in range(5):
-            store.record(InferenceSample("phi-4-mini", 10.0, 50))
-        store.record(InferenceSample("phi-4-mini", 100.0, 50))
-        assert store.avg_tok_per_s("phi-4-mini", last_n=1) == pytest.approx(
+            store.record(InferenceSample("phi4-mini", 10.0, 50))
+        store.record(InferenceSample("phi4-mini", 100.0, 50))
+        assert store.avg_tok_per_s("phi4-mini", last_n=1) == pytest.approx(
             100.0, rel=1e-3
         )
 
     def test_latest_is_most_recent(self, conn):
         store = MetricsStore(conn)
-        store.record(InferenceSample("phi-4-mini", 10.0, 50))
-        store.record(InferenceSample("phi-4-mini", 99.0, 200))
-        assert store.latest("phi-4-mini").tok_per_s == pytest.approx(99.0, rel=1e-3)
+        store.record(InferenceSample("phi4-mini", 10.0, 50))
+        store.record(InferenceSample("phi4-mini", 99.0, 200))
+        assert store.latest("phi4-mini").tok_per_s == pytest.approx(99.0, rel=1e-3)
 
     def test_models_isolated(self, conn):
         store = MetricsStore(conn)
-        store.record(InferenceSample("phi-4-mini", 40.0, 80))
+        store.record(InferenceSample("phi4-mini", 40.0, 80))
         store.record(InferenceSample("qwen2.5-coder", 20.0, 40))
-        assert store.avg_tok_per_s("phi-4-mini") == pytest.approx(40.0, rel=1e-3)
+        assert store.avg_tok_per_s("phi4-mini") == pytest.approx(40.0, rel=1e-3)
         assert store.avg_tok_per_s("qwen2.5-coder") == pytest.approx(20.0, rel=1e-3)
 
 
@@ -73,7 +73,7 @@ class TestOllamaAdapterMetrics:
         client = httpx.Client(transport=_MockTransport(payload))
         calls: list[tuple[str, float, int]] = []
         adapter = OllamaAdapter(
-            "phi-4-mini",
+            "phi4-mini",
             host="http://fake",
             client=client,
             on_metrics=lambda m, t, e: calls.append((m, t, e)),
@@ -81,7 +81,7 @@ class TestOllamaAdapterMetrics:
         assert adapter.complete("test") == "hello"
         assert len(calls) == 1
         model, tok_per_s, eval_count = calls[0]
-        assert model == "phi-4-mini"
+        assert model == "phi4-mini"
         assert tok_per_s == pytest.approx(100.0, rel=1e-3)
         assert eval_count == 200
 
@@ -90,7 +90,7 @@ class TestOllamaAdapterMetrics:
         client = httpx.Client(transport=_MockTransport(payload))
         calls: list = []
         adapter = OllamaAdapter(
-            "phi-4-mini",
+            "phi4-mini",
             host="http://fake",
             client=client,
             on_metrics=lambda m, t, e: calls.append((m, t, e)),
@@ -105,5 +105,5 @@ class TestOllamaAdapterMetrics:
             "eval_duration": 2_000_000_000,
         }
         client = httpx.Client(transport=_MockTransport(payload))
-        adapter = OllamaAdapter("phi-4-mini", host="http://fake", client=client)
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         assert adapter.complete("test") == "hello"

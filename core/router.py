@@ -136,7 +136,7 @@ def _loc(name, code, reasoning, general, *, num_ctx=8192, exclusive=False):
 # Lokale Modelle (Namen identisch zu core.capacity.MODEL_CONFIG -> Join fuer den
 # allowed_models-Filter). Feine Abstufung 3B..32B; q8 exklusiv (Praezision/solo).
 _LOCAL = [
-    _loc("phi-4-mini", 35, 30, 50),
+    _loc("phi4-mini", 35, 30, 50),
     _loc("qwen2.5-coder", 60, 45, 55),
     _loc("qwen3-8b", 55, 60, 62),
     _loc("qwen2.5-coder-14b", 72, 55, 63),
@@ -336,12 +336,12 @@ class InstallPlan:
 # dieser Klasse zu langsam/zu gross -> Cloud.
 _INSTALL_TIERS: list[tuple[str, int, dict[Role, str | None]]] = [
     # (Tier, VRAM-Obergrenze exklusiv, Rolle->Modell). D nur fuer vram==0 (CPU).
-    ("D", 1, {Role.general: "phi-4-mini", Role.coding: None, Role.reasoning: None}),
+    ("D", 1, {Role.general: "phi4-mini", Role.coding: None, Role.reasoning: None}),
     (
         "A",
         8500,
         {
-            Role.general: "phi-4-mini",
+            Role.general: "phi4-mini",
             Role.coding: "qwen2.5-coder",
             Role.reasoning: None,
         },
@@ -350,7 +350,7 @@ _INSTALL_TIERS: list[tuple[str, int, dict[Role, str | None]]] = [
         "B",
         17000,
         {
-            Role.general: "phi-4-mini",
+            Role.general: "phi4-mini",
             Role.coding: "qwen2.5-coder",
             Role.reasoning: "r1-distill",
         },
@@ -359,7 +359,7 @@ _INSTALL_TIERS: list[tuple[str, int, dict[Role, str | None]]] = [
         "C",
         10**9,
         {
-            Role.general: "phi-4-mini",
+            Role.general: "phi4-mini",
             Role.coding: "qwen2.5-coder-32b",
             Role.reasoning: "qwen3-32b",
         },
