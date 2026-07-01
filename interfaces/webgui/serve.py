@@ -28,7 +28,7 @@ from core.db import apply_migrations
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
-from core.router import Router
+from core.router import MODEL_CAPABILITIES, Provider, Router
 from core.template_registry import DagNode, TaskDag
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from interfaces.webgui.app import create_app
@@ -109,6 +109,13 @@ def _seed(conn: psycopg.Connection) -> None:
 def _make_worker_loop(worker_conn: psycopg.Connection, worker_repo: Repository) -> WorkerLoop:
     router = Router()
 
+    ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    installed = OllamaAdapter.list_models(ollama_host)
+    if not installed:
+        print("[worker] Warnung: Ollama nicht erreichbar oder keine Modelle installiert")
+    else:
+        print(f"[worker] Installierte Ollama-Modelle: {sorted(installed)}")
+
     def _on_token(_tok: str) -> None:
         task_id = getattr(_task_local, "task_id", None)
         if task_id is not None and task_id in _progress:
@@ -119,7 +126,12 @@ def _make_worker_loop(worker_conn: psycopg.Connection, worker_repo: Repository) 
         if task_id is not None and task_id in _progress:
             _progress[task_id]["tok_s"] = tok_s
 
-    def model_factory(model_name: str) -> OllamaAdapter:
+    def model_factory(model_name: str) -> OllamaAdapter | None:
+        cap = MODEL_CAPABILITIES.get(model_name)
+        if cap is None or cap.provider != Provider.local:
+            return None  # Cloud-Modell: kein Adapter verfuegbar (pre-S3)
+        if model_name not in installed:
+            return None  # lokal, aber nicht in Ollama installiert
         return OllamaAdapter(model_name, on_token=_on_token, on_metrics=_on_metrics)
 
     def on_item_start(item) -> None:
@@ -132,12 +144,16 @@ def _make_worker_loop(worker_conn: psycopg.Connection, worker_repo: Repository) 
             "task_type": item.task_type,
         }
 
+    def on_item_fail(item, reason: str) -> None:
+        print(f"[worker] Task {item.id} ({item.task_type}) fehlgeschlagen: {reason}")
+
     return WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
         det_worker=DetWorker(root=Path(__file__).parent.parent.parent),
         llm_worker=LlmWorker(router=router, model_factory=model_factory),
         on_item_start=on_item_start,
+        on_item_fail=on_item_fail,
     )
 
 

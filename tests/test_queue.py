@@ -198,14 +198,16 @@ class TestCompleteAndFail:
         q.complete(item.id)
         assert q.claim("phi4-mini") is None
 
-    def test_fail_back_to_pending(self, conn):
+    def test_fail_is_terminal(self, conn):
+        # fail() ist terminal (status='failed'): NICHT erneut claimbar.
+        # EscalationLoop im Worker macht model-level Retries bereits intern.
         q = Queue(conn)
         q.enqueue(_dag(), model="phi4-mini")
         item = q.claim("phi4-mini")
         assert item is not None
         q.fail(item.id)
-        retry = q.claim("phi4-mini")
-        assert retry is not None
+        assert q.get_status(item.id) == "failed"
+        assert q.claim("phi4-mini") is None
 
     def test_fail_increments_attempts(self, conn):
         q = Queue(conn)
@@ -213,6 +215,8 @@ class TestCompleteAndFail:
         item = q.claim("phi4-mini")
         assert item is not None and item.attempts == 0
         q.fail(item.id)
-        retry = q.claim("phi4-mini")
-        assert retry is not None
-        assert retry.attempts == 1
+        # failed-Task erscheint in list_tasks mit erhoehtem attempts
+        failed = [t for t in q.list_tasks() if t["id"] == item.id]
+        assert len(failed) == 1
+        assert failed[0]["status"] == "failed"
+        assert failed[0]["attempts"] == 1

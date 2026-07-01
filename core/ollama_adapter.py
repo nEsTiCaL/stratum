@@ -20,6 +20,23 @@ from core.validator import ContextExceededError
 class OllamaAdapter:
     """Ruft POST /api/generate auf dem lokalen Ollama-Daemon auf."""
 
+    @classmethod
+    def list_models(cls, host: str | None = None, timeout: float = 5.0) -> frozenset[str]:
+        """Installierte Ollama-Modellnamen (ohne Tag-Suffix, z.B. 'phi4-mini').
+
+        Gibt ein leeres frozenset zurueck wenn Ollama nicht erreichbar ist.
+        """
+        _host = (host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
+        try:
+            resp = httpx.get(f"{_host}/api/tags", timeout=timeout)
+            if resp.is_success:
+                return frozenset(
+                    m["name"].split(":")[0] for m in resp.json().get("models", [])
+                )
+        except Exception:
+            pass
+        return frozenset()
+
     def __init__(
         self,
         model: str,

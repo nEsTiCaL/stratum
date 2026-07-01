@@ -17,6 +17,7 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
+from core.json_extract import extract_json
 from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
 from core.router import Candidate, TaskType
@@ -127,14 +128,24 @@ class Validator:
         return ValidationResult(passed=True, trigger="pass")
 
     def _validate_prob(self, response: str, task_type: TaskType) -> ValidationResult:
+        # prob-Ausgabe kommt von einem Sprachmodell: Markdown-Fences oder Prosa
+        # um das JSON tolerieren (extract_json), sonst scheitert die Validierung
+        # an der Verpackung statt am Inhalt.
         try:
-            result = ResultProb.model_validate_json(response)
+            data = extract_json(response)
+            result = ResultProb.model_validate(data)
         except ValidationError as exc:
             first = exc.errors(include_url=False)[0]
             detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
                 passed=False, trigger="prob_schema_fail", may_escalate=True,
                 detail=detail,
+            )
+        except ValueError as exc:
+            # kein/kaputtes JSON in der Antwort
+            return ValidationResult(
+                passed=False, trigger="prob_schema_fail", may_escalate=True,
+                detail=f"kein gueltiges JSON: {exc}",
             )
         confidence = result.confidence
         if confidence < _threshold_for(task_type):

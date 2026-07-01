@@ -8,9 +8,9 @@ Sensitivitaet = max(Modell, Detektor); sensitivity_src = "model"|"detector"|"bot
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
+from core.json_extract import extract_json as _load_json
 from core.router import TaskType
 from core.secret_scan import Sensitivity
 from core.validator import Model
@@ -20,17 +20,6 @@ _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
     Sensitivity.low: 1,
     Sensitivity.high: 2,
 }
-
-def _load_json(raw: str):
-    """Parst erstes JSON-Objekt/Array; toleriert Fences und Trailing-Garbage."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].strip() if "\n" in raw else raw
-    for i, ch in enumerate(raw):
-        if ch in ("{", "["):
-            val, _ = json.JSONDecoder().raw_decode(raw, i)
-            return val
-    return json.loads(raw)
 
 
 _PROMPT_TEMPLATE = """\

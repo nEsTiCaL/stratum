@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from core.json_extract import extract_json
 from core.models.result_prob_schema import ResultProb
 from core.queue import Queue
 from core.repository import Repository
@@ -550,7 +551,7 @@ def create_app(
             raise HTTPException(status_code=422, detail=msg)
 
         try:
-            result_obj = ResultProb.model_validate_json(body.response)
+            result_obj = ResultProb.model_validate(extract_json(body.response))
             repo.put_artifact(result_obj)
         except Exception as exc:
             queue.fail(task_id)

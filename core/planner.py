@@ -9,11 +9,11 @@ build_dag() wird nur bei Bestaetigung aufgerufen.
 from __future__ import annotations
 
 import dataclasses
-import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.json_extract import extract_json as _load_json
 from core.router import TaskType
 from core.template_registry import DagNode, ScopeResolver, TaskDag, decompose
 from core.validator import Model
@@ -52,18 +52,6 @@ class GoalItem:
 class Plan:
     goals: tuple[GoalItem, ...]
     large: bool  # weiche Warnung (>= LARGE_PLAN_THRESHOLD goals)
-
-
-def _load_json(raw: str):
-    """Parst erstes JSON-Objekt/Array; toleriert Fences und Trailing-Garbage."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].strip() if "\n" in raw else raw
-    for i, ch in enumerate(raw):
-        if ch in ("{", "["):
-            val, _ = json.JSONDecoder().raw_decode(raw, i)
-            return val
-    return json.loads(raw)
 
 
 def _parse_goals(raw: str) -> list[GoalItem]:

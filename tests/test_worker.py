@@ -136,6 +136,35 @@ class TestReplayModel:
 # ---------------------------------------------------------------------------
 
 
+class TestOllamaAdapterListModels:
+    def test_returns_model_names_without_tag(self):
+        from core.ollama_adapter import OllamaAdapter
+        from unittest.mock import patch
+
+        body = {"models": [{"name": "phi4-mini:latest"}, {"name": "qwen3-8b:q4"}]}
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value = httpx.Response(200, json=body)
+            result = OllamaAdapter.list_models("http://fake")
+        assert result == frozenset({"phi4-mini", "qwen3-8b"})
+
+    def test_returns_empty_on_connection_error(self):
+        from core.ollama_adapter import OllamaAdapter
+        from unittest.mock import patch
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
+            result = OllamaAdapter.list_models("http://nohost")
+        assert result == frozenset()
+
+    def test_returns_empty_on_http_error(self):
+        from core.ollama_adapter import OllamaAdapter
+        from unittest.mock import patch
+
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value = httpx.Response(503, json={})
+            result = OllamaAdapter.list_models("http://fake")
+        assert result == frozenset()
+
+
 class TestOllamaAdapterErrors:
     def test_context_exceeded_raises(self):
         from core.ollama_adapter import OllamaAdapter
@@ -204,6 +233,25 @@ class TestLlmWorker:
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)
         assert outcome.confidence is not None
+
+    def test_fenced_response_is_tolerated_and_stored(self):
+        """phi4-mini verpackt JSON oft in ```json-Fences: muss trotzdem
+        validieren und gespeichert werden (nicht 'failed')."""
+        fenced = f"```json\n{_prob_response(0.9)}\n```"
+        worker = self._make_worker(FakeModel(responses=[fenced]))
+        repo = _FakeRepo()
+        outcome = worker.run(_item(), repo)
+        assert outcome.status == "done"
+        assert len(repo.artifacts) == 1
+
+    def test_prose_wrapped_response_is_tolerated(self):
+        """Prosa vor/nach dem JSON darf die Validierung nicht brechen."""
+        wrapped = f"Hier ist das Ergebnis:\n{_prob_response(0.9)}\nFertig."
+        worker = self._make_worker(FakeModel(responses=[wrapped]))
+        repo = _FakeRepo()
+        outcome = worker.run(_item(), repo)
+        assert outcome.status == "done"
+        assert len(repo.artifacts) == 1
 
     def test_unresolved_does_not_store_artifact(self):
         """Bei unresolved kein put_artifact. Factory gibt None fuer alle
@@ -276,6 +324,29 @@ class TestWorkerLoop:
         loop.step("phi4-mini")
         assert queue.failed == [1]
         assert queue.completed == []
+
+    def test_on_item_fail_reports_reason(self):
+        """Bei fail wird der Grund (trigger) an on_item_fail gemeldet."""
+        prob_item = _item(task_type="explain")
+
+        def factory(name: str):
+            if name == "phi4-mini":
+                return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
+            return None
+
+        queue = _FakeQueue(prob_item)
+        reasons: list[str] = []
+        loop = WorkerLoop(
+            queue=queue,
+            repo=_FakeRepo(),
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(router=Router(), model_factory=factory),
+            on_item_fail=lambda item, reason: reasons.append(reason),
+        )
+        loop.step("phi4-mini")
+        assert queue.failed == [1]
+        assert len(reasons) == 1
+        assert "low_confidence" in reasons[0]
 
     def test_det_task_calls_complete(self):
         det_item = _item(task_type="index", scope="file:core/router.py")

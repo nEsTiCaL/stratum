@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.json_extract import extract_json
 from core.models.result_prob_schema import ResultProb
 from core.queue import Queue, QueueItem
 from core.repository import Repository
@@ -80,7 +81,9 @@ class LlmWorker:
             model_factory=self.model_factory,
         )
         if outcome.status == "done" and outcome.response is not None:
-            result_obj = ResultProb.model_validate_json(outcome.response)
+            # dieselbe Fence-/Prosa-Toleranz wie im Validator (extract_json),
+            # sonst scheitert das erneute Parsen an der Verpackung.
+            result_obj = ResultProb.model_validate(extract_json(outcome.response))
             repo.put_artifact(result_obj)
         return outcome
 
@@ -94,6 +97,12 @@ class WorkerLoop:
     det_worker: DetWorker
     llm_worker: LlmWorker
     on_item_start: Callable[[QueueItem], None] | None = None
+    on_item_fail: Callable[[QueueItem, str], None] | None = None
+
+    def _fail(self, item: QueueItem, reason: str) -> None:
+        self.queue.fail(item.id)
+        if self.on_item_fail is not None:
+            self.on_item_fail(item, reason)
 
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
@@ -113,8 +122,12 @@ class WorkerLoop:
                 if outcome.status == "done":
                     self.queue.complete(item.id)
                 else:
-                    self.queue.fail(item.id)
-        except Exception:
-            self.queue.fail(item.id)
+                    self._fail(
+                        item,
+                        f"{outcome.validation_result}/{outcome.trigger} "
+                        f"(model={outcome.final_model}, attempts={outcome.attempts})",
+                    )
+        except Exception as exc:
+            self._fail(item, f"exception: {type(exc).__name__}: {exc}")
             raise
         return True
