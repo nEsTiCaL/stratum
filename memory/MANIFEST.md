@@ -24,7 +24,7 @@ meta    Gedaechtnis- und Projektuebersicht
 ## Strukturdateien
 
 ```
-START.md       Einstieg jeder Session (Routing zu grep / Manifest / arbeitsplan)
+memory_start.md Einstieg jeder Session (Routing zu grep / Manifest / arbeitsplan)
 MANIFEST.md    diese Datei
 rules.md       Gedaechtnis-Regeln (Zugriff/Schreiben/Format/Pflege)
 arbeitsplan.md BAU-DISPATCH: Haeppchen -> Quellen + Fortschritts-Status

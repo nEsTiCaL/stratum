@@ -12,7 +12,7 @@ lesen. Interface-Fragen, Typ-Definitionen, Zirkelimport-Checks -> N1-Query
 Haeppchen-Zeile eine konkrete Datei nennt, direkt lesen.
 
 ```
-1. START.md (Routing), rules.md bei Pflege-Anlass, dann diesen Arbeitsplan
+1. memory_start.md (Routing), rules.md bei Pflege-Anlass, dann diesen Arbeitsplan
 2. N1-Preflight sofort (ab Schritt 2): `ops_n1-queries` lesen; Migration +
    Index pruefen (idempotent, ~5 s). Danach N1-Queries fuer alle
    Interface-Fragen nutzen statt Quelldateien zu lesen.

@@ -45,7 +45,7 @@ Gleichzeitig gefunden: der Windows-Repo-Pfad stand als konkreter Wert direkt
 in `ops_sync-workflow` und war nach einem Repo-Umzug (Laufwerk+Ordner) veraltet
 - ohne Doku-Nachzug. Ursache war strukturell, nicht nur ein vergessenes Update:
 Host-konkrete Pfade gehoeren nie in memory/ (jetzt rules.md S9), sondern
-ausschliesslich in `.local/notes.md` (gitignored, pro Host gepflegt).
+ausschliesslich in `.local/host.md` (gitignored, pro Host gepflegt).
 `ops_sync-workflow` verweist seitdem nur noch per Platzhalter dorthin.
 
 ## Nutzen: warum jetzt schon dogfooden, nicht erst ab N2

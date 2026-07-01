@@ -1,7 +1,10 @@
 ## Projektgedaechtnis
 
-Dateibasiertes Gedaechtnis unter memory/. Einstieg: memory/START.md.
-Kurz-Routing: Fakt (Befehl, Name, Konstante) -> grep memory/; Kontext
+Dateibasiertes Gedaechtnis unter memory/. Bei Sitzungsstart IMMER direkt lesen,
+ungefragt, bevor du auf die Aufgabe eingehst: memory/memory_start.md und
+(falls vorhanden) .local/host.md.
+
+Kurz-Routing danach: Fakt (Befehl, Name, Konstante) -> grep memory/; Kontext
 (Begruendung, Stand) -> memory/MANIFEST.md; Modul bauen -> memory/arbeitsplan.md.
 
 Nicht aus dem Gedaechtnis raten: bevor du eine projektbezogene Frage
@@ -13,9 +16,10 @@ Problem, offene Frage, geaenderte Annahme), nach memory/rules.md richten.
 
 ## Host-spezifische Notizen
 
-`.local/notes.md` (gitignored) enthaelt host-spezifische Kommandos und
-Aufrufparameter (WSL-Testaufruf, Git-Aliase, Umgebungshinweise). Beim
-Kaltstart lesen, falls vorhanden.
+`.local/host.md` (gitignored) enthaelt host-spezifische Kommandos und
+Aufrufparameter (WSL-Testaufruf, Git-Aliase, Umgebungshinweise). Wird bei
+Sitzungsstart zusammen mit memory/memory_start.md direkt gelesen, falls
+vorhanden.
 
 ## Commits
 

@@ -1,4 +1,4 @@
-# START
+# Start
 
 Einstieg jeder Session. Kurz halten. Nie den ganzen Speicher pauschal lesen.
 
@@ -17,4 +17,4 @@ Historie / Zeitpunkt                              -> log.md
 - Chunks heissen `<tag>_<slug>.md`; ein Glob `<tag>_*` holt eine ganze Domaene.
 - Verweise auf Chunks stehen als Dateiname in Backticks, z.B. `arch_core`.
 - Tag-Liste + Chunk-Index: MANIFEST.md.
-- Host-spezifische Kommandos: `.local/notes.md` (gitignored), beim Kaltstart lesen falls vorhanden.
+- Host-spezifische Kommandos: `.local/host.md` (gitignored), beim Kaltstart lesen falls vorhanden.

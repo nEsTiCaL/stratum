@@ -17,7 +17,7 @@ geben. Er fuehrt von der Umgebungseinrichtung bis zum ersten Baustein:
 Projekt Stratum (dieses Repo). Begleite mich vom Setup bis zum ersten Baustein.
 
 1. Orientiere dich: bestaetige, dass die Session im Wurzelverzeichnis dieses
-   Repos (stratum) gerootet ist, und lies memory/START.md und
+   Repos (stratum) gerootet ist, und lies memory/memory_start.md und
    memory/arbeitsplan.md. Folge dem Kaltstart-Workflow dort.
 2. Richte die Dev-Umgebung ein: begleite mich Schritt fuer Schritt durch
    scripts/setup.ps1 (Windows-Host) und scripts/setup.sh (WSL2) bis Ziel N2

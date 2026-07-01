@@ -24,4 +24,4 @@ wsl -d Debian -- bash -c "cd ~/stratum && PYTHONPATH=. .venv/bin/python <REST>"
 `~/.local/bin/uv run --extra dev ruff check .`. NIE `uv.exe` (Windows-Build via
 WSL-Interop aus dem Winget-PATH) verwenden -- das zerstoert/verwirrt das
 Linux-`.venv`. Fuer reine Python-Aufrufe ohne uv weiter `.venv/bin/python -m <tool>`.
-Host-spezifische Details: `.local/notes.md`.
+Host-spezifische Details: `.local/host.md`.

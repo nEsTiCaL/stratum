@@ -12,7 +12,7 @@ Sync-Mechanismus.
 ```
 1. Dateien auf Windows schreiben/editieren
 2. Geaenderte Datei(en) gezielt nach WSL kopieren (Quelle Windows-Pfad unter
-   /mnt, konkreter Wert = WSL_MNT_PFAD in `.local/notes.md`, S9; AUSFUEHRUNG
+   /mnt, konkreter Wert = WSL_MNT_PFAD in `.local/host.md`, S9; AUSFUEHRUNG
    bleibt im WSL-nativen Pfad ~/stratum):
    wsl -d Debian -- bash -c "cp '<WSL_MNT_PFAD>/<pfad>' ~/stratum/<pfad>"
 3. Tests in WSL laufen lassen (`ops_wsl`, <REST> = -m pytest -q)
@@ -29,7 +29,7 @@ WSL-nativen FS passiert.
 ```
 1. Commit-Message mit Nutzer besprechen (CLAUDE.md)
 2. Commit + push AUS WINDOWS (Credentials nur dort; WSL hat kein gh, keinen
-   Credential-Helper; konkreter Pfad = WIN_REPO_PFAD in `.local/notes.md`, S9):
+   Credential-Helper; konkreter Pfad = WIN_REPO_PFAD in `.local/host.md`, S9):
    git -C "<WIN_REPO_PFAD>" add <dateien>
    git -C "<WIN_REPO_PFAD>" commit -m "..."
    git -C "<WIN_REPO_PFAD>" push

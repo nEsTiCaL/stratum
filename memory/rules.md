@@ -16,7 +16,8 @@ Z1  Fakt-Suche (Befehl, Name, Konstante, Signatur) -> grep memory/. Kein
 Z2  Kontext-Suche (Begruendung, Stand, "was ist X") -> MANIFEST.md lesen, dann
     gezielt 1-2 Chunks. Nie den ganzen Speicher pauschal lesen.
 Z3  Modul bauen -> arbeitsplan.md (Haeppchen -> genau die Quellen + Status).
-Z4  Sitzungsstart -> START.md. Danach nur, was die Aufgabe verlangt.
+Z4  Sitzungsstart -> memory_start.md (und .local/host.md falls vorhanden),
+    direkt gelesen, ungefragt. Danach nur, was die Aufgabe verlangt.
 Z5  Chunk-Verweise sind der Dateiname in Backticks (z.B. `arch_core`). Direkt
     per Glob/Read aufloesbar, kein Umweg.
 Z6  Tag-Cluster finden -> Glob memory/<tag>_* (z.B. idx_* = ganze Indexer-
@@ -47,8 +48,8 @@ S8  Kein Frontmatter. Bedeutung lebt im Dateinamen + der Manifest-Zeile.
     Body-Zeile (z.B. "> abgeloest durch `x` am JJJJ-MM-TT").
 S9  Host-konkrete Werte (absolute Pfade, Laufwerksbuchstaben, IP/Port eines
     Diensts, o.ae.) NIE in memory/ eintragen - gehoeren ausschliesslich in
-    `.local/notes.md` (gitignored). memory/-Chunks bleiben host-agnostisch:
-    Platzhalter (z.B. <WIN_REPO_PFAD>) + Verweis auf .local/notes.md statt
+    `.local/host.md` (gitignored). memory/-Chunks bleiben host-agnostisch:
+    Platzhalter (z.B. <WIN_REPO_PFAD>) + Verweis auf .local/host.md statt
     des Werts. Grund: memory/ ist versioniert und projektweit gueltig,
     Host-Werte sind pro Maschine/Nutzer verschieden und veralten unbemerkt
     bei Umzug/Wechsel.
@@ -57,9 +58,9 @@ S9  Host-konkrete Werte (absolute Pfade, Laufwerksbuchstaben, IP/Port eines
 ## F - Format
 
 ```
-F1  Strukturdateien (START, MANIFEST, rules, arbeitsplan, log) top-level,
-    ohne Tag-Praefix. Inhalts-Chunks tag-praefigiert klein. Der Unterschied
-    ist selbst ein Glob-Signal.
+F1  Strukturdateien (memory_start, MANIFEST, rules, arbeitsplan, log)
+    top-level, ohne Tag-Praefix. Inhalts-Chunks tag-praefigiert klein. Der
+    Unterschied ist selbst ein Glob-Signal.
 F2  Grep-freundliche Zeilen-Praefixe fuer strukturierte Listen (log:
     "## [datum] typ | ...", Regeln: "Z1 ...", Manifest: "datei | ...").
 F3  UTF-8, echte Umlaute erlaubt; keine Emojis, keine Em-/En-Dashes.

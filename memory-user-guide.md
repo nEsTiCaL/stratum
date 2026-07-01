@@ -24,7 +24,7 @@ Du brauchst also nichts zu installieren. Ein Text-Editor oder VS Code reicht.
 CLAUDE.md              Verweis fuer Claude (Bootstrap, selten geaendert)
 memory-user-guide.md   diese Anleitung
 memory/
-  START.md             Claudes Einstieg pro Sitzung
+  memory_start.md      Claudes Einstieg pro Sitzung
   MANIFEST.md          Tag-Registry + eine Zeile je Chunk (Inhaltsverzeichnis-Ersatz)
   rules.md             Regelwerk, nach dem Claude liest/schreibt
   arbeitsplan.md       Baufortschritt: Haeppchen -> Status -> Quellen
