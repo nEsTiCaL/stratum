@@ -179,6 +179,22 @@ class Queue:
                 row = cur.fetchone()
         return _row_to_item(row) if row is not None else None
 
+    def update_payload(self, item_id: int, payload: dict) -> None:
+        """Setzt das payload-Feld eines Queue-Eintrags (nach enqueue)."""
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue SET payload = %s WHERE id = %s",
+                    (json.dumps(payload), item_id),
+                )
+
+    def get_status(self, item_id: int) -> str | None:
+        """Gibt den aktuellen Status eines Tasks zurueck (alle Statuswerte)."""
+        row = self._conn.execute(
+            "SELECT status FROM queue WHERE id = %s", (item_id,)
+        ).fetchone()
+        return row[0] if row else None
+
     def list_tasks(
         self,
         *,

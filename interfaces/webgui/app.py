@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from core.models.result_prob_schema import ResultProb
 from core.queue import Queue
 from core.repository import Repository
 from core.router import TaskType
+from core.template_registry import DagNode, TaskDag
 from core.validator import Validator
 
 _STATIC = Path(__file__).parent / "static"
@@ -289,6 +291,13 @@ def _make_user_message(
     return "\n\n".join(sections)
 
 
+class TaskCreateBody(BaseModel):
+    task_type: str
+    scope: str
+    model: str = "phi-4-mini"
+    prompt: str = ""
+
+
 class SubmitBody(BaseModel):
     response: str
     task_type: str
@@ -390,6 +399,84 @@ def create_app(
             "system_prompt": _make_system_prompt(),
             "user_message": _make_user_message(task_type, scope, source_code, ""),
         }
+
+    @app.post("/api/task", status_code=201)
+    async def create_task(body: TaskCreateBody) -> dict[str, int]:
+        """Reiht einen neuen Task in die Queue ein. Gibt die Task-ID zurueck."""
+        try:
+            TaskType(body.task_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Unbekannter task_type: {body.task_type}"
+            ) from exc
+        if not body.scope:
+            raise HTTPException(status_code=422, detail="scope fehlt")
+
+        dag_id = f"api-{uuid.uuid4().hex[:8]}"
+        dag = TaskDag(
+            dag_id,
+            [
+                DagNode(
+                    id="n1",
+                    task_type=body.task_type,
+                    scope=body.scope,
+                    depends_on=(),
+                    status="pending",
+                    flags=frozenset(),
+                )
+            ],
+        )
+        ids = queue.enqueue(dag, body.model)
+        item_id = ids[0]
+
+        source_code = ""
+        if source_root is not None and body.scope.startswith("file:"):
+            src = source_root / body.scope[5:]
+            if src.exists():
+                source_code = src.read_text(encoding="utf-8")
+
+        full_prompt = _make_user_message(body.task_type, body.scope, source_code, body.prompt)
+        queue.update_payload(item_id, {"prompt": full_prompt})
+
+        return {"id": item_id}
+
+    @app.get("/api/task/{task_id}/events")
+    async def task_events(task_id: int) -> StreamingResponse:
+        """SSE-Stream fuer einen einzelnen Task: progress bis done/failed."""
+        async def _generate():
+            while True:
+                status = queue.get_status(task_id)
+                if status is None:
+                    yield f"data: {json.dumps({'type': 'error', 'detail': 'not found'})}\n\n"
+                    return
+                if status == "running" and progress_store and task_id in progress_store:
+                    p = progress_store[task_id]
+                    elapsed = time.monotonic() - p["start"]
+                    tokens = p["tokens"]
+                    tok_s = tokens / elapsed if elapsed > 0.1 else None
+                    expected = _EXPECTED_TOKENS.get(p.get("task_type", ""), 350)
+                    pct = min(99, int(tokens / expected * 100)) if tokens else 0
+                    event = {
+                        "type": "progress",
+                        "pct": pct,
+                        "tok_s": round(tok_s, 1) if tok_s else None,
+                        "elapsed": round(elapsed, 1),
+                        "tokens": tokens,
+                    }
+                    yield f"data: {json.dumps(event)}\n\n"
+                elif status == "done":
+                    yield f"data: {json.dumps({'type': 'done', 'id': task_id})}\n\n"
+                    return
+                elif status == "failed":
+                    yield f"data: {json.dumps({'type': 'failed', 'id': task_id})}\n\n"
+                    return
+                await asyncio.sleep(1.0)
+
+        return StreamingResponse(
+            _generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/api/claim/{task_id}")
     async def claim_task(task_id: int) -> dict[str, Any]:
