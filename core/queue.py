@@ -155,6 +155,60 @@ class Queue:
                     (item_id,),
                 )
 
+    def claim_by_id(
+        self, item_id: int, *, model: str = "human"
+    ) -> "QueueItem | None":
+        """Beansprucht einen spezifischen pending-Knoten per ID.
+
+        Fuer manuelles Claiming aus dem Web-Dashboard (I-D.2): der Nutzer
+        waehlt sich einen Task aus, nicht der Worker. Gibt None zurueck wenn
+        der Knoten nicht existiert oder nicht mehr pending ist.
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE queue
+                    SET status = 'running', model = %s, claimed_at = now()
+                    WHERE id = %s AND status = 'pending'
+                    RETURNING id, dag_id, node_id, task_type, scope, model,
+                              depends_on, flags, payload, attempts, status
+                    """,
+                    (model, item_id),
+                )
+                row = cur.fetchone()
+        return _row_to_item(row) if row is not None else None
+
+    def list_tasks(
+        self,
+        *,
+        statuses: tuple[str, ...] = ("pending", "running"),
+    ) -> list[dict[str, Any]]:
+        """Listet Tasks fuer das Dashboard (read-only, kein Locking).
+
+        Gibt pending und running Tasks zurueck (done/failed ausgeblendet).
+        Reihenfolge: created_at aufsteigend (aelteste zuerst).
+        """
+        placeholders = ",".join(["%s"] * len(statuses))
+        rows = self._conn.execute(
+            f"SELECT id, dag_id, task_type, scope, model, status, "
+            f"attempts, created_at, claimed_at "
+            f"FROM queue WHERE status IN ({placeholders}) ORDER BY created_at",
+            statuses,
+        ).fetchall()
+        keys = (
+            "id",
+            "dag_id",
+            "task_type",
+            "scope",
+            "model",
+            "status",
+            "attempts",
+            "created_at",
+            "claimed_at",
+        )
+        return [dict(zip(keys, row)) for row in rows]
+
 
 def _row_to_item(row: tuple[Any, ...]) -> QueueItem:
     (

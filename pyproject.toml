@@ -30,6 +30,10 @@ dev = [
 cloud = [
     "anthropic>=0.40",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 
 # Workspace ist (noch) kein installierbares Paket -> uv installiert nur die
 # Abhaengigkeiten, ohne den Projektbaum zu bauen.

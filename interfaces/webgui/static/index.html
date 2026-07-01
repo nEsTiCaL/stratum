@@ -1,0 +1,195 @@
+<title>Stratum Dashboard</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #0f0f0f; color: #e0e0e0;
+         padding: 1.5rem; min-height: 100vh; }
+  h1 { font-size: 1.1rem; letter-spacing: .1em; color: #aaa;
+       margin-bottom: 1.5rem; }
+  h1 span { color: #fff; }
+
+  /* table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th { text-align: left; color: #666; border-bottom: 1px solid #222;
+       padding: .4rem .6rem; font-weight: normal; }
+  td { padding: .45rem .6rem; border-bottom: 1px solid #1a1a1a;
+       vertical-align: middle; }
+  tr:hover td { background: #161616; }
+
+  /* badges */
+  .badge { display: inline-block; padding: .15rem .4rem; border-radius: 3px;
+           font-size: .75rem; font-weight: bold; }
+  .badge-pending  { background: #1a2a1a; color: #4a4; }
+  .badge-running  { background: #1a1a2a; color: #66f; }
+  .badge-human    { background: #2a1a1a; color: #f66; }
+
+  /* buttons */
+  button { cursor: pointer; border: none; border-radius: 3px; padding: .3rem .7rem;
+           font-family: monospace; font-size: .8rem; }
+  .btn-claim  { background: #1e3a1e; color: #6f6; }
+  .btn-claim:hover  { background: #234a23; }
+  .btn-submit { background: #1e2a3a; color: #6af; margin-top: .5rem; }
+  .btn-submit:hover { background: #233a4a; }
+  .btn-cancel { background: #2a1e1e; color: #f66; margin-top: .5rem;
+                margin-left: .4rem; }
+
+  /* claim panel */
+  #claim-panel { display: none; margin-top: 1.5rem; border: 1px solid #222;
+                 border-radius: 4px; padding: 1rem; background: #111; }
+  #claim-panel h2 { font-size: .9rem; color: #aaa; margin-bottom: .75rem; }
+  #claim-panel .meta { font-size: .75rem; color: #555; margin-bottom: .75rem; }
+  #claim-panel .meta strong { color: #888; }
+
+  pre#prompt-box { background: #0a0a0a; color: #8f8; border: 1px solid #1a1a1a;
+                   padding: .75rem; border-radius: 3px; white-space: pre-wrap;
+                   word-break: break-word; font-size: .8rem; max-height: 300px;
+                   overflow-y: auto; margin-bottom: .5rem; }
+  .copy-hint { font-size: .72rem; color: #444; margin-bottom: 1rem; }
+
+  textarea#response-box { width: 100%; min-height: 180px; background: #0a0a0a;
+                          color: #e0e0e0; border: 1px solid #1a1a1a;
+                          border-radius: 3px; padding: .75rem; font-family: monospace;
+                          font-size: .8rem; resize: vertical; }
+  #submit-msg { font-size: .8rem; margin-top: .5rem; }
+  .ok  { color: #4f4; }
+  .err { color: #f44; }
+
+  #empty-msg { color: #333; font-size: .85rem; padding: 1rem 0; }
+</style>
+
+<h1>STRATUM <span>Dashboard</span></h1>
+
+<div class="table-wrap">
+  <table id="task-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Aufgabe</th>
+        <th>Scope</th>
+        <th>Modell</th>
+        <th>Status</th>
+        <th>Versuche</th>
+        <th>Aktion</th>
+      </tr>
+    </thead>
+    <tbody id="task-body">
+      <tr><td colspan="7" id="empty-msg">Verbinde …</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="claim-panel">
+  <h2>Task übernommen</h2>
+  <div class="meta" id="claim-meta"></div>
+  <pre id="prompt-box"></pre>
+  <p class="copy-hint">↑ In Claude.ai / ChatGPT / etc. einfügen, Antwort hier einsetzen:</p>
+  <textarea id="response-box" placeholder="Antwort hier einfügen …"></textarea>
+  <div>
+    <button class="btn-submit" onclick="submitResponse()">Einreichen</button>
+    <button class="btn-cancel" onclick="cancelClaim()">Abbrechen</button>
+  </div>
+  <div id="submit-msg"></div>
+</div>
+
+<script>
+  let _claimedId = null;
+  let _claimedType = null;
+
+  /* ---- SSE ---- */
+  const es = new EventSource('/api/events');
+  es.onmessage = e => renderTasks(JSON.parse(e.data));
+  es.onerror   = () => {};
+
+  function renderTasks(tasks) {
+    const tbody = document.getElementById('task-body');
+    if (!tasks.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" id="empty-msg">Keine offenen Tasks.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = tasks.map(t => {
+      const isHuman  = t.model === 'human';
+      const canClaim = t.status === 'pending';
+      const badge    = isHuman
+        ? '<span class="badge badge-human">human</span>'
+        : t.status === 'running'
+          ? '<span class="badge badge-running">läuft</span>'
+          : '<span class="badge badge-pending">wartend</span>';
+      const action   = canClaim
+        ? `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`
+        : '—';
+      const scope = t.scope.replace(/^file:/, '');
+      return `<tr>
+        <td>${t.id}</td>
+        <td>${esc(t.task_type)}</td>
+        <td title="${esc(t.scope)}">${esc(scope.length > 40
+          ? '…' + scope.slice(-40) : scope)}</td>
+        <td>${esc(t.model)}</td>
+        <td>${badge}</td>
+        <td>${t.attempts}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  /* ---- Claim ---- */
+  async function claimTask(id) {
+    const r = await fetch(`/api/claim/${id}`, { method: 'POST' });
+    if (!r.ok) {
+      alert(`Claim fehlgeschlagen (${r.status}): ${(await r.json()).detail}`);
+      return;
+    }
+    const data = await r.json();
+    _claimedId   = data.id;
+    _claimedType = data.task_type;
+
+    document.getElementById('claim-meta').innerHTML =
+      `<strong>ID:</strong> ${data.id} &nbsp;
+       <strong>Aufgabe:</strong> ${esc(data.task_type)} &nbsp;
+       <strong>Scope:</strong> ${esc(data.scope)}`;
+    document.getElementById('prompt-box').textContent = data.prompt;
+    document.getElementById('response-box').value = '';
+    document.getElementById('submit-msg').textContent = '';
+    document.getElementById('claim-panel').style.display = 'block';
+    document.getElementById('response-box').focus();
+  }
+
+  /* ---- Submit ---- */
+  async function submitResponse() {
+    const response = document.getElementById('response-box').value.trim();
+    if (!response) { alert('Keine Antwort eingegeben.'); return; }
+    const msg = document.getElementById('submit-msg');
+    msg.textContent = 'Einreichen …';
+    msg.className = '';
+
+    const r = await fetch(`/api/submit/${_claimedId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response, task_type: _claimedType }),
+    });
+    const body = await r.json();
+    if (r.ok) {
+      msg.textContent = 'Gespeichert.';
+      msg.className = 'ok';
+      setTimeout(() => { cancelClaim(); }, 1200);
+    } else {
+      msg.textContent = `Fehler: ${body.detail}`;
+      msg.className = 'err';
+    }
+  }
+
+  function cancelClaim() {
+    _claimedId = _claimedType = null;
+    document.getElementById('claim-panel').style.display = 'none';
+    document.getElementById('response-box').value = '';
+    document.getElementById('submit-msg').textContent = '';
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
