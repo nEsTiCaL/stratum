@@ -91,7 +91,7 @@ def _seed(conn: psycopg.Connection) -> None:
             ),
         ],
     )
-    ids = q.enqueue(dag, model="phi-4-mini")
+    ids = q.enqueue(dag, model="phi4-mini")
     prompts = [
         "Fasse die Queue-Implementierung in core/queue.py zusammen. "
         "Beschreibe Zweck, Schnittstelle und Concurrency-Modell.",
@@ -189,7 +189,7 @@ def main() -> None:
     worker_loop = _make_worker_loop(worker_conn, worker_repo)
     worker_thread = threading.Thread(
         target=_run_worker,
-        args=(worker_loop, ["phi-4-mini"]),
+        args=(worker_loop, ["phi4-mini"]),
         daemon=True,
         name="stratum-worker",
     )

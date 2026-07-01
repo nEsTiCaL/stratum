@@ -294,7 +294,7 @@ def _make_user_message(
 class TaskCreateBody(BaseModel):
     task_type: str
     scope: str
-    model: str = "phi-4-mini"
+    model: str = "phi4-mini"
     prompt: str = ""
 
 
