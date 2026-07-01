@@ -116,6 +116,7 @@ def main() -> None:
     apply_migrations(_YOYO_DSN)
 
     conn = psycopg.connect(_DSN, autocommit=True)
+    sse_conn = psycopg.connect(_DSN, autocommit=True)
 
     if args.seed:
         print("Seed-Tasks anlegen …")
@@ -123,7 +124,12 @@ def main() -> None:
 
     queue = Queue(conn)
     repo = Repository(conn)
-    app = create_app(queue, repo, source_root=Path(__file__).parent.parent.parent)
+    app = create_app(
+        queue,
+        repo,
+        source_root=Path(__file__).parent.parent.parent,
+        sse_queue=Queue(sse_conn),
+    )
 
     print(f"Dashboard: http://{args.host}:{args.port}/")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

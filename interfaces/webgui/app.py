@@ -300,6 +300,7 @@ def create_app(
     source_root: Path | None = None,
     sse_delay: float = 2.0,
     sse_max_events: int | None = None,
+    sse_queue: Queue | None = None,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert."""
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
@@ -312,14 +313,19 @@ def create_app(
     async def get_tasks() -> list[dict[str, Any]]:
         return queue.list_tasks()
 
+    _poll_queue = sse_queue if sse_queue is not None else queue
+
     @app.get("/api/events")
     async def events() -> StreamingResponse:
         async def _generate():
             count = 0
             while sse_max_events is None or count < sse_max_events:
-                tasks = queue.list_tasks()
-                data = json.dumps(tasks, default=str)
-                yield f"data: {data}\n\n"
+                try:
+                    tasks = _poll_queue.list_tasks()
+                    data = json.dumps(tasks, default=str)
+                    yield f"data: {data}\n\n"
+                except Exception:
+                    yield "data: []\n\n"
                 count += 1
                 if sse_max_events is None or count < sse_max_events:
                     await asyncio.sleep(sse_delay)
