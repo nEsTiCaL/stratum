@@ -118,7 +118,7 @@ I-3.2   Bundling + det. Serialisierung det   I-1.5/1.6 R3                fertig
 I-3.3   Redaction-Gate Stub + Egress   det   I-1.8     R3, `spec_schritt-3` (Konsumenten-Vertrag!)   fertig
 I-3.1   Cloud-Adapter (Multi-Provider) gem   I-3.2/3.3 R3, SK(7), claude-api, `spec_schritt-3`   det-core fertig (dev-verif offen bis I-3.4)
 I-3.4   Detektor-Bibliothek + scharf   det   I-3.3     R3   [HARTES GATE]   fertig
-I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)
+I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)      fertig
 ```
 
 Realer Cloud-Egress erst nach I-3.4.
@@ -165,7 +165,8 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 ## Status
 
-I-3.4 fertig: HARTES GATE scharf. Realer Cloud-Egress jetzt moeglich. Naechstes: I-3.5 Kosten-Telemetrie.
+I-3.5 fertig: Kosten-Telemetrie + Tageskappung. Schritt 3 (Cloud-Bruecke) VOLLSTAENDIG.
+Naechstes: I-D.3 Manual-Adapter (Copy-Paste-Bruecke, N2-Einstieg ohne VSCode).
 
 I-1.0 bis I-1.12 fertig: Schritt 1 (Substrat) VOLLSTAENDIG. I-1.12 = ruff Lint-/
 Format-Gate (make lint/fmt/check, ganzer Baum, core/models+tests/fixtures aus,

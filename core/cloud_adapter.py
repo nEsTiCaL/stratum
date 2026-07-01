@@ -199,11 +199,15 @@ class CloudAdapter:
     """Model-Seam-Implementierung fuer Cloud-Anbieter. Loest den logischen Namen
     zur Modell-ID, baut die (cache-markierte) Anfrage, ruft den Sender mit Retry,
     rechnet Kosten und meldet sie ueber on_cost. complete() gibt den reinen Text
-    zurueck; die Validierung zu ResultProb macht der Validator (I-2.4)."""
+    zurueck; die Validierung zu ResultProb macht der Validator (I-2.4).
+
+    guard: optionaler Pre-Send-Check (I-3.5 Tageskappung). Wird VOR dem API-Call
+    aufgerufen; bei DailyCostCapError wird der Call nicht ausgefuehrt."""
 
     spec: CloudModelSpec
     sender: CloudSender
     on_cost: Callable[[CostRecord], None] | None = None
+    guard: Callable[[], None] | None = None
     system: str | None = None
     cache_prefix: str | None = None
     max_tokens: int = 16000
@@ -211,6 +215,8 @@ class CloudAdapter:
     max_retries: int = 2
 
     def complete(self, prompt: str) -> str:
+        if self.guard is not None:
+            self.guard()
         request = CloudRequest(
             model_id=self.spec.model_id,
             tail=prompt,
@@ -247,12 +253,16 @@ def cloud_model_factory(
     sender: CloudSender,
     *,
     on_cost: Callable[[CostRecord], None] | None = None,
+    guard: Callable[[], None] | None = None,
     system: str | None = None,
     cache_prefix: str | None = None,
 ) -> Callable[[str], CloudAdapter | None]:
     """Baut eine model_factory (LlmWorker/EscalationLoop-Seam): logischer Name
     -> CloudAdapter, oder None fuer unbekannte/opt-in Namen (Kandidat wird dann
-    uebersprungen, wie bei fehlendem Adapter pre-S3)."""
+    uebersprungen, wie bei fehlendem Adapter pre-S3).
+
+    guard: Pre-Send-Check (I-3.5 Tageskappung), wird an jeden CloudAdapter
+    weitergegeben."""
 
     def factory(logical_name: str) -> CloudAdapter | None:
         spec = resolve_spec(logical_name)
@@ -262,6 +272,7 @@ def cloud_model_factory(
             spec=spec,
             sender=sender,
             on_cost=on_cost,
+            guard=guard,
             system=system,
             cache_prefix=cache_prefix,
         )
