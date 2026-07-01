@@ -142,15 +142,16 @@ class Queue:
                 )
 
     def fail(self, item_id: int) -> None:
-        """Markiert einen Knoten als fehlgeschlagen; attempts wird erhoeht.
+        """Markiert einen Knoten terminal als fehlgeschlagen (status='failed').
 
-        Der Knoten kehrt zu 'pending' zurueck. Validator/Eskalation
-        entscheiden, ob und mit welchem Modell ein erneuter Claim erfolgt.
+        Kein automatischer Retry auf Queue-Ebene — die EscalationLoop im Worker
+        uebernimmt model-level Retries bereits intern. Expliziter Retry moeglich
+        ueber direkte DB-Korrektur oder kuenftige retry()-Methode.
         """
         with self._conn.transaction():
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE queue SET status = 'pending', attempts = attempts + 1 "
+                    "UPDATE queue SET status = 'failed', attempts = attempts + 1 "
                     "WHERE id = %s",
                     (item_id,),
                 )
@@ -198,11 +199,11 @@ class Queue:
     def list_tasks(
         self,
         *,
-        statuses: tuple[str, ...] = ("pending", "running"),
+        statuses: tuple[str, ...] = ("pending", "running", "failed"),
     ) -> list[dict[str, Any]]:
         """Listet Tasks fuer das Dashboard (read-only, kein Locking).
 
-        Gibt pending und running Tasks zurueck (done/failed ausgeblendet).
+        Gibt pending, running und failed Tasks zurueck (done ausgeblendet).
         Reihenfolge: created_at aufsteigend (aelteste zuerst).
         """
         placeholders = ",".join(["%s"] * len(statuses))
