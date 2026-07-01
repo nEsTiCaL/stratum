@@ -7,7 +7,7 @@ Wenn _PROMPT_TEMPLATE geaendert wird: Fixtures neu aufnehmen (dev_verify).
 
 from __future__ import annotations
 
-from core.classifier import Classifier, _PROMPT_TEMPLATE
+from core.classifier import _PROMPT_TEMPLATE, Classifier
 from core.router import TaskType
 from core.secret_scan import Sensitivity
 from core.validator import ReplayModel

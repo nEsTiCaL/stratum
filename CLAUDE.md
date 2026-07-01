@@ -24,7 +24,7 @@ vorhanden.
 ## Commits
 
 Schlage eine aussagekraeftige, kurze Commit-Message vor. Committet wird
-NICHT selbst per Bash/git, sondern ueber `.local/sync.ps1` (Commit+Push+WSL-Pull
-in einem, siehe memory/ops_sync-workflow.md): du gibst nach Bestaetigung nur
-den fertigen Shell-Befehl dafuer, der Nutzer fuehrt ihn selbst aus. Keine
-Co-Authored-By-Zeile in Commit-Messages.
+NICHT selbst per Bash/git, sondern ueber `.local/sync.ps1` (Commit+Push+WSL-
+Zwangssync in einem, siehe memory/ops_sync-workflow.md): du gibst nur den fertigen Shell-Befehl dafuer, mit ABSOLUTEM Pfad
+(WIN_REPO_PFAD aus .local/host.md), nie relativ, der Nutzer fuehrt ihn selbst
+aus. Keine Co-Authored-By-Zeile in Commit-Messages.

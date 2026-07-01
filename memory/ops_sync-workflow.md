@@ -33,17 +33,22 @@ WSL-nativen FS passiert.
    git -C "<WIN_REPO_PFAD>" add <dateien>
    git -C "<WIN_REPO_PFAD>" commit -m "..."
    git -C "<WIN_REPO_PFAD>" push
-3. WSL-Repo nachziehen: wsl -d Debian -- bash -c "cd ~/stratum && git pull"
-   (ggf. vorher staged/geaenderte WSL-Arbeitskopien unstagen/loeschen, da
-   Phase-A-cp-Dateien manchmal im Index landen)
+3. WSL-Repo zwangssynchronisieren (ungefragt, verwirft lokale WSL-Aenderungen):
+   wsl -d Debian -- bash -c "cd ~/stratum && git fetch origin && git reset --hard @{u}"
+   Ersetzt bewusst ein einfaches `git pull`: Phase-A-cp-Dateien landen manchmal
+   modifiziert/staged im WSL-Index und blockieren einen Fast-Forward-Pull.
+   `reset --hard` auf den Upstream-Branch macht das Unstagen/Loeschen ueberfluessig,
+   da Windows (push) ohnehin die massgebliche, zuletzt getestete Quelle ist.
 ```
 
 Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den Klonen),
-aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf.
+aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf. Die WSL-Seite ist
+an dieser Grenze bewusst wegwerfbar: sie haelt nie Aenderungen, die nicht auch
+schon von Windows gepusht wurden.
 
 ## Abnahme-Script (.local/sync.ps1)
 
-Phase B (Schritte 2+3 oben: Commit+Push aus Windows, dann WSL-`git pull`) laesst
+Phase B (Schritte 2+3 oben: Commit+Push aus Windows, dann WSL-Zwangssync) laesst
 sich als ein Script buendeln. Liegt bewusst in `.local/` (gitignored, S9) und
 NICHT in memory/ oder scripts/: das Script selbst ist host-agnostisch (Logik
 identisch auf jedem Host), aber es liest die Host-Werte WIN_REPO_PFAD und
@@ -51,9 +56,11 @@ WSL_REPO_PFAD aus `.local/host.md`. Da `.local/` nicht mitversioniert wird,
 existiert das Script nach einem frischen Klon auf keinem neuen Host - es muss
 dort einmalig neu angelegt werden (Inhalt unten, 1:1 kopierbar).
 
-Aufruf (Commit-Message als Parameter):
+Aufruf (Commit-Message als Parameter, IMMER absoluter Pfad -> WIN_REPO_PFAD aus
+`.local/host.md`, nicht relativ, da der Aufrufort/das cwd nicht garantiert das
+Repo-Root ist):
 ```
-powershell -ExecutionPolicy Bypass -File ".local\sync.ps1" "commit message"
+powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "commit message"
 ```
 
 Voraussetzung in `.local/host.md`: Zeilen `WIN_REPO_PFAD = ...` und
@@ -92,14 +99,17 @@ if ($LASTEXITCODE -ne 0) { throw "git commit fehlgeschlagen (nichts zu committen
 git -C $WinRepo push
 if ($LASTEXITCODE -ne 0) { throw "git push fehlgeschlagen" }
 
-wsl -d Debian -- bash -c "cd $WslRepo && git pull"
-if ($LASTEXITCODE -ne 0) { throw "WSL git pull fehlgeschlagen" }
+wsl -d Debian -- bash -c "cd $WslRepo && git fetch origin && git reset --hard @{u}"
+if ($LASTEXITCODE -ne 0) { throw "WSL Force-Sync (fetch/reset --hard) fehlgeschlagen" }
 
-Write-Host "OK: committed, gepusht, WSL-Repo nachgezogen."
+Write-Host "OK: committed, gepusht, WSL-Repo zwangssynchronisiert (lokale Aenderungen dort verworfen)."
 ```
 
-Bewusst kein cp wie in Phase A: die Abnahme-Grenze synct ueber `git pull`
-(einzige Wahrheitsquelle, siehe Absatz nach Phase B oben), nicht per Datei-Kopie.
+Bewusst kein cp wie in Phase A: die Abnahme-Grenze synct ueber git (einzige
+Wahrheitsquelle, siehe Absatz nach Phase B oben), nicht per Datei-Kopie. Bewusst
+`reset --hard` statt `pull`: verwirft lokale WSL-Aenderungen ungefragt statt bei
+Konflikt (z.B. modifizierte Phase-A-cp-Dateien) fehlzuschlagen - Windows/push ist
+nach Schritt 2 die massgebliche Quelle, WSL hat nichts Eigenes zu verlieren.
 WSL-Distro `Debian` ist hier hart wie in `ops_wsl` (projektweite Konvention,
 kein Host-Wert).
 

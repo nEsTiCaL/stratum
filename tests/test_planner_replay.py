@@ -7,7 +7,7 @@ Wenn _PROMPT_TEMPLATE geaendert wird: Fixtures neu aufnehmen (dev_verify).
 
 from __future__ import annotations
 
-from core.planner import IntentDecomposer, _PROMPT_TEMPLATE
+from core.planner import _PROMPT_TEMPLATE, IntentDecomposer
 from core.router import TaskType
 from core.validator import ReplayModel
 
