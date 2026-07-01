@@ -6,6 +6,7 @@ IntentDecomposer.build_dag(): bestaetigte Goals -> verketteter Gesamt-DAG (det).
 Der Aufrufer entscheidet ob der Plan bestaetigt oder verworfen wird;
 build_dag() wird nur bei Bestaetigung aufgerufen.
 """
+
 from __future__ import annotations
 
 import dataclasses

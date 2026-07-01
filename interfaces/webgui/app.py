@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ResultProb
+from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
 from core.router import TaskType
@@ -57,8 +58,8 @@ _TASK_CONTEXT: dict[str, str] = {
     ),
     "explain": (
         "Du erklaerst Python-Code fuer einen erfahrenen Entwickler, der das Modul "
-        "zum ersten Mal sieht. Gefragt ist eine kompakte Erklaerung (max. 300 Woerter): "
-        "das WARUM (Design-Entscheidungen, nicht-offensichtliche Konzepte) — "
+        "zum ersten Mal sieht. Gefragt ist eine kompakte Erklaerung (max. 300 "
+        "Woerter): das WARUM (Design-Entscheidungen, nicht-offensichtliche Konzepte) — "
         "keine Beschreibung jeder einzelnen Methode."
     ),
     "review": (
@@ -112,13 +113,14 @@ _TASK_INSTRUCTION: dict[str, str] = {
         "- schnittstelle: Welche Klassen und Methoden gibt es? Beschreibe in Prosa "
         "— KEINE Code-Signaturen, KEINE Typen-Annotationen, KEINE String-Defaults "
         "in Anfuehrungszeichen (schreibe z.B. 'nimmt einen Modellnamen' statt "
-        "model: str = \"human\").\n"
+        'model: str = "human").\n'
         "- implementierung: Welche Algorithmen und Muster werden eingesetzt?\n"
         "- abhaengigkeiten: Welche Abhaengigkeiten und Integrationspunkte gibt es?"
     ),
     "explain": (
         "Erklaere den Code kompakt — je Feld maximal 2-3 Saetze in Prosa.\n"
-        "Befuelle die vier JSON-Felder (zweck, konzepte, nicht_offensichtlich, integration).\n"
+        "Befuelle die vier JSON-Felder (zweck, konzepte, nicht_offensichtlich, "
+        "integration).\n"
         "WICHTIG: Schreibe keine Code-Snippets oder Methodennamen in Gaensefuesschen "
         "in die String-Felder — das bricht das JSON. Beschreibe in Prosa."
     ),
@@ -162,16 +164,30 @@ _DEFAULT_INSTRUCTION = "Analysiere den Code und liefere ein strukturiertes Ergeb
 # Beispiel-content je task_type (fuer das Ausgabeformat-Beispiel)
 _CONTENT_EXAMPLE: dict[str, Any] = {
     "summarize": {
-        "zweck": "<1-3 Saetze: Warum existiert dieses Modul? Was ist seine Kernaufgabe?>",
-        "schnittstelle": "<Klassen und Methoden in Prosa — KEINE Code-Signaturen, keine Typen oder String-Defaults in Anfuehrungszeichen>",
+        "zweck": (
+            "<1-3 Saetze: Warum existiert dieses Modul? Was ist seine Kernaufgabe?>"
+        ),
+        "schnittstelle": (
+            "<Klassen und Methoden in Prosa — KEINE Code-Signaturen, keine Typen "
+            "oder String-Defaults in Anfuehrungszeichen>"
+        ),
         "implementierung": "<Algorithmen, Muster, Besonderheiten — in Prosa>",
-        "abhaengigkeiten": "<Abhaengigkeiten und Integrationspunkte zu anderen Modulen>",
+        "abhaengigkeiten": (
+            "<Abhaengigkeiten und Integrationspunkte zu anderen Modulen>"
+        ),
     },
     "explain": {
-        "zweck": "<Warum existiert dieses Modul? Problemstellung und Design-Entscheidung, 2-3 Saetze>",
+        "zweck": (
+            "<Warum existiert dieses Modul? Problemstellung und "
+            "Design-Entscheidung, 2-3 Saetze>"
+        ),
         "konzepte": "<Verwendete Muster/Konzepte und der Grund dafuer, 2-3 Saetze>",
-        "nicht_offensichtlich": "<Was ueberrascht einen Leser? Was braucht Erklaerung?, 1-2 Saetze>",
-        "integration": "<Wie interagiert dieses Modul mit dem Rest des Systems?, 1-2 Saetze>",
+        "nicht_offensichtlich": (
+            "<Was ueberrascht einen Leser? Was braucht Erklaerung?, 1-2 Saetze>"
+        ),
+        "integration": (
+            "<Wie interagiert dieses Modul mit dem Rest des Systems?, 1-2 Saetze>"
+        ),
     },
     "review": {
         "findings": [
@@ -184,9 +200,7 @@ _CONTENT_EXAMPLE: dict[str, Any] = {
     },
     "document": {"docstring": "<vollstaendige Entwicklerdokumentation>"},
     "refactor_suggest": {
-        "suggestions": [
-            {"description": "<was genau aendern>", "rationale": "<warum>"}
-        ]
+        "suggestions": [{"description": "<was genau aendern>", "rationale": "<warum>"}]
     },
     "debug": {
         "root_cause": "<Ursache>",
@@ -235,23 +249,15 @@ def _make_user_message(
     file_path = scope[5:] if scope.startswith("file:") else scope
     lang = "python" if file_path.endswith(".py") else ""
 
+    # KEIN provenance-Block im Beispiel: die Provenance stempelt der Server
+    # (core.provenance_stamp), nicht das Modell. Kleine Modelle uebernehmen sonst
+    # die Platzhalter woertlich oder lassen Pflichtfelder weg -> Validierung bricht.
     output_example = json.dumps(
         {
             "artifact_type": artifact_type,
             "scope": scope,
             "content": content_example,
             "confidence": 0.85,
-            "provenance": {
-                "schema_version": "1",
-                "source_hash": "x",
-                "input_hash": "y",
-                "producer": "<Modellname, z.B. gpt-4o-mini>",
-                "producer_version": "<z.B. 2024-07>",
-                "producer_class": "prob",
-                "timestamp": "<ISO 8601, z.B. 2026-07-01T12:00:00+00:00>",
-                "artifact_type": artifact_type,
-                "scope": scope,
-            },
         },
         ensure_ascii=False,
         indent=2,
@@ -267,9 +273,7 @@ def _make_user_message(
 
     # 3. Code
     if source_code:
-        sections.append(
-            f"## Datei: `{scope}`\n```{lang}\n{source_code}\n```"
-        )
+        sections.append(f"## Datei: `{scope}`\n```{lang}\n{source_code}\n```")
 
     # 4. Aufgabe — strukturierte Anweisung aus task_type + gespeicherter Prompt
     instruction = _TASK_INSTRUCTION.get(task_type, _DEFAULT_INSTRUCTION)
@@ -285,8 +289,7 @@ def _make_user_message(
         "WICHTIG: String-Felder duerfen KEINE doppelten Anfuehrungszeichen enthalten, "
         "auch nicht fuer Code-Fragmente oder Methodennamen. "
         "Verwende stattdessen einfache Anfuehrungszeichen oder Backticks: "
-        "z.B. `model='human'` statt model=\"human\".\n"
-        + output_example
+        "z.B. `model='human'` statt model=\"human\".\n" + output_example
     )
 
     return "\n\n".join(sections)
@@ -302,12 +305,20 @@ class TaskCreateBody(BaseModel):
 class SubmitBody(BaseModel):
     response: str
     task_type: str
+    producer: str = "manual"
 
 
 _EXPECTED_TOKENS: dict[str, int] = {
-    "summarize": 350, "explain": 250, "review": 500, "document": 700,
-    "refactor_suggest": 400, "debug": 300, "test_gen": 500,
-    "cross_module": 400, "architecture": 500, "crypto_audit": 450,
+    "summarize": 350,
+    "explain": 250,
+    "review": 500,
+    "document": 700,
+    "refactor_suggest": 400,
+    "debug": 300,
+    "test_gen": 500,
+    "cross_module": 400,
+    "architecture": 500,
+    "crypto_audit": 450,
 }
 
 
@@ -436,7 +447,9 @@ def create_app(
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
 
-        full_prompt = _make_user_message(body.task_type, body.scope, source_code, body.prompt)
+        full_prompt = _make_user_message(
+            body.task_type, body.scope, source_code, body.prompt
+        )
         queue.update_payload(item_id, {"prompt": full_prompt})
 
         return {"id": item_id}
@@ -444,11 +457,13 @@ def create_app(
     @app.get("/api/task/{task_id}/events")
     async def task_events(task_id: int) -> StreamingResponse:
         """SSE-Stream fuer einen einzelnen Task: progress bis done/failed."""
+
         async def _generate():
             while True:
                 status = queue.get_status(task_id)
                 if status is None:
-                    yield f"data: {json.dumps({'type': 'error', 'detail': 'not found'})}\n\n"
+                    err = json.dumps({"type": "error", "detail": "not found"})
+                    yield f"data: {err}\n\n"
                     return
                 if status == "running" and progress_store and task_id in progress_store:
                     p = progress_store[task_id]
@@ -518,7 +533,9 @@ def create_app(
                 status_code=400,
                 detail=f"Unbekannter task_type: {body.task_type}",
             ) from exc
-        validation = Validator().validate(body.response, task_type, producer_class="prob")
+        validation = Validator().validate(
+            body.response, task_type, producer_class="prob"
+        )
         result: dict[str, Any] = {
             "passed": validation.passed,
             "trigger": validation.trigger,
@@ -551,13 +568,22 @@ def create_app(
             raise HTTPException(status_code=422, detail=msg)
 
         try:
-            result_obj = ResultProb.model_validate(extract_json(body.response))
+            # Provenance stempelt der Server (nicht der eingefuegte Text): das
+            # Modell liefert nur den Content-Envelope.
+            data = extract_json(body.response)
+            prov = build_prob_provenance(
+                scope=data["scope"],
+                artifact_type=data["artifact_type"],
+                producer=body.producer,
+                root=source_root or Path("."),
+            )
+            result_obj = ResultProb.model_validate(
+                {**data, "provenance": prov.model_dump(mode="json")}
+            )
             repo.put_artifact(result_obj)
         except Exception as exc:
             queue.fail(task_id)
-            raise HTTPException(
-                status_code=422, detail=f"Parse-Fehler: {exc}"
-            ) from exc
+            raise HTTPException(status_code=422, detail=f"Parse-Fehler: {exc}") from exc
 
         queue.complete(task_id)
         return {"status": "ok"}

@@ -14,19 +14,23 @@ from collections.abc import Callable
 
 import httpx
 
-from core.validator import ContextExceededError
+from core.validator import ContextExceededError, TransientModelError
 
 
 class OllamaAdapter:
     """Ruft POST /api/generate auf dem lokalen Ollama-Daemon auf."""
 
     @classmethod
-    def list_models(cls, host: str | None = None, timeout: float = 5.0) -> frozenset[str]:
+    def list_models(
+        cls, host: str | None = None, timeout: float = 5.0
+    ) -> frozenset[str]:
         """Installierte Ollama-Modellnamen (ohne Tag-Suffix, z.B. 'phi4-mini').
 
         Gibt ein leeres frozenset zurueck wenn Ollama nicht erreichbar ist.
         """
-        _host = (host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
+        _host = (
+            host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        ).rstrip("/")
         try:
             resp = httpx.get(f"{_host}/api/tags", timeout=timeout)
             if resp.is_success:
@@ -69,10 +73,14 @@ class OllamaAdapter:
             else httpx.Client(timeout=self._timeout)
         )
         try:
-            resp = client.post(
-                f"{self._host}/api/generate",
-                json={"model": self.model, "prompt": prompt, "stream": False},
-            )
+            try:
+                resp = client.post(
+                    f"{self._host}/api/generate",
+                    json={"model": self.model, "prompt": prompt, "stream": False},
+                )
+            except httpx.TransportError as exc:
+                # Verbindungsabbruch/Timeout: retrybar, kein harter Fehler.
+                raise TransientModelError(str(exc)) from exc
             try:
                 data = resp.json()
             except Exception:
@@ -109,38 +117,42 @@ class OllamaAdapter:
             else contextlib.nullcontext(self._client)
         )
         with ctx as client:
-            with client.stream("POST", url, json=body) as resp:
-                if not resp.is_success:
-                    resp.read()
-                    try:
-                        err = resp.json().get("error", resp.text)
-                    except Exception:
-                        err = resp.text
-                    if "context" in err.lower():
-                        raise ContextExceededError(err)
-                    raise RuntimeError(f"Ollama {resp.status_code}: {err}")
-                for line in resp.iter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except ValueError:
-                        continue
-                    if "error" in data:
-                        msg = data["error"]
-                        if "context" in msg.lower():
-                            raise ContextExceededError(msg)
-                        raise RuntimeError(msg)
-                    token = data.get("response", "")
-                    if token:
-                        parts.append(token)
-                        token_count += 1
-                        if self._on_token:
-                            self._on_token(token)
-                    if data.get("done"):
-                        ec = data.get("eval_count", token_count)
-                        ed = data.get("eval_duration")
-                        if ec and ed and self._on_metrics:
-                            self._on_metrics(self.model, ec / (ed / 1e9), ec)
+            try:
+                with client.stream("POST", url, json=body) as resp:
+                    if not resp.is_success:
+                        resp.read()
+                        try:
+                            err = resp.json().get("error", resp.text)
+                        except Exception:
+                            err = resp.text
+                        if "context" in err.lower():
+                            raise ContextExceededError(err)
+                        raise RuntimeError(f"Ollama {resp.status_code}: {err}")
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except ValueError:
+                            continue
+                        if "error" in data:
+                            msg = data["error"]
+                            if "context" in msg.lower():
+                                raise ContextExceededError(msg)
+                            raise RuntimeError(msg)
+                        token = data.get("response", "")
+                        if token:
+                            parts.append(token)
+                            token_count += 1
+                            if self._on_token:
+                                self._on_token(token)
+                        if data.get("done"):
+                            ec = data.get("eval_count", token_count)
+                            ed = data.get("eval_duration")
+                            if ec and ed and self._on_metrics:
+                                self._on_metrics(self.model, ec / (ed / 1e9), ec)
+            except httpx.TransportError as exc:
+                # Stream-Abbruch (peer closed / server disconnected): retrybar.
+                raise TransientModelError(str(exc)) from exc
 
         return "".join(parts)

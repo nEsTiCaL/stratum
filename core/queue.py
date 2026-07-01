@@ -156,9 +156,7 @@ class Queue:
                     (item_id,),
                 )
 
-    def claim_by_id(
-        self, item_id: int, *, model: str = "human"
-    ) -> "QueueItem | None":
+    def claim_by_id(self, item_id: int, *, model: str = "human") -> QueueItem | None:
         """Beansprucht einen spezifischen pending-Knoten per ID.
 
         Fuer manuelles Claiming aus dem Web-Dashboard (I-D.2): der Nutzer
@@ -224,7 +222,7 @@ class Queue:
             "created_at",
             "claimed_at",
         )
-        return [dict(zip(keys, row)) for row in rows]
+        return [dict(zip(keys, row, strict=True)) for row in rows]
 
 
 def _row_to_item(row: tuple[Any, ...]) -> QueueItem:

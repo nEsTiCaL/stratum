@@ -18,7 +18,12 @@ import pytest
 
 from core.queue import QueueItem
 from core.router import Router
-from core.validator import ContextExceededError, FakeModel, ReplayModel
+from core.validator import (
+    ContextExceededError,
+    FakeModel,
+    ReplayModel,
+    TransientModelError,
+)
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 
 # ---------------------------------------------------------------------------
@@ -138,8 +143,9 @@ class TestReplayModel:
 
 class TestOllamaAdapterListModels:
     def test_returns_model_names_without_tag(self):
-        from core.ollama_adapter import OllamaAdapter
         from unittest.mock import patch
+
+        from core.ollama_adapter import OllamaAdapter
 
         body = {"models": [{"name": "phi4-mini:latest"}, {"name": "qwen3-8b:q4"}]}
         with patch("httpx.get") as mock_get:
@@ -148,16 +154,18 @@ class TestOllamaAdapterListModels:
         assert result == frozenset({"phi4-mini", "qwen3-8b"})
 
     def test_returns_empty_on_connection_error(self):
-        from core.ollama_adapter import OllamaAdapter
         from unittest.mock import patch
+
+        from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
             result = OllamaAdapter.list_models("http://nohost")
         assert result == frozenset()
 
     def test_returns_empty_on_http_error(self):
-        from core.ollama_adapter import OllamaAdapter
         from unittest.mock import patch
+
+        from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get") as mock_get:
             mock_get.return_value = httpx.Response(503, json={})
@@ -203,6 +211,20 @@ class TestOllamaAdapterErrors:
         )
         adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
         with pytest.raises(RuntimeError, match="llama-server"):
+            adapter.complete("prompt")
+
+    def test_transport_error_raises_transient(self):
+        """Verbindungsabbruch (peer closed / disconnect) -> TransientModelError
+        (retrybar), nicht RuntimeError."""
+        from core.ollama_adapter import OllamaAdapter
+
+        class _BoomTransport(httpx.BaseTransport):
+            def handle_request(self, request: httpx.Request) -> httpx.Response:
+                raise httpx.RemoteProtocolError("peer closed connection")
+
+        client = httpx.Client(transport=_BoomTransport())
+        adapter = OllamaAdapter("phi4-mini", host="http://fake", client=client)
+        with pytest.raises(TransientModelError):
             adapter.complete("prompt")
 
 
@@ -267,6 +289,43 @@ class TestLlmWorker:
         outcome = worker.run(_item(), repo)
         assert outcome.status == "unresolved"
         assert len(repo.artifacts) == 0
+
+    def test_transient_error_retries_same_model(self):
+        """Transportabbruch beim 1. Versuch -> Retry am selben Modell, dann Erfolg."""
+
+        class _FlakyModel:
+            def __init__(self, response: str):
+                self._response = response
+                self.calls = 0
+
+            def complete(self, prompt: str) -> str:
+                self.calls += 1
+                if self.calls == 1:
+                    raise TransientModelError("peer closed connection")
+                return self._response
+
+        flaky = _FlakyModel(_prob_response(0.9))
+        worker = LlmWorker(router=Router(), model_factory=lambda name: flaky)
+        repo = _FakeRepo()
+        outcome = worker.run(_item(), repo)
+        assert outcome.status == "done"
+        assert flaky.calls == 2  # 1x transient, 1x Erfolg (selbes Modell)
+        assert len(repo.artifacts) == 1
+
+    def test_provenance_is_stamped_by_worker(self):
+        """Der Worker ueberschreibt die Modell-Provenance mit autoritativen Werten:
+        echter Modellname statt uebernommenem Prompt-Platzhalter."""
+        wrong = json.loads(_prob_response(0.9))
+        wrong["provenance"]["producer"] = "gpt-4o-mini"  # Platzhalter aus dem Prompt
+        wrong["provenance"]["source_hash"] = "x"
+        worker = self._make_worker(FakeModel(responses=[json.dumps(wrong)]))
+        repo = _FakeRepo()
+        outcome = worker.run(_item(), repo)
+        assert outcome.status == "done"
+        stored = repo.artifacts[0]
+        assert stored.provenance.producer == "phi4-mini"  # echtes Modell
+        assert stored.provenance.producer_class.value == "prob"
+        assert stored.provenance.source_hash != "x"  # autoritativ ueberschrieben
 
 
 # ---------------------------------------------------------------------------

@@ -150,6 +150,33 @@ class TestValidatorProb:
         assert result.trigger == "prob_schema_fail"
         assert result.may_escalate is True
 
+    def test_prob_envelope_without_provenance_passes(self):
+        # Das Modell liefert nur den Content-Envelope; die Provenance stempelt
+        # der Worker. Fehlende Provenance darf die Validierung NICHT brechen.
+        envelope = json.dumps(
+            {
+                "artifact_type": "code_summary",
+                "scope": "file:core/foo.py",
+                "content": {"zweck": "x"},
+                "confidence": 0.8,
+            }
+        )
+        v = Validator()
+        result = v.validate(envelope, TaskType.summarize, producer_class="prob")
+        assert result.passed is True
+        assert result.confidence == pytest.approx(0.8)
+
+    def test_prob_missing_content_still_fails(self):
+        # Content ist Modell-Sache: fehlt er, muss die Validierung scheitern
+        # (nur die Provenance wird gestubbt, nicht der Envelope).
+        broken = json.dumps(
+            {"artifact_type": "code_summary", "scope": "file:core/foo.py"}
+        )
+        v = Validator()
+        result = v.validate(broken, TaskType.summarize, producer_class="prob")
+        assert result.passed is False
+        assert result.trigger == "prob_schema_fail"
+
     def test_crypto_audit_threshold_is_085(self):
         assert CONFIDENCE_THRESHOLDS[TaskType.crypto_audit] == pytest.approx(0.85)
 

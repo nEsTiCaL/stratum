@@ -3,6 +3,7 @@
 Det-Teil (TDD): GoalItem/Plan-Parsing, large-Flag, DAG-Verkettung.
 Prob-Teil: dev-verifiziert an echtem Modell (kein Gleichheitstest hier).
 """
+
 from __future__ import annotations
 
 import json

@@ -6,6 +6,7 @@ Phi-4-mini klassifiziert einen Prompt auf drei Achsen:
 Detektor-Stub liefert hart none in S2. Scharf ab I-3.4.
 Sensitivitaet = max(Modell, Detektor); sensitivity_src = "model"|"detector"|"both".
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

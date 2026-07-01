@@ -67,8 +67,7 @@ def make_on_cost(
         total = store.daily_total(today)
         if total >= cap_usd:
             raise DailyCostCapError(
-                f"Tagesbudget {cap_usd} USD ueberschritten"
-                f" (heute: {total:.6f} USD)"
+                f"Tagesbudget {cap_usd} USD ueberschritten (heute: {total:.6f} USD)"
             )
 
     def on_cost(rec: CostRecord) -> None:

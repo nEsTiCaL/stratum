@@ -113,8 +113,16 @@ class TestListTasks:
         q = Queue(conn)
         q.enqueue(_dag("d1", "summarize", "file:b.py"), model="phi4-mini")
         task = q.list_tasks()[0]
-        for key in ("id", "dag_id", "task_type", "scope", "model", "status",
-                    "attempts", "created_at"):
+        for key in (
+            "id",
+            "dag_id",
+            "task_type",
+            "scope",
+            "model",
+            "status",
+            "attempts",
+            "created_at",
+        ):
             assert key in task
 
     def test_multiple_tasks_ordered_by_created_at(self, conn):

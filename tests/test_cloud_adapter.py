@@ -95,9 +95,7 @@ class TestCloudAdapterComplete:
         assert adapter.complete("do it") == "done"
         assert len(costs) == 1
         # opus 5.00 in / 25.00 out je 1M
-        assert costs[0].cost_usd == pytest.approx(
-            (100 * 5.00 + 20 * 25.00) / 1_000_000
-        )
+        assert costs[0].cost_usd == pytest.approx((100 * 5.00 + 20 * 25.00) / 1_000_000)
 
     def test_no_cost_callback_is_optional(self):
         sender = ReplayCloudSender(
@@ -113,9 +111,7 @@ class TestRetry:
             {"q": RawCloudResponse("ok", input_tokens=1, output_tokens=1)},
             fail_first_n=2,
         )
-        adapter = CloudAdapter(
-            spec=resolve_spec("haiku"), sender=sender, max_retries=2
-        )
+        adapter = CloudAdapter(spec=resolve_spec("haiku"), sender=sender, max_retries=2)
         assert adapter.complete("q") == "ok"
         assert sender.calls == 3  # 2 Fehlschlaege + 1 Erfolg
 
@@ -124,9 +120,7 @@ class TestRetry:
             {"q": RawCloudResponse("ok", input_tokens=1, output_tokens=1)},
             fail_first_n=5,
         )
-        adapter = CloudAdapter(
-            spec=resolve_spec("haiku"), sender=sender, max_retries=2
-        )
+        adapter = CloudAdapter(spec=resolve_spec("haiku"), sender=sender, max_retries=2)
         with pytest.raises(TransientCloudError):
             adapter.complete("q")
         assert sender.calls == 3  # 1 + max_retries
@@ -180,8 +174,6 @@ class TestResponseToResultProb:
         adapter = CloudAdapter(spec=resolve_spec("opus"), sender=sender)
         text = adapter.complete("summarize auth")
 
-        result = Validator().validate(
-            text, TaskType.summarize, producer_class="prob"
-        )
+        result = Validator().validate(text, TaskType.summarize, producer_class="prob")
         assert result.passed is True
         assert result.confidence == pytest.approx(0.9)

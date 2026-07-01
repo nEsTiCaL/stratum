@@ -29,6 +29,7 @@ services:
     environment:
       POSTGRES_HOST: db
       OLLAMA_HOST: http://host.docker.internal:11434
+      PYTHONUNBUFFERED: "1"
     env_file:
       - .env
     extra_hosts:

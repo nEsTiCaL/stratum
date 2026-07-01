@@ -14,6 +14,7 @@ from pathlib import Path
 
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ResultProb
+from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
 from core.repository import Repository
 from core.router import TASK_REQUIREMENTS, Router, TaskType
@@ -52,6 +53,7 @@ class LlmWorker:
 
     router: Router
     model_factory: Callable
+    root: Path = field(default_factory=Path)
     _loop: EscalationLoop = field(init=False)
 
     def __post_init__(self) -> None:
@@ -81,9 +83,19 @@ class LlmWorker:
             model_factory=self.model_factory,
         )
         if outcome.status == "done" and outcome.response is not None:
-            # dieselbe Fence-/Prosa-Toleranz wie im Validator (extract_json),
-            # sonst scheitert das erneute Parsen an der Verpackung.
-            result_obj = ResultProb.model_validate(extract_json(outcome.response))
+            # Modell liefert nur den Content-Envelope; die Provenance stempelt der
+            # Worker autoritativ (kleine Modelle uebernehmen sonst die Platzhalter
+            # aus dem Prompt-Beispiel oder lassen Pflichtfelder weg).
+            data = extract_json(outcome.response)
+            prov = build_prob_provenance(
+                scope=data["scope"],
+                artifact_type=data["artifact_type"],
+                producer=outcome.final_model or "unknown",
+                root=self.root,
+            )
+            result_obj = ResultProb.model_validate(
+                {**data, "provenance": prov.model_dump(mode="json")}
+            )
             repo.put_artifact(result_obj)
         return outcome
 

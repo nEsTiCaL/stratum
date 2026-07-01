@@ -15,9 +15,7 @@ from core.validator import ReplayModel
 _CAPTURED: list[tuple[str, str]] = [
     (
         "Summarize the auth module.",
-        "```json\n"
-        '[\n    {"task_type": "document", "scope": "module:auth"}\n]\n'
-        "```",
+        '```json\n[\n    {"task_type": "document", "scope": "module:auth"}\n]\n```',
     ),
     (
         "Explain the login function and then review it for security issues.",

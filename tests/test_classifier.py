@@ -3,6 +3,7 @@
 Det-Teil (TDD): _merge_sensitivity-Logik + Output-Schema + sensitivity_src.
 Prob-Teil: dev-verifiziert an echtem Phi-4-mini (kein Gleichheitstest hier).
 """
+
 from __future__ import annotations
 
 import json

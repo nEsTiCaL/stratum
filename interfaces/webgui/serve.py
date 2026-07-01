@@ -106,13 +106,17 @@ def _seed(conn: psycopg.Connection) -> None:
     print(f"  Seed: {len(ids)} Tasks enqueued (IDs: {ids})")
 
 
-def _make_worker_loop(worker_conn: psycopg.Connection, worker_repo: Repository) -> WorkerLoop:
+def _make_worker_loop(
+    worker_conn: psycopg.Connection, worker_repo: Repository
+) -> WorkerLoop:
     router = Router()
 
     ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     installed = OllamaAdapter.list_models(ollama_host)
     if not installed:
-        print("[worker] Warnung: Ollama nicht erreichbar oder keine Modelle installiert")
+        print(
+            "[worker] Warnung: Ollama nicht erreichbar oder keine Modelle installiert"
+        )
     else:
         print(f"[worker] Installierte Ollama-Modelle: {sorted(installed)}")
 
@@ -151,7 +155,11 @@ def _make_worker_loop(worker_conn: psycopg.Connection, worker_repo: Repository) 
         queue=Queue(worker_conn),
         repo=worker_repo,
         det_worker=DetWorker(root=Path(__file__).parent.parent.parent),
-        llm_worker=LlmWorker(router=router, model_factory=model_factory),
+        llm_worker=LlmWorker(
+            router=router,
+            model_factory=model_factory,
+            root=Path(__file__).parent.parent.parent,
+        ),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
     )

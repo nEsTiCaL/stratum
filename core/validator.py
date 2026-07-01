@@ -42,8 +42,35 @@ def _threshold_for(task_type: TaskType) -> float:
     return CONFIDENCE_THRESHOLDS[task_type]
 
 
+# Provenance ist Worker-Sache (core.provenance_stamp): das Modell liefert nur den
+# Content-Envelope. Beim Validieren ersetzt dieser valide Stub die (fehlende oder
+# vom Modell verpfuschte) Provenance, damit die Validierung nur artifact_type,
+# scope, content und confidence prueft.
+_STUB_PROVENANCE = {
+    "schema_version": "1",
+    "source_hash": "pending",
+    "input_hash": "pending",
+    "producer": "pending",
+    "producer_version": "pending",
+    "producer_class": "prob",
+    "timestamp": "1970-01-01T00:00:00+00:00",
+    "artifact_type": "code_summary",
+    "scope": "file:pending",
+}
+
+
 class ContextExceededError(Exception):
     """Vom Model geworfen, wenn der Prompt das Kontextfenster sprengt."""
+
+
+class TransientModelError(Exception):
+    """Voruebergehender Transportfehler (Verbindungsabbruch/Timeout).
+
+    Im Gegensatz zu RuntimeError (echter Fehler, kein Retry) und
+    ContextExceededError (Prompt zu gross, naechster Kandidat) ist hier ein
+    Retry am SELBEN Modell sinnvoll — Ollama war kurz weg, hat den Stream
+    abgebrochen o.ae.
+    """
 
 
 class Model(Protocol):
@@ -122,7 +149,9 @@ class Validator:
             first = exc.errors(include_url=False)[0]
             detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
-                passed=False, trigger="det_schema_fail", may_escalate=False,
+                passed=False,
+                trigger="det_schema_fail",
+                may_escalate=False,
                 detail=detail,
             )
         return ValidationResult(passed=True, trigger="pass")
@@ -130,21 +159,28 @@ class Validator:
     def _validate_prob(self, response: str, task_type: TaskType) -> ValidationResult:
         # prob-Ausgabe kommt von einem Sprachmodell: Markdown-Fences oder Prosa
         # um das JSON tolerieren (extract_json), sonst scheitert die Validierung
-        # an der Verpackung statt am Inhalt.
+        # an der Verpackung statt am Inhalt. Provenance ist nicht Modell-Sache
+        # (der Worker stempelt sie) -> beim Validieren durch einen Stub ersetzen.
         try:
             data = extract_json(response)
+            if isinstance(data, dict):
+                data = {**data, "provenance": _STUB_PROVENANCE}
             result = ResultProb.model_validate(data)
         except ValidationError as exc:
             first = exc.errors(include_url=False)[0]
             detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
-                passed=False, trigger="prob_schema_fail", may_escalate=True,
+                passed=False,
+                trigger="prob_schema_fail",
+                may_escalate=True,
                 detail=detail,
             )
         except ValueError as exc:
             # kein/kaputtes JSON in der Antwort
             return ValidationResult(
-                passed=False, trigger="prob_schema_fail", may_escalate=True,
+                passed=False,
+                trigger="prob_schema_fail",
+                may_escalate=True,
                 detail=f"kein gueltiges JSON: {exc}",
             )
         confidence = result.confidence
@@ -213,6 +249,16 @@ class EscalationLoop:
                     last_response = None
                     last_model = candidate.model
                     break  # naechster Kandidat
+                except TransientModelError:
+                    # Transportabbruch: Retry am SELBEN Modell (continue), erst
+                    # nach Aufbrauchen der Versuche zum naechsten Kandidaten.
+                    attempts += 1
+                    last_result = ValidationResult(
+                        passed=False, trigger="transient_error", may_escalate=True
+                    )
+                    last_response = None
+                    last_model = candidate.model
+                    continue
 
                 attempts += 1
                 result = self._validator.validate(

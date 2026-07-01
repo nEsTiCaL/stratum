@@ -59,9 +59,7 @@ _ANTHROPIC_SPECS: dict[str, CloudModelSpec] = {
     "sonnet": CloudModelSpec(
         "sonnet", Provider.anthropic, "claude-sonnet-4-6", 3.00, 15.00
     ),
-    "opus": CloudModelSpec(
-        "opus", Provider.anthropic, "claude-opus-4-8", 5.00, 25.00
-    ),
+    "opus": CloudModelSpec("opus", Provider.anthropic, "claude-opus-4-8", 5.00, 25.00),
 }
 
 CLOUD_MODEL_SPECS: dict[str, CloudModelSpec] = dict(_ANTHROPIC_SPECS)
