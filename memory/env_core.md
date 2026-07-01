@@ -4,7 +4,7 @@ Projektweite Voraussetzungen und Grenzen.
 
 ## Portabilitaet Windows-Dev -> Linux-Server
 
-Eigene Notiz: [[portabilitaet]]. Kurz: WSL2 ist die Bauumgebung (Linux-
+Eigene Notiz: `env_portabilitaet`. Kurz: WSL2 ist die Bauumgebung (Linux-
 Paritaet), Windows nur Host fuer Ollama/GPU und Editor; Postgres immer in
 Docker. Zeilenenden/Encoding sind im Repo erzwungen (.gitattributes,
 .editorconfig, repo-lokal core.autocrlf=false).

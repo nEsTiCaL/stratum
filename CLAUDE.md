@@ -1,9 +1,15 @@
 ## Projektgedaechtnis
 
-Dieses Projekt nutzt ein dateibasiertes Gedaechtnis unter memory/. Sobald in einer
-Sitzung erstmals etwas festzuhalten ist (Erkenntnis, Entscheidung, geloestes
-Problem, offene Frage, geaenderte Annahme) oder du Kontext aus frueheren Sitzungen
-brauchst, lies zuerst memory-rules.md und richte dich danach. Sonst nicht noetig.
+Dateibasiertes Gedaechtnis unter memory/. Einstieg: memory/START.md.
+Kurz-Routing: Fakt (Befehl, Name, Konstante) -> grep memory/; Kontext
+(Begruendung, Stand) -> memory/MANIFEST.md; Modul bauen -> memory/arbeitsplan.md.
+
+Nicht aus dem Gedaechtnis raten: bevor du eine projektbezogene Frage
+beantwortest oder einen Befehl/Namen aus der Erinnerung nutzt, erst grep/MANIFEST.
+Den ganzen Speicher nie pauschal lesen.
+
+Schreiben: sobald etwas festzuhalten ist (Erkenntnis, Entscheidung, geloestes
+Problem, offene Frage, geaenderte Annahme), nach memory/rules.md richten.
 
 ## Host-spezifische Notizen
 

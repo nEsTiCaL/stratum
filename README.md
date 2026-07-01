@@ -17,17 +17,21 @@ geben. Er fuehrt von der Umgebungseinrichtung bis zum ersten Baustein:
 Projekt Stratum (dieses Repo). Begleite mich vom Setup bis zum ersten Baustein.
 
 1. Orientiere dich: bestaetige, dass die Session im Wurzelverzeichnis dieses
-   Repos (stratum) gerootet ist, und lies memory-rules.md, memory/_overview.md
-   und memory/planung/arbeitsplan.md. Folge dem Kaltstart-Workflow dort.
+   Repos (stratum) gerootet ist, und lies memory/START.md und
+   memory/arbeitsplan.md. Folge dem Kaltstart-Workflow dort.
 2. Richte die Dev-Umgebung ein: begleite mich Schritt fuer Schritt durch
    scripts/setup.ps1 (Windows-Host) und scripts/setup.sh (WSL2) bis Ziel N2
-   (siehe scripts/README.md und memory/constraints.md). Pruefe die Ergebnisse.
+   (siehe scripts/README.md und memory/env_core.md). Pruefe die Ergebnisse.
 3. Danach starten wir Haeppchen I-1.0 (Schema-Vertrag + Codegen + Drift-Gate):
    lies dessen Quellen laut arbeitsplan, pruefe den Preflight (Schicht S1) und
    schlage das Vorgehen test-driven vor, BEVOR du Code schreibst.
 ```
 
 Manuelle Einrichtung ohne Claude Code: siehe `scripts/README.md`.
+
+Claude fuehrt fuer dieses Projekt ein persistentes, dateibasiertes Gedaechtnis
+unter `memory/` (Architektur-Entscheidungen, Baufortschritt, Befehle). Wie das
+funktioniert und wie du damit arbeitest: `memory-user-guide.md`.
 
 ## Was ist Stratum
 

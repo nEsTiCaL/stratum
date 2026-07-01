@@ -1,19 +1,7 @@
----
-id: sprachagnostik
-title: Sprachagnostik des Extraktor-Kerns - Befund und Grenzziehung
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-30
-status: active
-tags: [indexer, tree-sitter, multilang]
-related: ["[[_core]]", "[[inkremente-schritt-1]]"]
----
-
 # Sprachagnostik des Extraktor-Kerns
 
 Befund + Grenzziehung vor der ersten Fremdsprache. Umgesetzt von
-[[inkremente-schritt-1]] I-1.85.
+`spec_schritt-1` I-1.85.
 
 ## Befund (Ausgangslage)
 
@@ -131,7 +119,7 @@ self_module_fallback| False (default) | True
    loest gegen die Top-Level-Funktionen auf. True nur GDScript. Saubere Symbol-
    Modellierung (Top-Level -> method der class_name-Klasse) braucht die
    projektweite class_name-Tabelle -> S4; der Fallback loest hier, ohne kind/
-   parent vorzeitig umzustellen (I-1.11b, [[gdscript-umsetzung]]).
+   parent vorzeitig umzustellen (I-1.11b, `idx_gdscript`).
 const_strategy      | none (default) | uppercase_name
    warum: const-Erkennung ist NICHT universell. Sprachen MIT const-Keyword
    (Go, JS/TS, C#, Rust) druecken const strukturell in der .scm aus
@@ -219,7 +207,7 @@ extract_symbols; kuenftig liefert die Tabelle auch die Spans fuer Containment).
 ```
 1. PROBE FIRST (Pflicht, nicht optional): Grammar-Name im language-pack pruefen
    (z.B. c_sharp mit Unterstrich) + Knotentypen/Felder/Quantoren sondieren gegen
-   die ECHTE Grammar (Probe-Skript, siehe [[_core]]). Hauptaufwand liegt hier.
+   die ECHTE Grammar (Probe-Skript, siehe `idx_core`). Hauptaufwand liegt hier.
    Dabei zwei Dinge VORAB klaeren:
    a) Sichtbarkeits-DEFAULT der Sprache (kein-Modifier -> was?). "none" (=public)
       stimmt selten ungeprueft: C#-Member default private, Top-Level internal;
@@ -284,14 +272,14 @@ eine Sprache eine Kern-Aenderung, ist das das Signal eines undichten Abstrakts:
 dann das Capture-Vokabular erweitern (bevorzugt) ODER eine begruendete
 Profil-Achse ergaenzen (in dieser Notiz dokumentieren) - NIE Sprachspezifisches
 in den Kern inlinen. Genau dieser Test (Kern unberuehrt) ist die Abnahme von
-I-1.9. Sprach-Besonderheiten je Increment stehen in [[inkremente-schritt-1]]
+I-1.9. Sprach-Besonderheiten je Increment stehen in `spec_schritt-1`
 (I-1.9/1.10/1.11).
 
 Verfeinerung (I-1.9, mit Nutzer): "Kern git-diff leer" galt strikt fuer calls.py.
 symbols.py/imports.py duerfen GENERISCHE, profilgesteuerte Erweiterungen bekommen
 (der hier genannte Ausweg), kein language-inlining. Konkret bei I-1.9:
 _visibility parent-bewusst + export-Strategie (korrekte JS-Sichtbarkeit war
-Vorgabe), relative_path_ext. Details: [[js-ts-umsetzung]].
+Vorgabe), relative_path_ext. Details: `idx_js-ts`.
 
 Verfeinerung (I-1.11b, mit Nutzer): die strikte calls.py-Diff-leer-Regel ist
 aufgehoben. GDScript-self-Calls (Datei-als-Klasse, attribute_call ohne function:-
@@ -299,7 +287,7 @@ Feld) erzwangen zwei generische Profil-Achsen in calls.py. Bewusste Entscheidung
 Paritaet von GDScript (sonst messbar schlechterer det-Graph) vor dem Diff-leer-
 Beleg, der seinen Zweck (Abstraktion traegt ueber 5 Sprachen) erfuellt hatte.
 calls.py bleibt agnostisch (profilgesteuert, kein language-inlining). Details:
-[[gdscript-umsetzung]].
+`idx_gdscript`.
 
 ## Quellen
 

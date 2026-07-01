@@ -1,21 +1,10 @@
----
-id: js-ts-umsetzung
-title: I-1.9 JavaScript/TypeScript - Findings, Plan, Umsetzung
-type: decision
-status: resolved
-created: 2026-06-29
-updated: 2026-06-30
-tags: [indexer, tree-sitter, javascript, typescript]
-related: ["[[sprachagnostik]]", "[[_core]]", "[[inkremente-schritt-1]]"]
----
-
 # I-1.9 JavaScript/TypeScript: Stand, Findings, Plan
 
 Arbeitsstand-Notiz fuer den Kaltstart. I-1.9 ist IN ARBEIT, pausiert NACH der
 Grammatik-Sondierung und VOR der Implementierung. Hier stehen die getroffenen
 Entscheidungen, die sondierten Grammatik-Strukturen (nicht neu sondieren) und der
-konkrete Bauplan inkl. der genauen Kern-Edits. Grundlage: [[sprachagnostik]],
-[[inkremente-schritt-1]] (I-1.9).
+konkrete Bauplan inkl. der genauen Kern-Edits. Grundlage: `idx_sprachagnostik`,
+`spec_schritt-1` (I-1.9).
 
 ## Stand: ERLEDIGT (I-1.9 fertig, 2026-06-30)
 
@@ -45,7 +34,7 @@ Findings + Bauplan unten bleiben als Referenz fuer I-1.10/1.11.
    kein language-inlining. Damit ist die I-1.9-Akzeptanz "core git-diff LEER"
    verfeinert zu: calls.py bleibt diff-leer; symbols.py und imports.py bekommen
    NUR generische, profilgesteuerte Erweiterungen (kein JS-Spezialcode). Das
-   deckt sich mit der Standing-Invariante in [[sprachagnostik]] (Ausweg:
+   deckt sich mit der Standing-Invariante in `idx_sprachagnostik` (Ausweg:
    "Capture-Vokabular erweitern ODER begruendete Profil-Achse" - NIE inlinen).
 2. Grammar-Umfang: NUR JavaScript + TypeScript. tsx verschoben (Spec-Minimum
    "2-3 Grammatiken" mit 2 erfuellt).
@@ -159,7 +148,7 @@ JS-Patterns + interface/type/enum/namespace + abstract_class. imports/calls ~= J
 _EXTENSION_LANGUAGE += {".js":"javascript", ".ts":"typescript"}; _BUILDER_SETS
 += js/ts (je 3 Builder). (Optional, vervollstaendigt Dispatch.)
 
-### 7. Tests (zweigleisig, [[sprachagnostik]] Teststrategie)
+### 7. Tests (zweigleisig, `idx_sprachagnostik` Teststrategie)
 - Golden je Artefakt fuer JS und TS (Fixtures unter tests/fixtures/javascript|
   typescript/, Erwartung byte-exakt - Output erst per Extraktion erzeugen, von
   Hand verifizieren, dann als Golden festschreiben).
@@ -184,6 +173,6 @@ I-1.9-Akzeptanz "core git-diff LEER" gilt strikt fuer calls.py. symbols.py und
 imports.py duerfen GENERISCHE, profilgesteuerte Erweiterungen bekommen (hier:
 _visibility parent-bewusst + Token-Klassifikation + export-Strategie;
 relative_path_ext). Das ist kein Bruch der Sprachagnostik, sondern der in
-[[sprachagnostik]] vorgesehene Ausweg (kein language-inlining). Begruendung:
+`idx_sprachagnostik` vorgesehene Ausweg (kein language-inlining). Begruendung:
 korrekte Sichtbarkeit war Nutzer-Vorgabe und ist ohne Member-vs-Top-Level-
 Kontext nicht darstellbar.

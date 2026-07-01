@@ -1,14 +1,3 @@
----
-id: gdscript-umsetzung
-title: I-1.11 GDScript - Findings, Plan
-type: decision
-status: resolved
-created: 2026-06-30
-updated: 2026-06-30
-tags: [indexer, tree-sitter, gdscript]
-related: ["[[sprachagnostik]]", "[[_core]]", "[[inkremente-schritt-1]]"]
----
-
 # I-1.11 GDScript: Findings, Plan
 
 ## Stand: ERLEDIGT (I-1.11 fertig, 2026-06-30)
@@ -76,13 +65,13 @@ re-indiziert, keine Migration.
 calls.py ist ab I-1.11b NICHT mehr git-diff-leer. Der Beleg "5 Sprachen, calls.py
 nie angefasst" endet hier - durch eine GENERISCHE, profilgesteuerte Aenderung (kein
 language-inlining), also Agnostik intakt. Regel angeglichen an symbols.py/imports.py
-(seit I-1.9 generisch erweiterbar). Siehe [[sprachagnostik]] (aktualisiert).
+(seit I-1.9 generisch erweiterbar). Siehe `idx_sprachagnostik` (aktualisiert).
 
 ---
 
 Vorab-Analyse + Bauplan. GDScript ist bewusst REDUZIERT: nur symbol_index +
 call_graph (2 Builder, KEIN dependency_graph). Grammar 'gdscript' (on-demand,
-siehe [[constraints]]). Reifegrad galt als gering - die Sondierung zeigt aber
+siehe `env_core`). Reifegrad galt als gering - die Sondierung zeigt aber
 eine saubere, gut benannte Grammar.
 
 ## Grammatik-Findings (sondiert, has_error=False auf repraesentativem Code)

@@ -1,19 +1,8 @@
----
-id: lint-format-gate
-title: Lint-/Format-Gate (I-1.12)
-type: decision
-status: active
-created: 2026-06-30
-updated: 2026-06-30
-tags: [dev-infra, lint, ci, ruff]
-related: ["[[arbeitsplan]]", "[[det-linter-review]]", "[[constraints]]"]
----
-
 # Lint-/Format-Gate (I-1.12)
 
 Dev-/CI-Gate fuer Stratums EIGENEN Code, Abschluss von Schritt 1. KEIN
 Produktfeature: der Linter als Analyse-Producer ueber FREMDEN Code ist eine
-getrennte Idee fuer S2 ([[det-linter-review]], "2 Achsen"-Abgrenzung).
+getrennte Idee fuer S2 (`plan_det-linter`, "2 Achsen"-Abgrenzung).
 
 ## Werkzeug und Regelset
 
@@ -85,4 +74,4 @@ GHA-Workflow (lint+drift+test) folgt spaeter, fruehestens Phase 2.
 
 - mypy (Typcheck): eigener spaeterer Schritt.
 - Go-Lint (gofmt/go vet): erst Phase 2 mit dem Go-CLI.
-- Linter-als-Producer ueber Fremdcode: [[det-linter-review]] (S2).
+- Linter-als-Producer ueber Fremdcode: `plan_det-linter` (S2).

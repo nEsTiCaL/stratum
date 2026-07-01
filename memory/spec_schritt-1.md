@@ -1,21 +1,10 @@
----
-id: inkremente-schritt-1
-title: Inkremente Schritt 1 (Substrat)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, substrat]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[architecture]]"]
----
-
 # Inkremente Schritt 1: Substrat
 
 Deterministische Struktur-Artefakte, offline, ohne LLM/Cloud/Router. Alle
 Inkremente det -> durchgaengig test-driven. Grundlage: roadmap-schritt-1.md,
 technische-grundentscheidungen.md, startkonfiguration.md.
 
-## Voraussetzungen (Schicht S1, Details in [[constraints]])
+## Voraussetzungen (Schicht S1, Details in `env_core`)
 
 ```
 Vor (neu) je Inkrement (uebrige erben die Schicht):
@@ -23,7 +12,7 @@ Vor (neu) je Inkrement (uebrige erben die Schicht):
   I-1.2  Postgres-Container (pgvector-Image) laufend, psycopg v3, pydantic,
          yoyo (Migrations-Runner), pytest + testcontainers
   I-1.4  py-tree-sitter + tree-sitter-language-pack
-  I-1.7  watchdog; Working Tree im WSL2-FS (inotify, siehe [[portabilitaet]])
+  I-1.7  watchdog; Working Tree im WSL2-FS (inotify, siehe `env_portabilitaet`)
 ```
 
 ## I-1.0  Schema-Vertrag + Codegen + Drift-Gate
@@ -132,13 +121,13 @@ Klasse  : det
 
 ## I-1.85  Sprachagnostischer Extraktor-Kern (Multi-Sprache-Vorbereitung)
 
-Befund + Begruendung: [[sprachagnostik]]. Refactor VOR der ersten Fremdsprache,
+Befund + Begruendung: `idx_sprachagnostik`. Refactor VOR der ersten Fremdsprache,
 sonst zementieren C#/GDScript die Python-Kopplung dreifach.
 
 ```
 Ziel    : Extraktor-Kern von Python-AST-Annahmen entkoppeln; neue Sprachen
           brauchen nur .scm + schmales Sprachprofil, KEIN Kern-Code
-          Grenzziehung im Detail: [[sprachagnostik]] (kontrolliertes Capture-
+          Grenzziehung im Detail: `idx_sprachagnostik` (kontrolliertes Capture-
           Vokabular, 3 Profil-Achsen, out-of-scope).
 Modul   : (a) Capture-Konvention tags.scm-Stil: @name, @definition.<kind>
               (kind als String-Suffix), @parent, @signature, @param, @doc,
@@ -163,13 +152,13 @@ Modul   : (a) Capture-Konvention tags.scm-Stil: @name, @definition.<kind>
               queries/python/*.scm, core/indexer/{registry,symbols,imports,
               calls}.py, ingest._BUILDERS. Golden-Tests + Fixtures bleiben das
               Netz, Erwartungen unveraendert. Ist-Zustand + Checkliste:
-              [[sprachagnostik]]
+              `idx_sprachagnostik`
 Akzeptanz: alle Python-Golden-Tests byte-identisch gruen (Regressionsnetz,
           Verhalten unveraendert); core/indexer/{symbols,imports,calls}.py ohne
           Python-spezifische Knotentyp-Strings/Konventionen (stehen nur in
           queries/python/*.scm + profiles.py); Profil minimal (jeder Eintrag
           begruendet, warum nicht .scm); "Sprache hinzufuegen"-Checkliste
-          dokumentiert; Tests zweigleisig (Teststrategie in [[sprachagnostik]]):
+          dokumentiert; Tests zweigleisig (Teststrategie in `idx_sprachagnostik`):
           Golden + Real-Code-Smoke fuer Python (dogfood core/, z.B. core/scope.py,
           core/secret_scan.py) mit wiederverwendbarem Invarianten-Checker;
           optionaler Mini-Smoke einer zweiten Grammar (triviales JS)
@@ -179,7 +168,7 @@ Klasse  : det (Refactor unter Golden-Netz)
 
 ## I-1.9  JavaScript/TS (symbols/imports/calls)
 
-Standing-Invariante (Kern unberuehrt) + Capture-Konvention: [[sprachagnostik]].
+Standing-Invariante (Kern unberuehrt) + Capture-Konvention: `idx_sprachagnostik`.
 
 ```
 Ziel    : Grammar-Registry als sprachunabhaengig BEWEISEN (Kern aus I-1.85
@@ -217,7 +206,7 @@ Anders als Python (muss I-1.10 abdecken):
     passt daher NICHT; vermutlich neue Strategie "default_private" (kein
     @visibility-Capture -> private). Mapping protected/internal -> "private"
     (non-public). Vor dem Bau gegen die Grammar pruefen (Lehre aus I-1.9, s.
-    [[js-ts-umsetzung]] / [[sprachagnostik]] Checkliste 1a).
+    `idx_js-ts` / `idx_sprachagnostik` Checkliste 1a).
   - Overloads: gleicher Name, andere Arity. WICHTIG: symbol_index hat KEIN
     arity-Feld (bewusst seit I-1.85, Python-Golden byte-identisch). Zwei
     Foo(...) -> zwei Symbol-Records gleichen Namens mit unterschiedlicher
@@ -237,7 +226,7 @@ Klasse  : det
 
 ## I-1.11  GDScript (reduziert: nur symbol_index + grobe calls)
 
-Standing-Invariante + Konvention: [[sprachagnostik]]. Godot-Skriptsprache,
+Standing-Invariante + Konvention: `idx_sprachagnostik`. Godot-Skriptsprache,
 einrueckungsbasiert wie Python.
 
 ```
@@ -273,7 +262,7 @@ C/C++ bleibt offen gehalten (Praeprozessor/#include -> spaeter).
 
 ## I-1.11b  GDScript auf Paritaet (First-Class)
 
-Details + Sondierung: [[gdscript-umsetzung]]. Folge-Inkrement, weil die Reduktion
+Details + Sondierung: `idx_gdscript`. Folge-Inkrement, weil die Reduktion
 GDScripts det-Graph systematisch duenner machte (kein dependency_graph, self-Calls
 unaufgeloest) -> schlechtere Agent-Grundierung auf GDScript-Repos. Reduktions-Beleg
 war erbracht -> Promotion.
@@ -296,7 +285,7 @@ Workstreams:
 Akzeptanz: Golden (symbol_index mit extends-Signatur, call_graph mit self-Calls,
           dependency_graph) + Real-Code-Smoke + 3-Builder-ingest-Test. KERN-DIFF:
           calls.py NICHT mehr diff-leer (generisch/profilgesteuert, dokumentiert in
-          [[sprachagnostik]]); kein language-inlining.
+          `idx_sprachagnostik`); kein language-inlining.
 OFFEN S4 : Datei-als-Klasse im Symbol-Modell (Top-Level-Member -> method der
           class_name-Klasse, cross-file class_name-Tabelle). Bewusst NICHT in S1:
           braeche bare-Call-Aufloesung, unvollstaendig ohne class_name, zieht S4
@@ -309,7 +298,7 @@ Status  : fertig (2026-06-30), 160 Tests gruen.
 
 Letzter Schritt von Schritt 1: Code-Qualitaet von Stratum selbst haerten, bevor
 Phase 2 den Kern festschreibt. Reines Dev-/CI-Gate, KEIN Produktfeature (der
-Linter als Analyse-Vorstufe ist eine eigene Idee fuer S2: [[det-linter-review]]).
+Linter als Analyse-Vorstufe ist eine eigene Idee fuer S2: `plan_det-linter`).
 
 ```
 Ziel    : ruff als schnelle Lint-+Format-Stufe VOR der Testsuite (CI-Gate)

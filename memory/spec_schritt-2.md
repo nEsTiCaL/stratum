@@ -1,21 +1,10 @@
----
-id: inkremente-schritt-2
-title: Inkremente Schritt 2 (Orchestrator-Kern)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, orchestrator]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[inkremente-schritt-1]]"]
----
-
 # Inkremente Schritt 2: Orchestrator-Kern
 
 Aktives System: zerlegen, lokalen Workern zuweisen, validieren, eskalieren.
 Ohne Cloud (Eskalation endet am staerksten lokalen Modell). Grundlage:
 roadmap-schritt-2.md, startkonfiguration.md.
 
-## Voraussetzungen (Schicht S2, Details in [[constraints]])
+## Voraussetzungen (Schicht S2, Details in `env_core`)
 
 ```
 Vor (neu) je Inkrement:
@@ -83,7 +72,7 @@ Akzeptanz (det, via FakeModel): det -> nur Schema, Fail = Bug, KEINE
           Kontext gesprengt -> Eskalation; erschoepft -> unresolved;
           Trace je Knoten (validation_result, trigger, attempts, final_model)
 Klasse  : det (Logik) ueber Model-Seam
-Quelle  : [[i-2-1-matrix-router]] -> "Konsumenten-Vertrag (fuer I-2.4)". Der
+Quelle  : `spec_i-2-1-router` -> "Konsumenten-Vertrag (fuer I-2.4)". Der
           Router ist v2 (Capability-Modell); R2/SK3 beschreiben die ueberholte
           rank-Liste. Eskalation = naechster Candidate der candidates()-Liste;
           Pre-S3-Cloud nicht real aufrufbar -> endet am letzten lokalen Modell.

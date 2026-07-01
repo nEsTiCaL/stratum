@@ -1,14 +1,3 @@
----
-id: nutzstufen
-title: Nutzstufen und Dogfooding
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [meilenstein, dogfooding, produktiv]
-related: ["[[_core]]", "[[inkremente-schalen]]", "[[tdd-methodik]]"]
----
-
 # Nutzstufen und Dogfooding
 
 Ab wann liefert Stratum echten, einsetzbaren Nutzen. Prueffeld ist Stratum
@@ -43,7 +32,7 @@ N6 Mehrnutzer       Phase 2 (Server)  SSH-CLI, Auth, remote; erst wenn andere
 
 Ab Schritt 2 beschleunigt Stratum seine eigene Weiterentwicklung. Die
 test_gen-Faehigkeit speist direkt die det-TDD-Schleife (siehe
-[[tdd-methodik]]), mit der die naechsten Module gebaut werden -> sich selbst
+`method_tdd`), mit der die naechsten Module gebaut werden -> sich selbst
 verstaerkender Pfad.
 
 Internes Erfolgskriterium fuer N2: Stratum generiert einen brauchbaren Test
@@ -56,4 +45,4 @@ echten Frontends. Entscheidung: kleines Inkrement I-D.0 Dev-Harness (lokales
 CLI/REPL gegen das Repository-Interface), verfuegbar ab Ende Schritt 1. Deckt
 sich mit dem Desktop-Profil ("Kern darf anfangs per Skript laufen"). Verworfen:
 VSCode vorziehen (mehr Aufwand, Kanal zu frueh) und gar kein frueher Einstieg
-(kein Dogfooding vor N2). Siehe [[inkremente-schalen]].
+(kein Dogfooding vor N2). Siehe `spec_schalen`.

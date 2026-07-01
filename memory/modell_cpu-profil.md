@@ -1,20 +1,9 @@
----
-id: modell-cpu-profil
-title: Modell-Profil CPU-only (ohne GPU)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [cpu, modelle, kapazitaet, dev-setup]
-related: ["[[modell-vram-matrix]]", "[[constraints]]", "[[portabilitaet]]"]
----
-
 # Modell-Profil CPU-only (ohne GPU)
 
 Deployment-Variante fuer Maschinen ohne NVIDIA-GPU. Aenderung NUR am
 Capacity-Profil (startkonfiguration.md Abschnitt 5b); Kern, model_matrix
 und Templates bleiben gleich. Das globale Projektziel (GPU 12-16 GB,
-siehe [[constraints]]) bleibt bestehen; dieses Profil macht eine
+siehe `env_core`) bleibt bestehen; dieses Profil macht eine
 GPU-lose Dev-Maschine nutzbar, statt sie zweckfrei zu lassen.
 
 ## Anlass
@@ -52,7 +41,7 @@ Ollama laeuft auf dem Windows-Host, NICHT in WSL2. Beide teilen sich die
 15.8 GB. WSL2 nimmt sich per Default ~50%. Damit der Host genug fuer das
 Modell behaelt, WSL2 deckeln: %USERPROFILE%\.wslconfig mit z.B.
 memory=6GB. Dann bleiben ~9-10 GB fuer Windows + Ollama (phi-4-mini passt
-mit Kontext mehrfach hinein). Siehe [[portabilitaet]].
+mit Kontext mehrfach hinein). Siehe `env_portabilitaet`.
 
 ## Modellauswahl CPU (ersetzt die VRAM-Staffel)
 

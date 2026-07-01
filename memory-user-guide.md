@@ -1,90 +1,96 @@
 # Projektgedaechtnis: Anleitung fuer den Nutzer
 
-Dein LLM-Agent fuehrt fuer dieses Projekt ein persistentes Gedaechtnis aus
-Markdown-Dateien. Du kuratierst, lenkst und fragst; der Agent uebernimmt das
-Schreiben, Verlinken und die Bookkeeping-Arbeit. Diese Anleitung beschreibt, was du
-einmalig einrichtest und wie du im Alltag damit arbeitest.
+Claude fuehrt fuer dieses Projekt ein persistentes Gedaechtnis aus
+Markdown-Dateien unter memory/. Du kuratierst, lenkst und fragst; Claude
+schreibt, pflegt und haelt es konsistent. Diese Anleitung beschreibt, was das
+ist, warum es so aussieht wie es aussieht, und wie du im Alltag damit arbeitest.
 
-## Einmalige Einrichtung
+## Warum es so aussieht
 
-1. Drei Dateien in den Projekt-Root legen: CLAUDE.md, memory-rules.md und diese
-   Anleitung. Der memory/-Ordner wird vom Agenten selbst angelegt, sobald zum
-   ersten Mal etwas festzuhalten ist. Du musst ihn nicht vorbereiten.
+Das Gedaechtnis war urspruenglich als Obsidian-Vault mit Dataview-Indexseiten
+angelegt. Das ist verworfen: kein Obsidian, kein Dataview, kein Frontmatter,
+keine Domaenen-Ordner mehr. Der Grund: Obsidian-Funktionen (Graph-Ansicht,
+gerenderte Indexseiten, Wikilinks) helfen nur dem Menschen beim Browsen, nicht
+Claude beim Nachschlagen. Claude liest Dateien ueber Suchwerkzeuge (Dateiname
+finden, Inhalt durchsuchen), nicht ueber eine Vault-Ansicht. Das Gedaechtnis ist
+deshalb jetzt konsequent darauf ausgelegt: flache, kleine Dateien mit
+sprechendem Namen, ein zentraler Index statt Metadaten-Seiten.
 
-2. Git initialisieren (im Projekt-Root):
-   git init und einen ersten Commit. Der Vault ist damit versioniert; du bekommst
-   Historie und die Moeglichkeit zum Zurueckrollen geschenkt.
+Du brauchst also nichts zu installieren. Ein Text-Editor oder VS Code reicht.
 
-3. Obsidian installieren und den Projekt-Root (oder den memory/-Ordner) als Vault
-   oeffnen.
-
-4. In Obsidian das Dataview-Plugin aktivieren (Einstellungen, Community-Plugins).
-   Es rendert die Indexseiten automatisch aus den Metadaten der Notizen. Ohne
-   Dataview siehst du auf den Indexseiten nur den Abfrage-Code statt der Liste.
-
-## Ordnerstruktur
+## Struktur
 
 ```
-projekt-root/
-  CLAUDE.md             Verweis fuer den Agenten (nicht aendern)
-  memory-rules.md       Regelwerk fuer den Agenten (nicht aendern)
-  memory-user-guide.md  diese Anleitung
-  memory/               vom Agenten gepflegt, gefahrlos loeschbar
-    INDEX.md            Gesamtindex (Dataview, in Obsidian gerendert)
-    _overview.md        narrative Kernuebersicht
-    log.md              Chronik aller Schreibvorgaenge
-    architecture.md     globale Grundentscheidungen
-    constraints.md      globale Rahmenbedingungen
-    <domain>/           je Sachgebiet ein Ordner
+CLAUDE.md              Verweis fuer Claude (Bootstrap, selten geaendert)
+memory-user-guide.md   diese Anleitung
+memory/
+  START.md             Claudes Einstieg pro Sitzung
+  MANIFEST.md          Tag-Registry + eine Zeile je Chunk (Inhaltsverzeichnis-Ersatz)
+  rules.md             Regelwerk, nach dem Claude liest/schreibt
+  arbeitsplan.md       Baufortschritt: Haeppchen -> Status -> Quellen
+  log.md               Chronik aller Entscheidungen/Befunde, chronologisch
+  <tag>_<slug>.md       einzelne Wissens-Chunks, z.B. arch_core.md, ops_wsl.md
 ```
+
+Der Tag am Anfang eines Dateinamens gruppiert ein Sachgebiet (`arch_` Architektur,
+`env_` Umgebung/Voraussetzungen, `ops_` ausfuehrbare Befehle, `spec_`
+Inkrement-Definitionen, `idx_` Indexer-Domaene, `plan_`/`method_` Planung und
+Methodik). Die volle Tag-Liste steht am Kopf von MANIFEST.md.
+
+## Wie du selbst etwas findest (ohne Obsidian)
+
+- **MANIFEST.md** ist der naechste Ersatz fuer eine Inhaltsseite: eine Zeile je
+  Chunk mit Kurzbeschreibung und Stichworten.
+- **Tag-Filter**: ein Verzeichnis-Filter auf den Tag zeigt ein ganzes Sachgebiet,
+  z.B. alle Dateien, die mit `idx_` beginnen, sind die Indexer-Domaene. Funktioniert
+  in jedem Datei-Explorer oder per `dir memory\idx_*` / `ls memory/idx_*`.
+- **Volltextsuche** (Editor-Suche, ripgrep, VS-Code-Suche "in Dateien") ueber
+  memory/ ist der Ersatz fuer die fruehere Graph-/Backlink-Navigation. Ein Begriff
+  landet direkt in allen Chunks, die ihn erwaehnen.
+- **arbeitsplan.md** fuer "wo stehen wir": Haeppchen-Tabelle mit Status je Inkrement.
+- **log.md** fuer die Chronik: wann welche Entscheidung fiel oder welcher Befund
+  gemacht wurde.
 
 ## Rollenverteilung
 
-Deine Aufgabe: Quellen und Kontext liefern, die Richtung vorgeben, gute Fragen
-stellen, Entscheidungen treffen. In Obsidian browst du das Ergebnis, folgst Links
-und nutzt die Graph-Ansicht.
+Deine Aufgabe: Quellen und Kontext liefern, Richtung vorgeben, Entscheidungen
+treffen. Claudes Aufgabe: Notizen anlegen/aktualisieren, Redundanz vermeiden, das
+Log fuehren. Im Regelfall schreibst du selbst nichts - du sagst Claude im
+Gespraech, was festzuhalten oder zu korrigieren ist.
 
-Aufgabe des Agenten: alles Weitere. Notizen schreiben und aktualisieren,
-verlinken, Widersprueche kennzeichnen, verworfene Ansaetze ins Graveyard legen, das
-Log fuehren. Du schreibst die Notizen nie selbst.
+Du KANNST Dateien direkt bearbeiten (reines Markdown, kein Tool noetig). Wenn du
+das tust, halte dich an memory/rules.md (flacher Dateiname `<tag>_<slug>.md`,
+kein Frontmatter, ein Chunk = eine Aussage), sonst bricht die Auffindbarkeit fuer
+Claude in genau der Datei, die du angefasst hast.
 
 ## Die drei Operationen
 
-Dokumentieren: passiert beilaeufig waehrend der Arbeit. Sobald im Gespraech eine
-Entscheidung faellt oder eine Erkenntnis entsteht, legt der Agent sie ab. Du musst
-nichts anstossen, kannst aber lenken ("halte das fest", "das gehoert nicht rein").
+**Dokumentieren**: passiert beilaeufig waehrend der Arbeit. Sobald im Gespraech
+eine Entscheidung faellt oder eine Erkenntnis entsteht, legt Claude sie ab. Du
+musst nichts anstossen, kannst aber lenken ("halte das fest", "das gehoert nicht
+rein").
 
-Abfragen: stell dem Agenten Fragen gegen das Gedaechtnis. Er liest die passenden
-Notizen und antwortet. Wertvolle Antworten (Vergleiche, Analysen) kannst du bitten,
-als neue Notiz abzulegen, damit sie nicht im Chat verloren gehen.
+**Abfragen**: stell Claude Fragen gegen das Gedaechtnis. Wertvolle Antworten
+(Vergleiche, Analysen), die du nicht im Chat verloren gehen lassen willst,
+kannst du als neuen Chunk ablegen lassen.
 
-Pruefen (Lint): bitte den Agenten periodisch um einen Health-Check. Er meldet dann
-Widersprueche, veraltete Stellen, verwaiste Notizen und fehlende Verweise und
-schlaegt Korrekturen vor. Dieser Schritt laeuft nur auf deine Aufforderung.
-
-## Browsen in Obsidian
-
-Graph-Ansicht: zeigt die Form des Wissens, welche Notizen Knotenpunkte sind und
-welche verwaist (ohne Verbindung) herumliegen. Das ist die schnellste visuelle
-Lint-Kontrolle.
-
-Indexseiten: INDEX.md gibt den Gesamtueberblick, je Domaene fasst _index.md das
-Sachgebiet zusammen. Beide werden von Dataview live aus den Metadaten erzeugt; du
-pflegst sie nie von Hand.
-
-Graveyard: je Domaene listet _graveyard.md verworfene Prinzipien mit Begruendung.
-Lohnt sich vor Planungsentscheidungen, um nicht in eine bereits verworfene Richtung
-zu laufen.
+**Pruefen (Lint)**: bitte Claude periodisch um einen Health-Check. Das laeuft
+jetzt grep-basiert: wortgleiche Befehls-/Codebloecke in mehreren Dateien
+(Redundanz), tote Backtick-Verweise auf nicht existierende Chunks, veraltete
+Stellen. Claude schlaegt Korrekturen vor, fuehrt sie erst nach deiner Bestaetigung
+aus. Laeuft nur auf Aufforderung, nicht automatisch.
 
 ## Versionierung und Sicherung
 
-Der Vault ist ein Git-Repo. Committe regelmaessig (oder lass den Agenten committen),
-dann hast du jederzeit eine Historie und kannst einzelne Aenderungen zurueckrollen.
-Willst du das Gedaechtnis komplett verwerfen und neu starten, loesche den
-memory/-Ordner; CLAUDE.md und memory-rules.md bleiben erhalten.
+memory/ ist Teil des Git-Repos. Committe regelmaessig (oder lass Claude
+committen), dann hast du Historie und kannst einzelne Aenderungen zuruecckrollen.
+log.md waechst nicht unbegrenzt: nach Abschluss eines Architektur-Schritts wird
+die zugehoerige Chronik in eine Archiv-Datei ausgelagert (memory/rules.md, Regel
+P4). Willst du das Gedaechtnis komplett verwerfen und neu starten, loesche den
+memory/-Ordner; CLAUDE.md bleibt erhalten.
 
-## Was du nie aenderst
+## Was du nie automatisch aendern laesst
 
-CLAUDE.md und memory-rules.md sind Konfiguration und werden vom Agenten nicht
-angetastet; aendere sie nur bewusst selbst, wenn du das Verhalten anpassen willst.
-Den Inhalt von memory/ ueberlaesst du dem Agenten.
+CLAUDE.md ist der Bootstrap fuer Claude und wird nicht automatisch von Claude
+selbst umgeschrieben; aendere es bewusst, wenn du das Grundverhalten anpassen
+willst. Den Inhalt von memory/ ueberlaesst du im Alltag Claude.

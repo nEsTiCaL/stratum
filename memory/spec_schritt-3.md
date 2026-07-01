@@ -1,21 +1,10 @@
----
-id: inkremente-schritt-3
-title: Inkremente Schritt 3 (Cloud-Bruecke)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, cloud, gate]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[inkremente-schritt-2]]"]
----
-
 # Inkremente Schritt 3: Cloud-Bruecke
 
 Erster Datenaustritt aus der Maschine. Adapter + Bundling + Redaction-Gate.
 HARTES GATE: I-3.4 (Secret-Scan/Redaction scharf) MUSS vor dem ersten echten
 Egress fertig sein. Grundlage: roadmap-schritt-3.md, startkonfiguration.md.
 
-## Voraussetzungen (Schicht S3, Details in [[constraints]])
+## Voraussetzungen (Schicht S3, Details in `env_core`)
 
 ```
 Vor (neu) je Inkrement:
@@ -61,7 +50,7 @@ Akzeptanz (det, gegen aufgenommene API-Antwort): Kostenrechnung Input/Output;
           logischer-Name->ID-Mapping je Anbieter; Caching-Markierung am stabilen
           Core Bundle; Retry; Antwort -> Result-Objekt (Schema aus S1)
 Dev-verif: reale Antworten je Anbieter (Qualitaet/Eskalationsnutzen)
-Hinweis : Multi-Provider-Entscheidung in [[i-2-1-matrix-router]] (Capability-
+Hinweis : Multi-Provider-Entscheidung in `spec_i-2-1-router` (Capability-
           Router) + architecture.md (Cloud-Eskalation). Modell-IDs/Pricing/
           Caching/Gratis-Quota VOR Scharfschalten gegen die jeweilige Anbieter-
           Doku pruefen (Anthropic: claude-api). Keys als Secret, nie im Code.

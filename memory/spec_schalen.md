@@ -1,21 +1,10 @@
----
-id: inkremente-schalen
-title: Inkremente Schalen (Desktop P1, Server P2)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, desktop, server, schale]
-related: ["[[_core]]", "[[architecture]]", "[[inkremente-schritt-2]]"]
----
-
 # Inkremente Schalen: Desktop (P1) und Server (P2)
 
 Duenne Schalen ueber dem Kern, Konsumenten des Event-Vokabulars
 (progress|finding|partial|result|error). Kern bleibt schalenagnostisch.
 Grundlage: anforderungsprofil-desktop.md, interfaces-und-zugang.md.
 
-## Voraussetzungen (Schalen-Schichten, Details in [[constraints]])
+## Voraussetzungen (Schalen-Schichten, Details in `env_core`)
 
 ```
 Vor (neu) je Inkrement:
@@ -38,7 +27,7 @@ Modul   : duennes lokales CLI/REPL gegen das Repository-Interface; det-Abfragen
 Akzeptanz (det): Befehl -> Store-Abfrage -> Ergebnis; nutzt nur das
           Repository-Interface (kein roher SQL); kein LLM/Cloud
 Begruendung: deckt sich mit Desktop-Profil ("Kern per Skript"). Siehe
-          [[nutzstufen]].
+          `plan_nutzstufen`.
 Klasse  : det
 ```
 

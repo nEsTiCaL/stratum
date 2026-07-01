@@ -2,15 +2,15 @@
 
 Ausfuehrungsplan fuer Stratum. Zerlegt die fuenf Architektur-Schritte plus die
 Schalen in kleine, vertikale, einzeln abnehmbare Inkremente. Grundlage:
-[[architecture]] und die Roadmap-Dokumente unter architecture/.
+`arch_core` und die Roadmap-Dokumente unter architecture/.
 
-Start-hier fuer den Bau eines Moduls: [[arbeitsplan]] (Haeppchen -> Quellen,
+Start-hier fuer den Bau eines Moduls: `arbeitsplan` (Haeppchen -> Quellen,
 Status, Kaltstart-Workflow).
 
 ## Leitlinie der Abnahme (zentral)
 
 Die Trennlinie der Architektur (producer_class = det | prob) IST die
-Teststrategie. Details in [[tdd-methodik]].
+Teststrategie. Details in `method_tdd`.
 
 - det-Module und alle Interfaces: test-driven, Test zuerst (red-green-refactor).
   Abnahme = automatischer Test gruen.
@@ -26,18 +26,18 @@ was gestubbt bleibt, Klasse (det|prob|gemischt). Ein Inkrement ist ein
 vertikaler Schnitt mit echtem Wert, nicht eine technische Schicht.
 
 Systemvoraussetzungen werden nicht je Inkrement wiederholt, sondern als
-kumulative Schichten in [[constraints]] gefuehrt; je Spec-Datei steht oben die
+kumulative Schichten in `env_core` gefuehrt; je Spec-Datei steht oben die
 Delta-Liste "Vor (neu)". Vor Baubeginn die Preflight-Checkliste pruefen.
 
 ## Phasen und Inkremente
 
 ```
-Schritt 1  Substrat              [[inkremente-schritt-1]]   I-1.x
-Schritt 2  Orchestrator-Kern     [[inkremente-schritt-2]]   I-2.x
-Schritt 3  Cloud-Bruecke         [[inkremente-schritt-3]]   I-3.x
-Schritt 4  Graph-Tiefe           [[inkremente-schritt-4]]   I-4.x
-Schritt 5  Betrieb               [[inkremente-schritt-5]]   I-5.x
-Schalen    Desktop (P1)/Server(P2) [[inkremente-schalen]]   I-D.x / I-S.x
+Schritt 1  Substrat              `spec_schritt-1`   I-1.x
+Schritt 2  Orchestrator-Kern     `spec_schritt-2`   I-2.x
+Schritt 3  Cloud-Bruecke         `spec_schritt-3`   I-3.x
+Schritt 4  Graph-Tiefe           `spec_schritt-4`   I-4.x
+Schritt 5  Betrieb               `spec_schritt-5`   I-5.x
+Schalen    Desktop (P1)/Server(P2) `spec_schalen`   I-D.x / I-S.x
 ```
 
 ## Bau-Reihenfolge (Phase 1 zuerst)

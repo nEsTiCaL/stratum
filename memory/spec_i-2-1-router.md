@@ -1,20 +1,8 @@
----
-id: i-2-1-matrix-router
-title: I-2.1 Capability-Router (Matrix v2: Achsen, Tiers, Multi-Provider)
-type: decision
-status: active
-created: 2026-06-30
-updated: 2026-06-30
-status_build: fertig
-tags: [roadmap, orchestrator, router, matrix, capability, cloud]
-related: ["[[arbeitsplan]]", "[[inkremente-schritt-2]]", "[[i-2-0-capacity-lifecycle]]", "[[modell-cpu-profil]]", "[[det-linter-review]]"]
----
-
 # I-2.1 Capability-Router (Matrix v2)
 
 Beim Review der ersten, fest-geordneten Matrix entschieden (mit Nutzer): das
 handgepflegte rank-Listenmodell wird durch ein Capability-Modell ersetzt. Spec:
-[[inkremente-schritt-2]] (I-2.1). Klasse: det.
+`spec_schritt-2` (I-2.1). Klasse: det.
 
 ## Warum Umbau (Schwaechen der v1)
 
@@ -78,7 +66,7 @@ qwen3-8b-q8(exclusive). Die 14B/32B greifen nur auf Maschinen mit genug VRAM
 (capacity allowed_models). MODEL_CONFIG (core/capacity.py) um die 4 neuen
 erweitert (vram fuer den Filter). Folge: CPU-Profil D (allowed nur phi) -> review
 (code min 55) hat lokal KEINEN Kandidaten (phi code 35 < 55) -> direkt Cloud;
-explain (general min 30) behaelt phi. Das ist genau [[modell-cpu-profil]],
+explain (general min 30) behaelt phi. Das ist genau `modell_cpu-profil`,
 jetzt aus dem Capability-Band abgeleitet statt hartkodiert.
 
 ## Rubrik (feste Kriterien je Achse, Startwerte)
@@ -159,7 +147,7 @@ ModelCapability.num_ctx verfuegbar (fuer "Kontext gesprengt").
 
 ## Entscheidung: det-Linter weiter vertagt
 
-[[det-linter-review]] (eigener artifact_type lint_findings + Schema-Bump) bleibt
+`plan_det-linter` (eigener artifact_type lint_findings + Schema-Bump) bleibt
 offen; die Capability-Auswahl kann einen det-rank-0-Eintrag fuer review spaeter
 aufnehmen, ohne Umbau.
 

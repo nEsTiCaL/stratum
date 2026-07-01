@@ -1,14 +1,3 @@
----
-id: tdd-methodik
-title: TDD-Methodik und Abnahme
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [testing, tdd]
-related: ["[[_core]]", "[[architecture]]"]
----
-
 # TDD-Methodik und Abnahme
 
 Wie Stratum entwickelt und abgenommen wird. Die Architektur-Grenze

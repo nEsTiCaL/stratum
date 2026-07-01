@@ -11,7 +11,7 @@ Domaene, nicht hierher.
 - Bruecke: JSON-Lines, Kern als Dienst, CLI/Frontends sprechen ihn an.
   Transport-Default: lokaler TCP/HTTP-Port (portabel Windows/Linux). Unix-Socket
   nur als Linux-Prod-Optimierung hinter demselben Interface. Begruendung:
-  Portabilitaet (Unix-Sockets Windows-nativ unzuverlaessig), siehe [[portabilitaet]]
+  Portabilitaet (Unix-Sockets Windows-nativ unzuverlaessig), siehe `env_portabilitaet`
 - Verworfen: Rust (langsamer Build im volatilen Teil), reines Python (schwaches
   CLI-Binary), reines Go (tree-sitter via cgo spaerlich)
 

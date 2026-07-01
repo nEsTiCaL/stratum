@@ -1,21 +1,9 @@
----
-id: i-d0-dev-harness
-title: I-D.0 Dev-Harness (Entwurfsentscheidungen)
-type: decision
-status: active
-created: 2026-06-30
-updated: 2026-06-30
-status_build: fertig
-tags: [roadmap, desktop, dogfooding, cli, repository]
-related: ["[[arbeitsplan]]", "[[inkremente-schalen]]", "[[nutzstufen]]", "[[tdd-methodik]]"]
----
-
 # I-D.0 Dev-Harness: Entwurfsentscheidungen
 
 Erster Einstieg fuer N1 (Dogfooding nach Schritt 1): duennes lokales CLI gegen
 das Repository-Interface, das die drei det-Abfragen `index` / `symbol_lookup` /
 `dependency_map` zugaenglich macht. Offline, kein LLM/Ollama/Cloud, keine GPU.
-Spec: [[inkremente-schalen]] (I-D.0), Begruendung [[nutzstufen]] (N1).
+Spec: `spec_schalen` (I-D.0), Begruendung `plan_nutzstufen` (N1).
 Klasse: rein det -> test-driven (Test zuerst), gegen echtes Postgres.
 
 ## Befund: das Repository reicht noch nicht (Punkt-Lookup)

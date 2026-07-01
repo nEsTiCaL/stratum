@@ -1,14 +1,3 @@
----
-id: det-linter-review
-title: Det-Linter als guenstigste Review-Schicht (Idee, ab S2)
-type: question
-status: open
-created: 2026-06-29
-updated: 2026-06-29
-tags: [orchestrator, router, review, det]
-related: ["[[arbeitsplan]]", "[[sprachagnostik]]"]
----
-
 # Det-Linter als guenstigste Review-Schicht
 
 Offene Idee fuer Schritt 2, hier geparkt, damit sie nicht verloren geht.
@@ -18,7 +7,7 @@ Bei I-2.1 (Modell-Matrix/Router) bzw. dem task_type review entscheiden.
 
 Das hier ist Stratum, das FREMDEN Code analysiert: ein deterministischer Linter
 als Producer von Findings. NICHT unser eigenes Dev-/CI-Lint-Gate -- das ist
-I-1.12 (ruff, [[lint-format-gate]]).
+I-1.12 (ruff, `spec_lint-gate`).
 
 ## Kern der Idee
 
@@ -41,7 +30,7 @@ review-Task -> [det: Linter]  -> Findings (guenstig, sicher)
   ist prob. -> neuer DET-Artefakttyp lint_findings noetig (Schema-Bump) oder
   bewusste Einordnung. det -> confidence verboten (passt: Linter ist sicher).
 - Linter-Quelle je Sprache: externe Tools (ruff/eslint/Roslyn-Analyzer) bringen
-  Abhaengigkeiten + Portabilitaet (vgl. [[portabilitaet]]); Alternative:
+  Abhaengigkeiten + Portabilitaet (vgl. `env_portabilitaet`); Alternative:
   eigene tree-sitter-query-basierte Regeln (in-house, det, deckt sich mit dem
   Extraktor-Kern, keine Fremd-Tools). Abwaegung offen.
 - Verzahnung mit LLM-Review: Dedup der Findings, Reihenfolge, ob der Linter die

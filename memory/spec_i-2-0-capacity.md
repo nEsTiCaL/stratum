@@ -1,21 +1,9 @@
----
-id: i-2-0-capacity-lifecycle
-title: I-2.0 Capacity-Profil + Lifecycle (Entwurfsentscheidungen)
-type: decision
-status: active
-created: 2026-06-30
-updated: 2026-06-30
-status_build: fertig
-tags: [roadmap, orchestrator, capacity, lifecycle, vram]
-related: ["[[arbeitsplan]]", "[[inkremente-schritt-2]]", "[[modell-vram-matrix]]", "[[modell-cpu-profil]]", "[[constraints]]"]
----
-
 # I-2.0 Capacity-Profil + Lifecycle: Entwurfsentscheidungen
 
 Einstieg in Schritt 2. Macht den Lifecycle-Manager vom Verwalter eines fixen
 Resident-Sets zum Verwalter eines profil-definierten Budgets. Eine Datei
 (capacity.toml) passt Stratum an die Zielmaschine an; Matrix/Templates/Kern
-bleiben gleich. Spec: [[inkremente-schritt-2]] (I-2.0), Detail
+bleiben gleich. Spec: `spec_schritt-2` (I-2.0), Detail
 startkonfiguration 5/5b, roadmap-schritt-2 (Komponente 3).
 Klasse: gemischt (Logik det/TDD, nvidia-smi-Messung dev-verifiziert).
 
@@ -59,7 +47,7 @@ qwen3-8b-q8     9000     8192     0           true   (Q8, solo)
 measure_hardware() -> HardwareFacts ist die reale Messung (nvidia-smi fuer VRAM,
 RAM best-effort). Die Logik (resolve/validate) nimmt HardwareFacts als ARGUMENT
 -> Tests injizieren Fakten, GPU-frei. total_vram=0 (kein nvidia-smi) -> CPU-Modus
-(Profil D, [[modell-cpu-profil]]). Auf dieser Dev-Maschine ist nur der CPU-Pfad
+(Profil D, `modell_cpu-profil`). Auf dieser Dev-Maschine ist nur der CPU-Pfad
 dev-verifizierbar (kein nvidia-smi); GPU-Parse bleibt hier unverifiziert.
 
 ## Entscheidung 4: Scope-Grenze I-2.0

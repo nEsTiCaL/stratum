@@ -2,7 +2,7 @@
 
 Deterministische Struktur-Extraktion via tree-sitter ueber .scm-Queries.
 Sprachunabhaengiger Kern (core/indexer/), Sprachspezifisches nur in
-queries/<sprache>/. Grundlage: [[architecture]] TG(4), [[inkremente-schritt-1]].
+queries/<sprache>/. Grundlage: `arch_core` TG(4), `spec_schritt-1`.
 
 ## Architektur
 
@@ -37,7 +37,7 @@ Diese Form hat mehrere Anlaeufe gekostet; fuer I-1.5/1.6/1.9 direkt nutzen:
   Tokens im Kern scannen. Genutzt fuer JS require() (#eq? "require").
 - Grammatiken werden vom language-pack ON-DEMAND geladen (get_language laedt +
   cacht). Namen pruefen: 'csharp' (nicht c_sharp), 'gdscript'. Netz beim
-  Erstlauf, siehe [[constraints]].
+  Erstlauf, siehe `env_core`.
 
 ## Python-Grammar-Eigenheit (wichtig)
 
@@ -90,7 +90,7 @@ Zuweisungen und Docstrings sind in dieser Grammar-Version KEINE
   (Funktion/Klasse der Datei) -> LOCAL_DEF 0.5; `self.m()` in Klasse und m ist
   Methode -> "Klasse.m" SELF_METHOD 0.6; sonst callee_ref NULL, confidence 0.
 - I-1.11b: self-Aufloesung profilgesteuert (calls.py NICHT mehr git-diff leer,
-  siehe [[sprachagnostik]]): self_call_match=lenient (re.match statt fullmatch,
+  siehe `idx_sprachagnostik`): self_call_match=lenient (re.match statt fullmatch,
   wenn callee_raw die Klammern traegt, GDScript "self.m()"); self_module_fallback
   (GDScript: self.m() ohne Klassen-Scope -> Top-Level-Funktion, Datei-als-Klasse,
   callee_ref = bare Name, 0.6).
@@ -111,7 +111,7 @@ sensitivity=none, stub=True); Egress fail-safe, scharf erst bei I-3.4.
 Der Kern liest nur noch die Capture-Konvention der .scm + ein schmales Profil;
 KEINE Python-Knotentypen mehr in symbols/imports/calls.py (grep-verifiziert).
 Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
-[[sprachagnostik]]. Verteilung der Sprach-Spezifika:
+`idx_sprachagnostik`. Verteilung der Sprach-Spezifika:
 - queries/<lang>/*.scm: Knotentypen, Pattern, Felder (alles Strukturelle).
 - core/indexer/profiles.py: 6 Achsen (visibility_strategy, self_keyword,
   import_resolution, const_strategy, self_call_match, self_module_fallback), je
@@ -133,10 +133,10 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   (visibility_strategy=export); Sichtbarkeit korrekt via generischer
   _visibility-Erweiterung (parent-bewusst + export/default_private), imports.py
   generischer relative_path_ext-Zweig; calls.py git-diff LEER (Agnostik-Beleg).
-  require()/dynamic import() verschoben. Details + Naeherungen: [[js-ts-umsetzung]].
+  require()/dynamic import() verschoben. Details + Naeherungen: `idx_js-ts`.
 - I-1.10 C# FERTIG: queries/csharp/*.scm + Profil (visibility_strategy=
   default_private, namespace_passthrough, self=this, const none). Grammar heisst
-  'csharp' (on-demand-Download, siehe [[constraints]]). _visibility generalisiert
+  'csharp' (on-demand-Download, siehe `env_core`). _visibility generalisiert
   (scannt alle Modifier auf Access-Keywords {public,export}/{private,protected,
   internal,#}); calls.py weiter git-diff LEER. Wildcard-Member-Pattern
   (_ name body: declaration_list) liefert @parent fuer alle Typarten. Overloads =
@@ -150,11 +150,11 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   als Top-Level.
 - I-1.11 GDScript FERTIG (reduziert): queries/gdscript/{symbols,calls}.scm +
   Profil. ingest .gd -> 2 Builder. neues kind 'signal'. Details:
-  [[gdscript-umsetzung]].
+  `idx_gdscript`.
 - I-1.11b GDScript Paritaet FERTIG (2026-06-30): dependency_graph (imports.scm +
   res_path-Strategie + generisches _unquote im Kern) -> 3 Builder (_ALL_THREE);
   self-Calls loesen auf (2 neue Profil-Achsen, calls.py NICHT mehr git-diff leer,
   bewusst); Datei-extends als Klassen-Signatur (.scm). 160 Tests gruen. OFFEN S4:
   Datei-als-Klasse im Symbol-Modell (Top-Level-Member -> method der class_name-
-  Klasse, mit cross-file class_name-Tabelle). Details: [[gdscript-umsetzung]].
+  Klasse, mit cross-file class_name-Tabelle). Details: `idx_gdscript`.
 - Schritt 1 fast fertig: nur noch I-1.12 (ruff Lint-/Format-Gate) offen.

@@ -1,14 +1,3 @@
----
-id: arbeitsplan
-title: Arbeitsplan (Haeppchen-Index)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-30
-tags: [index, bau, dispatch]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[nutzstufen]]"]
----
-
 # Arbeitsplan: Haeppchen-Index
 
 Dispatch-Ebene fuer den Bau. Bildet jedes Inkrement (Haeppchen) auf genau die
@@ -23,8 +12,8 @@ lesen. Interface-Fragen, Typ-Definitionen, Zirkelimport-Checks -> N1-Query
 Haeppchen-Zeile eine konkrete Datei nennt, direkt lesen.
 
 ```
-1. CLAUDE.md -> memory-rules.md (kurz), dann diesen Arbeitsplan
-2. N1-Preflight sofort (ab Schritt 2): [[n1-kaltstart]] lesen; Migration +
+1. START.md (Routing), rules.md bei Pflege-Anlass, dann diesen Arbeitsplan
+2. N1-Preflight sofort (ab Schritt 2): `ops_n1-queries` lesen; Migration +
    Index pruefen (idempotent, ~5 s). Danach N1-Queries fuer alle
    Interface-Fragen nutzen statt Quelldateien zu lesen.
 3. Haeppchen-Zeile finden: Status, depends_on, Detail-Quellen
@@ -42,24 +31,24 @@ Haeppchen-Zeile eine konkrete Datei nennt, direkt lesen.
 
 ```
 Basis (immer lesen):
-  C  = planung/_core.md            Methodik, Inkrement-Schema, Bau-Reihenfolge
-  T  = planung/tdd-methodik.md     det test-driven / prob dev-verifiziert, Seam
-  A  = memory/architecture.md      globale Entscheidungen + Vertraege (Kurz)
+  C  = `plan_core`            Methodik, Inkrement-Schema, Bau-Reihenfolge
+  T  = `method_tdd`           det test-driven / prob dev-verifiziert, Seam
+  A  = `arch_core`            globale Entscheidungen + Vertraege (Kurz)
 
 Spec je Schritt (die Haeppchen-Definitionen selbst):
-  S1..S5 = planung/inkremente-schritt-1..5.md
-  SCH    = planung/inkremente-schalen.md
+  S1..S5 = `spec_schritt-1`..`spec_schritt-5`
+  SCH    = `spec_schalen`
 
 Architektur-Detail (nur bei Bedarf laut Zeile):
-  R1..R5 = architecture/roadmap-schritt-1..5.md
+  R1..R5 = architecture/roadmap-schritt-1..5.md   (externe Roadmap-Docs, nicht memory/)
   TG = architecture/technische-grundentscheidungen.md   Sprache/Schema/scope/ts
   SK = architecture/startkonfiguration.md               Postgres/Matrix/Ollama
   DS = architecture/dev-setup.md                         WSL2/Compose/Paritaet
   DP = architecture/anforderungsprofil-desktop.md        Desktop-Schale/Intent
   IZ = architecture/interfaces-und-zugang.md             Server-Auth/Zugang
-  N  = planung/nutzstufen.md                             Produktiv-Meilensteine
-  P  = memory/portabilitaet.md                           Windows-Dev -> Linux
-  V  = memory/constraints.md                             Voraussetzungs-Schichten + Preflight
+  N  = `plan_nutzstufen`      Produktiv-Meilensteine
+  P  = `env_portabilitaet`    Windows-Dev -> Linux
+  V  = `env_core`             Voraussetzungs-Schichten + Preflight
 ```
 
 P (Portabilitaet) ist relevant bei Ingestion/Watch (I-1.7), Bridge-Transport
@@ -91,7 +80,7 @@ I-1.12  Lint-/Format-Gate (Abschluss)  det  I-1.11b    lint-format-gate      fer
 ```
 
 Schritt 1 (Substrat) damit VOLLSTAENDIG. I-D.0 (Dev-Harness, N1) fertig:
-N1-Dogfooding nutzbar ([[i-d0-dev-harness]]). Naechstes: Schritt 2
+N1-Dogfooding nutzbar (`spec_i-d0-devharness`). Naechstes: Schritt 2
 (Orchestrator-Kern), Einstieg I-2.0 (Capacity-Profil + Lifecycle).
 
 ## Schritt 2: Orchestrator-Kern  (Spec: S2)
@@ -99,11 +88,11 @@ N1-Dogfooding nutzbar ([[i-d0-dev-harness]]). Naechstes: Schritt 2
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, [[i-2-0-capacity-lifecycle]]   fertig
-I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, [[i-2-1-matrix-router]]   fertig
+I-2.0   Capacity-Profil + Lifecycle    gem   I-1.2     SK(5,5b), R2, DS, `spec_i-2-0-capacity`   fertig
+I-2.1   Modell-Matrix + Router         det   I-2.0     SK(2,3), R2, `spec_i-2-1-router`   fertig
 I-2.2   Template-Registry + Zerlegung  det   I-1.2     SK(4), R2             fertig
 I-2.3   SQL-Queue + atomarer Claim     det   I-1.2     R2, SK(6)             fertig
-I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, [[i-2-1-matrix-router]] (Konsumenten-Vertrag!)   fertig
+I-2.4   Validator + Eskalation         det   I-2.1     R2, SK(6), T, `spec_i-2-1-router` (Konsumenten-Vertrag!)   fertig
 I-2.5   Worker + Model-Seam            gem   I-2.3     R2, T, DS             fertig
 I-2.6   Klassifikation + Detektor-Stub gem   I-2.5     R2             fertig
 I-2.7   Intent-Zerlegung + Plan        gem   I-2.2/2.6 R2, DP          fertig
@@ -152,7 +141,7 @@ I-5.5   Canary + Regression + Eval     gem   I-5.4     R5, T
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-D.0   Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N, [[i-d0-dev-harness]]   fertig
+I-D.0   Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N, `spec_i-d0-devharness`   fertig
 I-D.1   VSCode-Extension               gem   I-2.5     DP, IZ(VSCode)
 I-D.2   Web-GUI (FastAPI im Kern)      gem   I-2.7     DP
 I-D.3   manual-Adapter (Copy-Paste)    det   I-3.1     DP, R3
@@ -168,17 +157,17 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 I-1.0 bis I-1.12 fertig: Schritt 1 (Substrat) VOLLSTAENDIG. I-1.12 = ruff Lint-/
 Format-Gate (make lint/fmt/check, ganzer Baum, core/models+tests/fixtures aus,
-Format erzwungen, line-length 88, CI make-only); Details [[lint-format-gate]].
+Format erzwungen, line-length 88, CI make-only); Details `spec_lint-gate`.
 Sprachagnostik belegt ueber 5 Sprachen (Py/JS/TS/C#/
 GDScript) profilgesteuert; calls.py war bis I-1.11 git-diff leer, ab I-1.11b
 generisch erweitert (GDScript self-Calls, 2 Profil-Achsen) - kein language-inlining,
 Agnostik intakt. GDScript ab I-1.11b First-Class (3 Builder). Befunde im
-Indexer-[[_core]] und [[gdscript-umsetzung]].
+Indexer-`idx_core` und `idx_gdscript`.
 Beim Abschluss eines Haeppchens Status hier
 aktualisieren (offen -> in arbeit -> fertig) und log.md ergaenzen. Dieser
 Plan ist die einzige Fortschritts-Wahrheit; nicht an mehreren Stellen pflegen.
 
-## Produktiv-Meilensteine (siehe [[nutzstufen]])
+## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
 ```
 N1 nach Schritt 1 (+ I-D.0)   det-Navigation am eigenen Code, offline

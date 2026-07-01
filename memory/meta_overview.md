@@ -25,21 +25,20 @@ Gratis-Tier opt-in), Auswahl ueber das Capability-Modell des Routers.
 
 Module sind duenne Schalen ueber EINEM Kern, keine Forks: Desktop (Phase 1)
 vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in
-[[architecture]].
+`arch_core`.
 
 ## Status
 
 In Entwicklung. Sicherheits-Gates laufen in der Testphase als kontrollierte
 Stubs und werden vor dem Produktivbetrieb scharf gestellt. Schritt 1 (Substrat)
-in Arbeit: I-1.0 bis I-1.4 fertig (Schema/Codegen, scope, Repository+Migration,
-Trace-Bus, tree-sitter symbol_index fuer Python). Indexer-Domaene: [[_core]]
-(indexer/). Fortschritts-Wahrheit: [[arbeitsplan]].
+vollstaendig, Schritt 2 (Orchestrator-Kern) vollstaendig. Indexer-Domaene:
+`idx_core`. Fortschritts-Wahrheit: `arbeitsplan`.
 
 Ausfuehrungsplan steht: die fuenf Architektur-Schritte plus Schalen sind in
 kleine, vertikale, einzeln abnehmbare Inkremente zerlegt. Teststrategie folgt
-der det/prob-Grenze: det test-driven, prob entwickler-verifiziert. Siehe
-Planungs-Domaene [[_core]] (planung/) und [[tdd-methodik]].
+der det/prob-Grenze: det test-driven, prob entwickler-verifiziert. Planungs-Kern
+`plan_core`, Methodik `method_tdd`.
 
-Um ein Modul zu bauen: [[arbeitsplan]] ist die Start-hier-Karte. Sie bildet
+Um ein Modul zu bauen: `arbeitsplan` ist die Start-hier-Karte. Sie bildet
 jedes Haeppchen auf genau die zu lesenden Quellen ab (tokeneffizienter
 Kaltstart) und traegt den Fortschritts-Status.

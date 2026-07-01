@@ -1,21 +1,10 @@
----
-id: inkremente-schritt-4
-title: Inkremente Schritt 4 (Graph-Tiefe)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, graph, invalidierung]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[inkremente-schritt-1]]"]
----
-
 # Inkremente Schritt 4: Graph-Tiefe
 
 Cross-File-Wissen von approximativ auf Repo-Ebene. Knowledge Graph +
 dependency-bewusste Invalidierung. Alle Inkremente det -> test-driven.
 Grundlage: roadmap-schritt-4.md.
 
-## Voraussetzungen (Schicht S4, Details in [[constraints]])
+## Voraussetzungen (Schicht S4, Details in `env_core`)
 
 ```
 Vor (neu): CREATE EXTENSION vector (Migration); Indizes src/dst auf

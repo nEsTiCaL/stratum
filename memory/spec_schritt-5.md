@@ -1,20 +1,9 @@
----
-id: inkremente-schritt-5
-title: Inkremente Schritt 5 (Betrieb)
-type: decision
-status: active
-created: 2026-06-29
-updated: 2026-06-29
-tags: [roadmap, betrieb, dashboard, kalibrierung]
-related: ["[[_core]]", "[[tdd-methodik]]", "[[inkremente-schritt-2]]"]
----
-
 # Inkremente Schritt 5: Betrieb
 
 Beobachtbar und steuerbar. Dashboard (read-only) + Kalibrierung + Canary.
 Nutzt den seit S1 mitlaufenden Trace. Grundlage: roadmap-schritt-5.md.
 
-## Voraussetzungen (Schicht S5, Details in [[constraints]])
+## Voraussetzungen (Schicht S5, Details in `env_core`)
 
 ```
 Vor (neu) je Inkrement:
