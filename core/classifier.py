@@ -90,6 +90,7 @@ class Classifier:
             sensitivity_src=src,
         )
 
-    def _detector_sensitivity(self, prompt: str) -> Sensitivity:  # noqa: ARG002
-        """Detektor-Stub S2: liefert hart none. Scharf ab I-3.4."""
-        return Sensitivity.none
+    def _detector_sensitivity(self, prompt: str) -> Sensitivity:
+        from core.detector import detect
+
+        return detect(prompt).sensitivity

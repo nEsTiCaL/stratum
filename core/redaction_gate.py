@@ -1,13 +1,11 @@
-"""Redaction-Gate (Stub, Vertrag fix) + fail-safe Egress (I-3.3).
+"""Redaction-Gate — I-3.3 (Stub, Vertrag fix) + I-3.4 (scharf).
 
-Letzte Station vor dem Cloud-Adapter (I-3.1), sieht das fertige Bundle
-(I-3.2). Position fix: Bundling -> [Redaction-Gate] -> Adapter. Wiederverwendet
-die in I-1.8 gebaute fail-safe Egress-Mechanik (core/secret_scan.py) statt sie
-zu duplizieren.
+Letzte Station vor dem Cloud-Adapter (I-3.1). Position fix:
+Bundling -> [Redaction-Gate] -> Adapter.
 
-Scharfstellen (I-3.4) ersetzt nur die Herkunft der Sensitivity (echte
-Detektoren statt Klassifikations-Stub) und macht REDACT erreichbar; Vertrag,
-Position und Schalter-Mechanik bleiben unveraendert.
+I-3.3: fail-safe Schalter-Mechanik (EgressPolicy aus I-1.8).
+I-3.4: scan_real=True aktiviert echte Detektoren; REDACT erreichbar.
+       Vertrag, Position und Schalter-Logik bleiben unveraendert.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from core.bundling import Bundle
-from core.secret_scan import EgressPolicy, ScanResult, Sensitivity, evaluate_egress
+from core.secret_scan import EgressPolicy, Sensitivity
 
 
 class Decision(StrEnum):
@@ -31,18 +29,64 @@ class RedactionReport:
     reason: str
     stub: bool
     warn: bool = False
+    # tuple[DetectionMatch, ...] — lazy import vermeidet zirkulaere Abhaengigkeit
+    matches: tuple = ()
+    redacted_content: bytes | None = None
 
 
 def gate(
     bundle: Bundle, sensitivity: Sensitivity, policy: EgressPolicy
 ) -> tuple[Decision, Bundle | None, RedactionReport]:
-    """PASS -> Bundle unveraendert; BLOCK -> None (Knoten bleibt lokal,
-    unresolved). REDACT ist Teil des Vertrags, aber ohne echten Detektor
-    (bis I-3.4) gibt der Stub sie nie zurueck."""
-    scan = ScanResult(sensitivity=sensitivity, scanner="redaction-gate-stub", stub=True)
-    egress = evaluate_egress(scan, policy)
-    decision = Decision.PASS if egress.allowed else Decision.BLOCK
+    """PASS -> Bundle unveraendert; REDACT -> Bundle + redacted_content;
+    BLOCK -> None (Knoten bleibt lokal/unresolved)."""
+
+    if policy.unsafe_test_egress:
+        report = RedactionReport(
+            decision=Decision.PASS,
+            reason="unsafe_test_egress override",
+            stub=True,
+            warn=True,
+        )
+        return Decision.PASS, bundle, report
+
+    if not policy.scan_real:
+        report = RedactionReport(
+            decision=Decision.BLOCK,
+            reason="fail-safe: no real scan (stub), egress blocked",
+            stub=True,
+        )
+        return Decision.BLOCK, None, report
+
+    # --- Real-Scan-Pfad (scan_real=True, I-3.4) ---
+    from core.bundling import serialize_bundle
+    from core.detector import detect, redact_bytes
+
+    bundle_bytes = serialize_bundle(bundle)
+    det = detect(bundle_bytes)
+    high_matches = tuple(m for m in det.matches if m.sensitivity == Sensitivity.high)
+
+    if high_matches:
+        redacted = redact_bytes(bundle_bytes, high_matches)
+        report = RedactionReport(
+            decision=Decision.REDACT,
+            reason="secrets detected: " + ", ".join(m.rule for m in high_matches),
+            stub=False,
+            matches=high_matches,
+            redacted_content=redacted,
+        )
+        return Decision.REDACT, bundle, report
+
+    if sensitivity != Sensitivity.none:
+        report = RedactionReport(
+            decision=Decision.BLOCK,
+            reason=f"sensitive content (classifier): {sensitivity.value}",
+            stub=False,
+        )
+        return Decision.BLOCK, None, report
+
     report = RedactionReport(
-        decision=decision, reason=egress.reason, stub=True, warn=egress.warn
+        decision=Decision.PASS,
+        reason="real scan passed, not sensitive",
+        stub=False,
     )
-    return decision, (bundle if egress.allowed else None), report
+    return Decision.PASS, bundle, report
