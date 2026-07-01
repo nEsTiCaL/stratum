@@ -43,7 +43,8 @@ env_core.md              | globale Constraints: Laufzeit-Voraussetzungen, kumula
                          |   Voraussetzungs-Schichten S1-S5, Preflight, Sicherheit             |   gates, preflight
 env_portabilitaet.md     | Windows-Dev -> Linux: Dev-Modell, 11 Anforderungen, Ollama-         | wsl2, debian, inotify, cuda, vulkan,
                          |   Erreichbarkeit, GPU-Backend-Auswahl                               |   case-sensitivity
-ops_wsl.md               | kanonischer WSL-Aufruf-Praefix + uv-PATH-Falle (Single Source)      | wsl -d Debian, .venv, uv.exe
+ops_wsl.md               | kanonischer WSL-Aufruf: Form A (activate, bevorzugt) + Form B         | wsl -d Debian, source activate, .venv,
+                         |   (.venv/bin/python); make-lint-Falle + verifizierte Nicht-Wege        |   uv.exe, ruff, pytest
 ops_n1-queries.md        | Index statt Quelldateien: devcli symbol_lookup/index/               | migrate, ingest, dogfooding, kaltstart,
                          |   dependency_map, Preflight                                         |   devcli
 ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B-commit-push, Abnahme-Script          | pytest, git pull, testcontainers,
