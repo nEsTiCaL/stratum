@@ -105,7 +105,9 @@ class TestClaimEndpoint:
         body = r.json()
         assert body["id"] == item_id
         assert body["task_type"] == "summarize"
-        assert body["prompt"] == "erklaere queue.py"
+        # prompt ist jetzt in user_message eingebettet
+        assert "erklaere queue.py" in body["user_message"]
+        assert "system_prompt" in body
 
     def test_claim_sets_model_to_human(self, client_with_task):
         c, item_id = client_with_task

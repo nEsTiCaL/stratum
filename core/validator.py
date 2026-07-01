@@ -90,6 +90,7 @@ class ValidationResult:
     #                "low_confidence" | "context_exceeded"
     confidence: float | None = None
     may_escalate: bool = False  # False bei det-Fail (Bug, kein Retry/Eskalation)
+    detail: str | None = None  # erster Pydantic-Fehler fuer Debug-Meldungen
 
 
 class Validator:
@@ -115,19 +116,25 @@ class Validator:
     def _validate_det(self, response: str) -> ValidationResult:
         try:
             ResultDet.model_validate_json(response)
-        except ValidationError:
+        except ValidationError as exc:
             # det-Schema-Fehler = Bug, NIE Eskalation (tdd-methodik/_core.md).
+            first = exc.errors(include_url=False)[0]
+            detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
-                passed=False, trigger="det_schema_fail", may_escalate=False
+                passed=False, trigger="det_schema_fail", may_escalate=False,
+                detail=detail,
             )
         return ValidationResult(passed=True, trigger="pass")
 
     def _validate_prob(self, response: str, task_type: TaskType) -> ValidationResult:
         try:
             result = ResultProb.model_validate_json(response)
-        except ValidationError:
+        except ValidationError as exc:
+            first = exc.errors(include_url=False)[0]
+            detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
-                passed=False, trigger="prob_schema_fail", may_escalate=True
+                passed=False, trigger="prob_schema_fail", may_escalate=True,
+                detail=detail,
             )
         confidence = result.confidence
         if confidence < _threshold_for(task_type):

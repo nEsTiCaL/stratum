@@ -5,58 +5,119 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: monospace; background: #0f0f0f; color: #e0e0e0;
          padding: 1.5rem; min-height: 100vh; }
-  h1 { font-size: 1.1rem; letter-spacing: .1em; color: #aaa;
-       margin-bottom: 1.5rem; }
+  h1 { font-size: 1.1rem; letter-spacing: .1em; color: #aaa; margin-bottom: 1.5rem; }
   h1 span { color: #fff; }
 
-  /* table */
+  /* ── table ── */
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  th { text-align: left; color: #666; border-bottom: 1px solid #222;
+  th { text-align: left; color: #555; border-bottom: 1px solid #222;
        padding: .4rem .6rem; font-weight: normal; }
-  td { padding: .45rem .6rem; border-bottom: 1px solid #1a1a1a;
-       vertical-align: middle; }
+  td { padding: .45rem .6rem; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
   tr:hover td { background: #161616; }
 
-  /* badges */
   .badge { display: inline-block; padding: .15rem .4rem; border-radius: 3px;
-           font-size: .75rem; font-weight: bold; }
-  .badge-pending  { background: #1a2a1a; color: #4a4; }
-  .badge-running  { background: #1a1a2a; color: #66f; }
-  .badge-human    { background: #2a1a1a; color: #f66; }
+           font-size: .72rem; font-weight: bold; }
+  .badge-pending { background: #1a2a1a; color: #4a4; }
+  .badge-running { background: #1a1a2a; color: #66f; }
+  .badge-human   { background: #2a1a1a; color: #f66; }
+  #empty-msg { color: #333; font-size: .85rem; padding: 1rem 0; }
 
-  /* buttons */
   button { cursor: pointer; border: none; border-radius: 3px; padding: .3rem .7rem;
            font-family: monospace; font-size: .8rem; }
   .btn-claim  { background: #1e3a1e; color: #6f6; }
   .btn-claim:hover  { background: #234a23; }
-  .btn-submit { background: #1e2a3a; color: #6af; margin-top: .5rem; }
-  .btn-submit:hover { background: #233a4a; }
-  .btn-cancel { background: #2a1e1e; color: #f66; margin-top: .5rem;
-                margin-left: .4rem; }
 
-  /* claim panel */
-  #claim-panel { display: none; margin-top: 1.5rem; border: 1px solid #222;
-                 border-radius: 4px; padding: 1rem; background: #111; }
-  #claim-panel h2 { font-size: .9rem; color: #aaa; margin-bottom: .75rem; }
-  #claim-panel .meta { font-size: .75rem; color: #555; margin-bottom: .75rem; }
-  #claim-panel .meta strong { color: #888; }
+  /* ── claim panel ── */
+  #claim-panel { display: none; margin-top: 2rem; }
+  .panel-title { font-size: 1rem; color: #ccc; margin-bottom: .3rem; }
+  .panel-meta  { font-size: .72rem; color: #555; margin-bottom: 1.5rem; }
+  .panel-meta strong { color: #777; }
 
-  pre#prompt-box { background: #0a0a0a; color: #8f8; border: 1px solid #1a1a1a;
-                   padding: .75rem; border-radius: 3px; white-space: pre-wrap;
-                   word-break: break-word; font-size: .8rem; max-height: 300px;
-                   overflow-y: auto; margin-bottom: .5rem; }
-  .copy-hint { font-size: .72rem; color: #444; margin-bottom: 1rem; }
+  /* copy block */
+  .copy-block { margin-bottom: 1.25rem; border: 1px solid #1e1e1e; border-radius: 5px; }
+  .copy-block-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .4rem .75rem; background: #141414; border-bottom: 1px solid #1e1e1e;
+    border-radius: 5px 5px 0 0;
+  }
+  .block-label {
+    font-size: .7rem; letter-spacing: .07em; text-transform: uppercase;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .block-label .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.3em; height: 1.3em; border-radius: 50%; font-size: .75rem;
+    font-weight: bold;
+  }
+  .block-label .desc { color: #666; font-size: .65rem; }
 
-  textarea#response-box { width: 100%; min-height: 180px; background: #0a0a0a;
-                          color: #e0e0e0; border: 1px solid #1a1a1a;
-                          border-radius: 3px; padding: .75rem; font-family: monospace;
-                          font-size: .8rem; resize: vertical; }
-  #submit-msg { font-size: .8rem; margin-top: .5rem; }
+  /* colour themes per block */
+  .sys  .block-label .num { background: #2a1e3a; color: #b88ef0; }
+  .sys  .copy-block-header { border-left: 3px solid #6a3ea0; }
+  .msg  .block-label .num { background: #1a2a1a; color: #6ec46e; }
+  .msg  .copy-block-header { border-left: 3px solid #3a7a3a; }
+  .ans  .block-label .num { background: #1e2a1e; color: #6af; }
+  .ans  .copy-block-header { border-left: 3px solid #2a5a8a; }
+
+  .block-label .title { color: #bbb; }
+
+  .btn-copy {
+    font-size: .72rem; padding: .22rem .6rem; border-radius: 3px;
+    background: #1e1e2e; color: #88a; border: 1px solid #2a2a3e;
+    transition: background .15s;
+  }
+  .btn-copy:hover  { background: #252540; color: #aaf; }
+  .btn-copy.copied { background: #1a2a1a; color: #6f6; border-color: #2a4a2a; }
+
+  pre.copy-pre {
+    padding: .85rem .9rem; font-size: .78rem; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word; overflow-y: auto;
+    max-height: 340px; background: #0b0b0b; border-radius: 0 0 5px 5px;
+    margin: 0;
+  }
+  .sys pre.copy-pre { color: #c4a8ff; max-height: 120px; }
+  .msg pre.copy-pre { color: #c8e8c8; max-height: 480px; }
+
+  /* ── prompt toggle bar ── */
+  .prompt-toggle-bar {
+    display: flex; align-items: center; gap: .75rem;
+    margin: .25rem 0 1.25rem; padding: .4rem .6rem;
+    border: 1px solid #1a1a1a; border-radius: 4px; background: #111;
+  }
+  .btn-toggle {
+    font-size: .72rem; padding: .2rem .65rem; border-radius: 3px;
+    background: #1e1e1e; color: #777; border: 1px solid #2a2a2a;
+  }
+  .btn-toggle:hover { background: #252525; color: #aaa; }
+  .toggle-hint { font-size: .68rem; color: #444; }
+
+  /* answer block */
+  .ans .copy-block-header { border-bottom: none; border-radius: 5px 5px 0 0; }
+  textarea#response-box {
+    display: block; width: 100%; min-height: 150px;
+    background: #0b0b0b; color: #e0e0e0;
+    border: none; border-radius: 0 0 5px 5px;
+    padding: .85rem .9rem; font-family: monospace; font-size: .8rem;
+    resize: vertical; outline: none;
+  }
+  textarea#response-box:focus { background: #0d0d0d; }
+
+  /* actions */
+  .action-row { display: flex; gap: .5rem; align-items: center; margin-top: .9rem; flex-wrap: wrap; }
+  .btn-validate {
+    background: #1e2a3a; color: #8af; font-size: .85rem;
+    padding: .4rem .9rem; border: 1px solid #2a3a4a;
+  }
+  .btn-validate:hover { background: #243040; }
+  .btn-submit { background: #1e3a5a; color: #6af; font-size: .85rem;
+                padding: .4rem .9rem; }
+  .btn-submit:hover { background: #244870; }
+  .btn-cancel { background: #2a1e1e; color: #f66; font-size: .85rem;
+                padding: .4rem .9rem; }
+  #submit-msg { font-size: .8rem; margin-left: .2rem; }
   .ok  { color: #4f4; }
   .err { color: #f44; }
-
-  #empty-msg { color: #333; font-size: .85rem; padding: 1rem 0; }
 </style>
 
 <h1>STRATUM <span>Dashboard</span></h1>
@@ -65,13 +126,8 @@
   <table id="task-table">
     <thead>
       <tr>
-        <th>#</th>
-        <th>Aufgabe</th>
-        <th>Scope</th>
-        <th>Modell</th>
-        <th>Status</th>
-        <th>Versuche</th>
-        <th>Aktion</th>
+        <th>#</th><th>Aufgabe</th><th>Scope</th>
+        <th>Modell</th><th>Status</th><th>Versuche</th><th>Aktion</th>
       </tr>
     </thead>
     <tbody id="task-body">
@@ -80,24 +136,74 @@
   </table>
 </div>
 
+<!-- ─────────────── CLAIM PANEL ─────────────── -->
 <div id="claim-panel">
-  <h2>Task übernommen</h2>
-  <div class="meta" id="claim-meta"></div>
-  <pre id="prompt-box"></pre>
-  <p class="copy-hint">↑ In Claude.ai / ChatGPT / etc. einfügen, Antwort hier einsetzen:</p>
-  <textarea id="response-box" placeholder="Antwort hier einfügen …"></textarea>
-  <div>
+  <p class="panel-title">Task übernommen</p>
+  <p class="panel-meta" id="claim-meta"></p>
+
+  <!-- ①② Prompt-Bereich (ein-/ausblendbar) -->
+  <div id="prompt-section">
+    <!-- ① System-Prompt -->
+    <div class="copy-block sys">
+      <div class="copy-block-header">
+        <div class="block-label">
+          <span class="num">①</span>
+          <span class="title">System-Prompt</span>
+          <span class="desc">→ ins »System«-Feld des LLM einfügen</span>
+        </div>
+        <button class="btn-copy" onclick="copyBlock('sys-pre', this)">📋 Kopieren</button>
+      </div>
+      <pre class="copy-pre" id="sys-pre"></pre>
+    </div>
+
+    <!-- ② Prompt -->
+    <div class="copy-block msg">
+      <div class="copy-block-header">
+        <div class="block-label">
+          <span class="num">②</span>
+          <span class="title">Prompt</span>
+          <span class="desc">→ Rolle · Kontext · Quellcode · Aufgabe · Format</span>
+        </div>
+        <button class="btn-copy" onclick="copyBlock('msg-pre', this)">📋 Kopieren</button>
+      </div>
+      <pre class="copy-pre" id="msg-pre"></pre>
+    </div>
+  </div>
+
+  <!-- Toggle-Bar zwischen Prompt und Antwort -->
+  <div class="prompt-toggle-bar">
+    <button class="btn-toggle" id="prompt-toggle-btn" onclick="togglePrompt()">▲ Prompt ausblenden</button>
+    <span class="toggle-hint" id="toggle-hint">Prompt sichtbar — hier klicken um Platz zu sparen</span>
+  </div>
+
+  <!-- ③ Antwort -->
+  <div class="copy-block ans">
+    <div class="copy-block-header">
+      <div class="block-label">
+        <span class="num">③</span>
+        <span class="title">Antwort</span>
+        <span class="desc">→ JSON-Ausgabe des LLM einfügen, dann prüfen &amp; einreichen</span>
+      </div>
+    </div>
+    <textarea id="response-box"
+      placeholder='{ "artifact_type": "...", "scope": "...", "content": {…}, "confidence": 0.85, "provenance": {…} }'
+    ></textarea>
+  </div>
+
+  <div class="action-row">
+    <button class="btn-validate" onclick="validateResponse()">Prüfen</button>
     <button class="btn-submit" onclick="submitResponse()">Einreichen</button>
     <button class="btn-cancel" onclick="cancelClaim()">Abbrechen</button>
+    <span id="submit-msg"></span>
   </div>
-  <div id="submit-msg"></div>
 </div>
 
 <script>
-  let _claimedId = null;
+  let _claimedId   = null;
   let _claimedType = null;
+  let _promptVisible = true;
 
-  /* ---- SSE ---- */
+  /* ── SSE ── */
   const es = new EventSource('/api/events');
   es.onmessage = e => renderTasks(JSON.parse(e.data));
   es.onerror   = () => {};
@@ -105,64 +211,129 @@
   function renderTasks(tasks) {
     const tbody = document.getElementById('task-body');
     if (!tasks.length) {
-      tbody.innerHTML =
-        '<tr><td colspan="7" id="empty-msg">Keine offenen Tasks.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" id="empty-msg">Keine offenen Tasks.</td></tr>';
       return;
     }
     tbody.innerHTML = tasks.map(t => {
       const isHuman  = t.model === 'human';
       const canClaim = t.status === 'pending';
-      const badge    = isHuman
+      const badge = isHuman
         ? '<span class="badge badge-human">human</span>'
         : t.status === 'running'
           ? '<span class="badge badge-running">läuft</span>'
           : '<span class="badge badge-pending">wartend</span>';
-      const action   = canClaim
+      const action = canClaim
         ? `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`
         : '—';
       const scope = t.scope.replace(/^file:/, '');
       return `<tr>
         <td>${t.id}</td>
         <td>${esc(t.task_type)}</td>
-        <td title="${esc(t.scope)}">${esc(scope.length > 40
-          ? '…' + scope.slice(-40) : scope)}</td>
-        <td>${esc(t.model)}</td>
-        <td>${badge}</td>
-        <td>${t.attempts}</td>
-        <td>${action}</td>
+        <td title="${esc(t.scope)}">${esc(scope.length > 42 ? '…' + scope.slice(-42) : scope)}</td>
+        <td>${esc(t.model)}</td><td>${badge}</td>
+        <td>${t.attempts}</td><td>${action}</td>
       </tr>`;
     }).join('');
   }
 
-  /* ---- Claim ---- */
+  /* ── Claim ── */
   async function claimTask(id) {
     const r = await fetch(`/api/claim/${id}`, { method: 'POST' });
     if (!r.ok) {
       alert(`Claim fehlgeschlagen (${r.status}): ${(await r.json()).detail}`);
       return;
     }
-    const data = await r.json();
-    _claimedId   = data.id;
-    _claimedType = data.task_type;
+    const d = await r.json();
+    _claimedId   = d.id;
+    _claimedType = d.task_type;
 
     document.getElementById('claim-meta').innerHTML =
-      `<strong>ID:</strong> ${data.id} &nbsp;
-       <strong>Aufgabe:</strong> ${esc(data.task_type)} &nbsp;
-       <strong>Scope:</strong> ${esc(data.scope)}`;
-    document.getElementById('prompt-box').textContent = data.prompt;
-    document.getElementById('response-box').value = '';
+      `<strong>ID:</strong> ${d.id} &nbsp;`+
+      `<strong>Aufgabe:</strong> ${esc(d.task_type)} &nbsp;`+
+      `<strong>Scope:</strong> ${esc(d.scope)}`;
+
+    document.getElementById('sys-pre').textContent = d.system_prompt || '';
+    document.getElementById('msg-pre').textContent = d.user_message  || '';
+    document.getElementById('response-box').value  = '';
     document.getElementById('submit-msg').textContent = '';
+
+    // Prompt beim Claimen immer einblenden
+    _promptVisible = true;
+    document.getElementById('prompt-section').style.display = '';
+    document.getElementById('prompt-toggle-btn').textContent = '▲ Prompt ausblenden';
+    document.getElementById('toggle-hint').textContent = 'Prompt sichtbar — hier klicken um Platz zu sparen';
+
     document.getElementById('claim-panel').style.display = 'block';
-    document.getElementById('response-box').focus();
+    window.scrollTo({ top: document.getElementById('claim-panel').offsetTop - 16,
+                      behavior: 'smooth' });
   }
 
-  /* ---- Submit ---- */
+  /* ── Prompt-Toggle ── */
+  function togglePrompt() {
+    _promptVisible = !_promptVisible;
+    document.getElementById('prompt-section').style.display = _promptVisible ? '' : 'none';
+    document.getElementById('prompt-toggle-btn').textContent =
+      _promptVisible ? '▲ Prompt ausblenden' : '▼ Prompt anzeigen';
+    document.getElementById('toggle-hint').textContent =
+      _promptVisible
+        ? 'Prompt sichtbar — hier klicken um Platz zu sparen'
+        : 'Prompt ausgeblendet — hier klicken um wieder anzuzeigen';
+    if (!_promptVisible) {
+      document.getElementById('response-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  /* ── Copy ── */
+  function copyBlock(preId, btn) {
+    const text = document.getElementById(preId).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Kopiert';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
+    });
+  }
+
+  /* ── Validate ── */
+  async function validateResponse() {
+    const response = document.getElementById('response-box').value.trim();
+    const msg = document.getElementById('submit-msg');
+    if (!response) { msg.textContent = 'Keine Antwort eingegeben.'; msg.className = 'err'; return; }
+
+    // Schnellcheck: valides JSON?
+    try { JSON.parse(response); } catch(e) {
+      const tip = e.message.includes("after property value")
+        ? ' — Tipp: Wahrscheinlich doppelte Anführungszeichen im Text (z.B. model="human"). Ersetze durch einfache: model=\'human\'.'
+        : '';
+      msg.textContent = `Kein valides JSON: ${e.message}${tip}`;
+      msg.className = 'err';
+      return;
+    }
+
+    msg.textContent = 'Prüfe …'; msg.className = '';
+    const r = await fetch('/api/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response, task_type: _claimedType }),
+    });
+    const body = await r.json();
+    if (body.passed) {
+      const conf = body.confidence != null ? ` · confidence: ${body.confidence.toFixed(2)}` : '';
+      msg.textContent = `✓ Valide${conf}`;
+      msg.className = 'ok';
+    } else {
+      const detail = body.detail ? ` — ${body.detail}` : '';
+      msg.textContent = `Fehler: ${body.trigger}${detail}`;
+      msg.className = 'err';
+    }
+  }
+
+  /* ── Submit ── */
   async function submitResponse() {
     const response = document.getElementById('response-box').value.trim();
     if (!response) { alert('Keine Antwort eingegeben.'); return; }
     const msg = document.getElementById('submit-msg');
-    msg.textContent = 'Einreichen …';
-    msg.className = '';
+    msg.textContent = 'Einreichen …'; msg.className = '';
 
     const r = await fetch(`/api/submit/${_claimedId}`, {
       method: 'POST',
@@ -171,12 +342,10 @@
     });
     const body = await r.json();
     if (r.ok) {
-      msg.textContent = 'Gespeichert.';
-      msg.className = 'ok';
-      setTimeout(() => { cancelClaim(); }, 1200);
+      msg.textContent = '✓ Gespeichert.'; msg.className = 'ok';
+      setTimeout(cancelClaim, 1400);
     } else {
-      msg.textContent = `Fehler: ${body.detail}`;
-      msg.className = 'err';
+      msg.textContent = `Fehler: ${body.detail}`; msg.className = 'err';
     }
   }
 
@@ -188,8 +357,7 @@
   }
 
   function esc(s) {
-    return String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
