@@ -62,7 +62,7 @@ plan_det-linter.md       | offene Idee: det-Linter als guenstigste Review-Schich
 spec_schritt-1.md        | Inkremente Schritt 1 (Substrat) I-1.0..1.12                         | schema, scope, repository, tree-sitter, ingest
 spec_schritt-2.md        | Inkremente Schritt 2 (Orchestrator-Kern) I-2.0..2.8                 | capacity, router, queue, validator, worker
 spec_schritt-3.md        | Inkremente Schritt 3 (Cloud-Bruecke) I-3.1..3.5, Konsumenten-Vertraege | bundling, redaction-gate, cloud-adapter,
-                         |   fuer I-3.1 (Bundling + Redaction-Gate)                             |   gate, egress-policy
+                         |   (I-3.1 Bundling+Gate; I-3.5 CostRecord); cloud_adapter det-core-Umsetzung |   gate, egress-policy, cost-record, on_cost
 spec_schritt-4.md        | Inkremente Schritt 4 (Graph-Tiefe) I-4.1..4.4                       | graph_edges, cte, symbol-diff, invalidierung
 spec_schritt-5.md        | Inkremente Schritt 5 (Betrieb) I-5.1..5.5                           | sse, rest, dashboard, kalibrierung, canary
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth

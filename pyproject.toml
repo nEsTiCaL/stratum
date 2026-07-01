@@ -24,6 +24,12 @@ dev = [
     "datamodel-code-generator>=0.25",
     "ruff>=0.15",
 ]
+# Cloud-Eskalation (Schicht S3, opt-in). Baseline-Anbieter Anthropic; der
+# Adapter (core/cloud_adapter.py, I-3.1) importiert das SDK erst lazy im
+# AnthropicSender, die det-Suite laeuft ohne. Realer Egress erst nach I-3.4.
+cloud = [
+    "anthropic>=0.40",
+]
 
 # Workspace ist (noch) kein installierbares Paket -> uv installiert nur die
 # Abhaengigkeiten, ohne den Projektbaum zu bauen.

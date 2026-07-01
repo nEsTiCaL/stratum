@@ -115,6 +115,49 @@ Hinweis : Multi-Provider-Entscheidung in `spec_i-2-1-router` (Capability-
 Klasse  : gemischt
 ```
 
+### Umsetzung (det-core fertig, core/cloud_adapter.py)
+
+Model-Seam-konform: CloudAdapter.complete(prompt)->str, plugbar als
+model_factory im LlmWorker/EscalationLoop (cloud_model_factory(sender) ->
+(logischer Name)->CloudAdapter|None; None fuer unbekannte/opt-in Namen ->
+Kandidat wird uebersprungen wie pre-S3). Bausteine (alle det, gegen
+ReplayCloudSender getestet, KEIN realer Egress):
+
+```
+resolve_spec(name)   logischer Router-Name -> CloudModelSpec (provider,
+                     model_id, Preise). Anthropic konkret: haiku->
+                     claude-haiku-4-5, sonnet->claude-sonnet-4-6,
+                     opus->claude-opus-4-8. openai/google/groq: opt-in,
+                     NICHT verdrahtet -> None.
+compute_cost(spec,...)-> CostRecord (USD): in*price_in + out*price_out
+                     + cache_read*0.1x + cache_write*1.25x (je 1M).
+build_messages(system, cache_prefix, tail) -> (system_blocks, messages):
+                     cache_control:{ephemeral} auf dem STABILEN Core-Block;
+                     Core-Block byte-identisch bei gleichem cache_prefix
+                     unabhaengig vom tail (Cache-Prefix-Match).
+CloudAdapter         Retry auf TransientCloudError (max_retries, Default 2);
+                     Kosten via on_cost-Callback (Muster wie Ollama on_metrics
+                     I-2.8); Antwort ist reiner Text -> ResultProb macht der
+                     Validator (I-2.4).
+AnthropicSender      einziger dev-verifizierter Teil, lazy-Import anthropic-SDK
+                     (opt-in Extra `cloud` in pyproject), adaptive thinking +
+                     effort (kein budget_tokens), Egress erst nach I-3.4.
+```
+
+Bewusst NICHT in diesem Cut (deferred): OpenAI/Google/Gratis-Backends (opt-in),
+Batch, Fast-Mode, free-Quota-Tracking (letzteres gehoert zu I-3.5
+Kosten-Telemetrie). Verdrahtung Bundle(I-3.2)->cache_prefix durch den Worker ist
+vorbereitet (CloudAdapter.cache_prefix), aber der LlmWorker baut den Prompt noch
+flach aus item.payload["prompt"] (gleicher Stand wie I-3.2: "noch nicht
+verdrahtet").
+
+### Konsumenten-Vertrag (fuer I-3.5 Kosten-Telemetrie)
+
+on_cost: Callable[[CostRecord], None] ist die Naht fuer die einheitliche
+Kosten-Telemetrie. CostRecord traegt logical_name, model_id, input/output/
+cache-Tokens, cost_usd. I-3.5 haengt hier den backendunabhaengigen Zaehler +
+Tageskappung ein (analog MetricsStore/on_metrics, I-2.8).
+
 ## I-3.4  Detektor-Bibliothek (geteilt) + Gate scharf  [HARTES GATE]
 
 ```
