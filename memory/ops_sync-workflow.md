@@ -41,6 +41,68 @@ WSL-nativen FS passiert.
 Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den Klonen),
 aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf.
 
+## Abnahme-Script (.local/sync.ps1)
+
+Phase B (Schritte 2+3 oben: Commit+Push aus Windows, dann WSL-`git pull`) laesst
+sich als ein Script buendeln. Liegt bewusst in `.local/` (gitignored, S9) und
+NICHT in memory/ oder scripts/: das Script selbst ist host-agnostisch (Logik
+identisch auf jedem Host), aber es liest die Host-Werte WIN_REPO_PFAD und
+WSL_REPO_PFAD aus `.local/host.md`. Da `.local/` nicht mitversioniert wird,
+existiert das Script nach einem frischen Klon auf keinem neuen Host - es muss
+dort einmalig neu angelegt werden (Inhalt unten, 1:1 kopierbar).
+
+Aufruf (Commit-Message als Parameter):
+```
+powershell -ExecutionPolicy Bypass -File ".local\sync.ps1" "commit message"
+```
+
+Voraussetzung in `.local/host.md`: Zeilen `WIN_REPO_PFAD = ...` und
+`WSL_REPO_PFAD = ...` (Format wie in host.md dokumentiert, ein optionaler
+Klammer-Kommentar am Zeilenende wird beim Parsen ignoriert).
+
+Skript-Inhalt (`.local/sync.ps1`):
+```powershell
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$CommitMessage
+)
+
+$ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$HostMd = Join-Path $ScriptDir "host.md"
+
+function Get-HostValue {
+    param([string]$Key)
+    $line = Select-String -Path $HostMd -Pattern "^\s*$Key\s*=" | Select-Object -First 1
+    if (-not $line) { throw "Wert $Key nicht in $HostMd gefunden" }
+    $value = $line.Line -replace "^\s*$Key\s*=\s*", ""
+    $value = $value -replace "\s*\(.*\)\s*$", ""
+    return $value.Trim()
+}
+
+$WinRepo = Get-HostValue "WIN_REPO_PFAD"
+$WslRepo = Get-HostValue "WSL_REPO_PFAD"
+
+git -C $WinRepo add -A
+if ($LASTEXITCODE -ne 0) { throw "git add fehlgeschlagen" }
+
+git -C $WinRepo commit -m $CommitMessage
+if ($LASTEXITCODE -ne 0) { throw "git commit fehlgeschlagen (nichts zu committen?)" }
+
+git -C $WinRepo push
+if ($LASTEXITCODE -ne 0) { throw "git push fehlgeschlagen" }
+
+wsl -d Debian -- bash -c "cd $WslRepo && git pull"
+if ($LASTEXITCODE -ne 0) { throw "WSL git pull fehlgeschlagen" }
+
+Write-Host "OK: committed, gepusht, WSL-Repo nachgezogen."
+```
+
+Bewusst kein cp wie in Phase A: die Abnahme-Grenze synct ueber `git pull`
+(einzige Wahrheitsquelle, siehe Absatz nach Phase B oben), nicht per Datei-Kopie.
+WSL-Distro `Debian` ist hier hart wie in `ops_wsl` (projektweite Konvention,
+kein Host-Wert).
+
 ## Falle: mehrzeilige Commit-Message (wiederkehrend)
 
 NIE PowerShell-Here-String `@'...'@` im Bash-Tool verwenden -- die Delimiter
