@@ -19,5 +19,22 @@ services:
       timeout: 3s
       retries: 10
 
+  server:
+    build: .
+    container_name: stratum-server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      OLLAMA_HOST: http://host.docker.internal:11434
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
 volumes:
   pgdata:
