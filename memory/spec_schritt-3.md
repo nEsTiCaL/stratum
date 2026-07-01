@@ -62,14 +62,39 @@ sich der scope-Zustand nicht aendert, unabhaengig von Task-Kontext/Hotspots.
 ## I-3.3  Redaction-Gate (Stub, Vertrag fix) + fail-safe Egress
 
 ```
-Modul   : gate(bundle, sensitivity) -> PASS|REDACT|BLOCK + redaction_report;
-          Position fix (nach Bundling, vor Adapter); Schalter scan_real/
-          unsafe_test_egress
+Modul   : gate(bundle, sensitivity, policy) -> PASS|BLOCK + RedactionReport
+          (core/redaction_gate.py); Position fix (nach Bundling, vor Adapter);
+          Schalter scan_real/unsafe_test_egress (EgressPolicy, wiederverwendet
+          aus I-1.8, core/secret_scan.py) statt Fail-safe-Logik zu duplizieren
 Akzeptanz (det): default-Flags -> Cloud blockiert; unsafe_test_egress=true ->
-          sichtbare Warnung in Trace+Konsole + Egress; Stub schreibt stub=True;
-          BLOCK -> Knoten unresolved (bleibt lokal)
+          Egress + report.warn=True; Stub schreibt stub=True; BLOCK -> bundle
+          None (Knoten bleibt lokal/unresolved, Entscheidung liegt bei I-3.1)
 Klasse  : det
 ```
+
+### Konsumenten-Vertrag (fuer I-3.1 Cloud-Adapter)
+
+core/redaction_gate.py, abgeschlossen, noch NICHT verdrahtet (kein Adapter
+vorhanden). I-3.1 ruft NACH Bundling, VOR dem eigentlichen API-Call:
+
+```
+gate(bundle: Bundle, sensitivity: Sensitivity, policy: EgressPolicy)
+  -> tuple[Decision, Bundle | None, RedactionReport]
+  PASS  -> Bundle unveraendert weiterreichen an den Adapter
+  BLOCK -> Bundle ist None; Knoten -> unresolved, kein Egress
+  REDACT -> im Vertrag (Decision-Enum), vom Stub nie zurueckgegeben (kein
+            echter Detektor bis I-3.4)
+```
+
+gate() ist bewusst IO-frei (wie build_core_bundle/select_hotspots aus I-3.2):
+schreibt selbst nichts in den Trace. Die sichtbare Warnung bei
+unsafe_test_egress (report.warn=True) sowie das Trace-Schreiben
+(Repository.write_trace(session_id, "redaction_gate", detail=...)) sind
+Aufgabe des Aufrufers (I-3.1), analog zur source_provider-Injektion bei
+select_hotspots.
+
+`sensitivity` kommt aus der Klassifikation (I-2.6, ClassificationResult.
+sensitivity), nicht aus einem eigenen Scan-Aufruf im Gate.
 
 ## I-3.1  Cloud-Adapter (Multi-Provider, Anthropic zuerst)
 

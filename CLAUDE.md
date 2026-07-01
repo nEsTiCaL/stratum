@@ -23,6 +23,8 @@ vorhanden.
 
 ## Commits
 
-Commit-Messages werden vor dem Commit gemeinsam besprochen. Schlage eine
-aussagekraeftige, kurze Message vor und warte auf Bestaetigung, bevor du
-committest. Keine Co-Authored-By-Zeile in Commit-Messages.
+Schlage eine aussagekraeftige, kurze Commit-Message vor. Committet wird
+NICHT selbst per Bash/git, sondern ueber `.local/sync.ps1` (Commit+Push+WSL-Pull
+in einem, siehe memory/ops_sync-workflow.md): du gibst nach Bestaetigung nur
+den fertigen Shell-Befehl dafuer, der Nutzer fuehrt ihn selbst aus. Keine
+Co-Authored-By-Zeile in Commit-Messages.

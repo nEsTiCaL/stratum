@@ -115,7 +115,7 @@ I-2.8   Inferenz-Metrik-Erfassung      det   I-2.5     -              fertig
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
 I-3.2   Bundling + det. Serialisierung det   I-1.5/1.6 R3                fertig
-I-3.3   Redaction-Gate Stub + Egress   det   I-1.8     R3
+I-3.3   Redaction-Gate Stub + Egress   det   I-1.8     R3, `spec_schritt-3` (Konsumenten-Vertrag!)   fertig
 I-3.1   Cloud-Adapter (Multi-Provider) gem   I-3.2/3.3 R3, SK(7), claude-api
 I-3.4   Detektor-Bibliothek + scharf   det   I-3.3     R3   [HARTES GATE]
 I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)
