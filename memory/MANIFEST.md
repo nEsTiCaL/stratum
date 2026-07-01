@@ -46,7 +46,11 @@ env_portabilitaet.md     | Windows-Dev -> Linux: Dev-Modell, 11 Anforderungen, O
 ops_wsl.md               | kanonischer WSL-Aufruf-Praefix + uv-PATH-Falle (Single Source)      | wsl -d Debian, .venv, uv.exe
 ops_n1-queries.md        | Index statt Quelldateien: devcli symbol_lookup/index/               | migrate, ingest, dogfooding, kaltstart,
                          |   dependency_map, Preflight                                         |   devcli
-ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B-commit-push, Testaufruf, Docker       | pytest, git pull, testcontainers
+ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B-commit-push, Testaufruf, Docker,      | pytest, git pull, testcontainers,
+                         |   Falle mehrzeilige Commit-Message (kein PS-Here-String im Bash)    |   commit-message, here-string, @
+ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nutzen-Begruendung | smoketest, ollama-erreichbar,
+                         |   fuers aktive N1-Dogfooding, Fund WSL-Klon-Drift + Pfad-Umzug        |   wsl-drift, pfad-umzug
+
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel
 modell_vram-matrix.md    | VRAM-Bedarf je Modell, Verfuegbarkeit nach VRAM-Groesse             | phi4-mini, qwen, deepseek, 8/12/16gb

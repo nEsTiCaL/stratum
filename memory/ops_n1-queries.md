@@ -17,6 +17,9 @@ Preflight (migrate + index) ist idempotent, ~5 s.
 
 ## Preflight
 
+Umgebungs-Smoketest (WSL-Sync, Docker, Ollama-Erreichbarkeit) VOR den
+folgenden Schritten: `ops_dogfooding-smoketest`.
+
 WSL-Repo aktuell? (commit -> push -> `git pull`, siehe `ops_sync-workflow`).
 
 DB bereit (einmalig pro Container-Neustart oder frischer DB):

@@ -11,15 +11,15 @@ Sync-Mechanismus.
 
 ```
 1. Dateien auf Windows schreiben/editieren
-2. Geaenderte Datei(en) gezielt nach WSL kopieren (Quelle Windows-Pfad ueber
-   /mnt/e, AUSFUEHRUNG bleibt im WSL-nativen Pfad ~/stratum):
-   wsl -d Debian -- bash -c "cp '/mnt/e/Projekte/AI Coding/Stratum/<pfad>' \
-     ~/stratum/<pfad>"
+2. Geaenderte Datei(en) gezielt nach WSL kopieren (Quelle Windows-Pfad unter
+   /mnt, konkreter Wert = WSL_MNT_PFAD in `.local/notes.md`, S9; AUSFUEHRUNG
+   bleibt im WSL-nativen Pfad ~/stratum):
+   wsl -d Debian -- bash -c "cp '<WSL_MNT_PFAD>/<pfad>' ~/stratum/<pfad>"
 3. Tests in WSL laufen lassen (`ops_wsl`, <REST> = -m pytest -q)
 4. 1-3 wiederholen bis gruen. Kein Commit, kein push/pull noetig.
 ```
 
-Kein Verstoss gegen "kein /mnt-Trick": jener Punkt verbietet, AUS /mnt/e heraus
+Kein Verstoss gegen "kein /mnt-Trick": jener Punkt verbietet, AUS /mnt heraus
 zu bauen/testen (inotify/case-sensitivity-Bruch). Reines Kopieren einzelner
 Dateien nach ~/stratum vor dem Testlauf ist unkritisch, da Ausfuehrung weiter im
 WSL-nativen FS passiert.
@@ -29,10 +29,10 @@ WSL-nativen FS passiert.
 ```
 1. Commit-Message mit Nutzer besprechen (CLAUDE.md)
 2. Commit + push AUS WINDOWS (Credentials nur dort; WSL hat kein gh, keinen
-   Credential-Helper):
-   git -C "E:/Projekte/AI Coding/Stratum" add <dateien>
-   git -C "E:/Projekte/AI Coding/Stratum" commit -m "..."
-   git -C "E:/Projekte/AI Coding/Stratum" push
+   Credential-Helper; konkreter Pfad = WIN_REPO_PFAD in `.local/notes.md`, S9):
+   git -C "<WIN_REPO_PFAD>" add <dateien>
+   git -C "<WIN_REPO_PFAD>" commit -m "..."
+   git -C "<WIN_REPO_PFAD>" push
 3. WSL-Repo nachziehen: wsl -d Debian -- bash -c "cd ~/stratum && git pull"
    (ggf. vorher staged/geaenderte WSL-Arbeitskopien unstagen/loeschen, da
    Phase-A-cp-Dateien manchmal im Index landen)
@@ -40,6 +40,20 @@ WSL-nativen FS passiert.
 
 Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den Klonen),
 aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf.
+
+## Falle: mehrzeilige Commit-Message (wiederkehrend)
+
+NIE PowerShell-Here-String `@'...'@` im Bash-Tool verwenden -- die Delimiter
+landen woertlich in der Message (Titel wird "@", "@" am Ende). Das ist schon
+mehrfach passiert. Ursache: zwei Shells im Environment (Bash-Tool = Git
+Bash/POSIX, PowerShell-Tool = PS-Syntax) nicht mischen.
+
+Sichere Wege fuer eine mehrzeilige Message:
+```
+git commit -F <datei>            # Message vorher in eine Datei schreiben (robust)
+git commit -m "titel" -m "rumpf" # mehrere -m = mehrere Absaetze
+```
+Passiert es doch: `git commit --amend -F <datei>` VOR dem Push korrigiert es.
 
 ## Docker fuer DB-Tests
 

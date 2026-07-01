@@ -45,6 +45,13 @@ S7  Tag aus MANIFEST.md waehlen. Passt keiner -> bewusst neuen Tag anlegen und
 S8  Kein Frontmatter. Bedeutung lebt im Dateinamen + der Manifest-Zeile.
     Aktualitaets- oder Abloesungshinweis nur wo noetig als EINE Klartext-
     Body-Zeile (z.B. "> abgeloest durch `x` am JJJJ-MM-TT").
+S9  Host-konkrete Werte (absolute Pfade, Laufwerksbuchstaben, IP/Port eines
+    Diensts, o.ae.) NIE in memory/ eintragen - gehoeren ausschliesslich in
+    `.local/notes.md` (gitignored). memory/-Chunks bleiben host-agnostisch:
+    Platzhalter (z.B. <WIN_REPO_PFAD>) + Verweis auf .local/notes.md statt
+    des Werts. Grund: memory/ ist versioniert und projektweit gueltig,
+    Host-Werte sind pro Maschine/Nutzer verschieden und veralten unbemerkt
+    bei Umzug/Wechsel.
 ```
 
 ## F - Format
