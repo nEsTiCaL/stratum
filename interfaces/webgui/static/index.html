@@ -21,6 +21,7 @@
   .badge-pending { background: #1a2a1a; color: #4a4; }
   .badge-running { background: #1a1a2a; color: #66f; }
   .badge-human   { background: #2a1a1a; color: #f66; }
+  .badge-failed  { background: #2a1a0a; color: #f84; }
   #empty-msg { color: #333; font-size: .85rem; padding: 1rem 0; }
 
   button { cursor: pointer; border: none; border-radius: 3px; padding: .3rem .7rem;
@@ -229,7 +230,9 @@
         ? '<span class="badge badge-human">human</span>'
         : t.status === 'running'
           ? '<span class="badge badge-running">läuft</span>'
-          : '<span class="badge badge-pending">wartend</span>';
+          : t.status === 'failed'
+            ? '<span class="badge badge-failed">fehlgeschlagen</span>'
+            : '<span class="badge badge-pending">wartend</span>';
       let action;
       if (canClaim) {
         action = `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`;
