@@ -93,12 +93,15 @@ class WorkerLoop:
     repo: Repository
     det_worker: DetWorker
     llm_worker: LlmWorker
+    on_item_start: Callable[[QueueItem], None] | None = None
 
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
         item = self.queue.claim(model)
         if item is None:
             return False
+        if self.on_item_start is not None:
+            self.on_item_start(item)
         try:
             task_type = TaskType(item.task_type)
             is_det = TASK_REQUIREMENTS[task_type].deterministic_model is not None

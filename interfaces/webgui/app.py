@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -293,6 +294,35 @@ class SubmitBody(BaseModel):
     task_type: str
 
 
+_EXPECTED_TOKENS: dict[str, int] = {
+    "summarize": 350, "explain": 250, "review": 500, "document": 700,
+    "refactor_suggest": 400, "debug": 300, "test_gen": 500,
+    "cross_module": 400, "architecture": 500, "crypto_audit": 450,
+}
+
+
+def _augment_progress(tasks: list[dict], progress_store: dict) -> list[dict]:
+    now = time.monotonic()
+    result = []
+    for t in tasks:
+        if t["status"] == "running" and t["id"] in progress_store:
+            p = progress_store[t["id"]]
+            elapsed = now - p["start"]
+            tokens = p["tokens"]
+            tok_s = tokens / elapsed if elapsed > 0.1 else None
+            expected = _EXPECTED_TOKENS.get(t.get("task_type", ""), 350)
+            pct = min(99, int(tokens / expected * 100)) if tokens else 0
+            t = dict(t)
+            t["progress"] = {
+                "elapsed": round(elapsed, 1),
+                "tokens": tokens,
+                "tok_s": round(tok_s, 1) if tok_s else None,
+                "pct": pct,
+            }
+        result.append(t)
+    return result
+
+
 def create_app(
     queue: Queue,
     repo: Repository,
@@ -301,6 +331,7 @@ def create_app(
     sse_delay: float = 2.0,
     sse_max_events: int | None = None,
     sse_queue: Queue | None = None,
+    progress_store: dict | None = None,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert."""
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
@@ -322,6 +353,8 @@ def create_app(
             while sse_max_events is None or count < sse_max_events:
                 try:
                     tasks = _poll_queue.list_tasks()
+                    if progress_store:
+                        tasks = _augment_progress(tasks, progress_store)
                     data = json.dumps(tasks, default=str)
                     yield f"data: {data}\n\n"
                 except Exception:
@@ -335,6 +368,28 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/prompt/{task_id}")
+    async def get_task_prompt(task_id: int) -> dict[str, Any]:
+        """Gibt Prompt eines laufenden Tasks zurück ohne Status zu ändern."""
+        tasks = queue.list_tasks()
+        task = next((t for t in tasks if t["id"] == task_id), None)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task nicht gefunden")
+        scope = task["scope"]
+        task_type = task["task_type"]
+        source_code = ""
+        if source_root is not None and scope.startswith("file:"):
+            src = source_root / scope[5:]
+            if src.exists():
+                source_code = src.read_text(encoding="utf-8")
+        return {
+            "id": task_id,
+            "task_type": task_type,
+            "scope": scope,
+            "system_prompt": _make_system_prompt(),
+            "user_message": _make_user_message(task_type, scope, source_code, ""),
+        }
 
     @app.post("/api/claim/{task_id}")
     async def claim_task(task_id: int) -> dict[str, Any]:

@@ -2,10 +2,13 @@
 
 Nutzt httpx (sync). OLLAMA_HOST aus Umgebungsvariable oder Argument.
 Wirft ContextExceededError wenn Ollama einen "context"-Fehler meldet.
+stream=True wenn on_token gesetzt: Tokens werden einzeln geliefert.
 """
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 from collections.abc import Callable
 
@@ -25,6 +28,7 @@ class OllamaAdapter:
         client: httpx.Client | None = None,
         timeout: float = 120.0,
         on_metrics: Callable[[str, float, int], None] | None = None,
+        on_token: Callable[[str], None] | None = None,
     ) -> None:
         self.model = model
         self._host = (
@@ -33,8 +37,14 @@ class OllamaAdapter:
         self._client = client
         self._timeout = timeout
         self._on_metrics = on_metrics
+        self._on_token = on_token
 
     def complete(self, prompt: str) -> str:
+        if self._on_token is not None:
+            return self._complete_stream(prompt)
+        return self._complete_blocking(prompt)
+
+    def _complete_blocking(self, prompt: str) -> str:
         own_client = self._client is None
         client = (
             self._client
@@ -46,7 +56,6 @@ class OllamaAdapter:
                 f"{self._host}/api/generate",
                 json={"model": self.model, "prompt": prompt, "stream": False},
             )
-            # Body vor Status-Check lesen – Fehlerdetails gehen sonst verloren.
             try:
                 data = resp.json()
             except Exception:
@@ -70,3 +79,51 @@ class OllamaAdapter:
         finally:
             if own_client:
                 client.close()
+
+    def _complete_stream(self, prompt: str) -> str:
+        url = f"{self._host}/api/generate"
+        body = {"model": self.model, "prompt": prompt, "stream": True}
+        parts: list[str] = []
+        token_count = 0
+
+        ctx = (
+            httpx.Client(timeout=self._timeout)
+            if self._client is None
+            else contextlib.nullcontext(self._client)
+        )
+        with ctx as client:
+            with client.stream("POST", url, json=body) as resp:
+                if not resp.is_success:
+                    resp.read()
+                    try:
+                        err = resp.json().get("error", resp.text)
+                    except Exception:
+                        err = resp.text
+                    if "context" in err.lower():
+                        raise ContextExceededError(err)
+                    raise RuntimeError(f"Ollama {resp.status_code}: {err}")
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except ValueError:
+                        continue
+                    if "error" in data:
+                        msg = data["error"]
+                        if "context" in msg.lower():
+                            raise ContextExceededError(msg)
+                        raise RuntimeError(msg)
+                    token = data.get("response", "")
+                    if token:
+                        parts.append(token)
+                        token_count += 1
+                        if self._on_token:
+                            self._on_token(token)
+                    if data.get("done"):
+                        ec = data.get("eval_count", token_count)
+                        ed = data.get("eval_duration")
+                        if ec and ed and self._on_metrics:
+                            self._on_metrics(self.model, ec / (ed / 1e9), ec)
+
+        return "".join(parts)

@@ -90,6 +90,24 @@ Akzeptanz (det): JSON-Lines-Vertrag; exit 0/!=0; ohne --json menschenlesbar;
 Klasse  : det
 ```
 
+Dateitransfer: SSH-Pipe-Upload (tar-Stream ueber stdin), kein separates
+scp/sftp noetig. Dateien landen in Session-Cache auf dem Server
+(/var/stratum/sessions/{id}/), TTL 24h, automatisches Cleanup.
+source_root zeigt waehrend der Session auf den Cache-Pfad.
+
+Aufruf-Skizze (Client):
+```
+# ganzes Projekt
+tar -czf - src/ | ssh stratum@server review --scope project:src/
+
+# Einzeldatei
+ssh stratum@server review --scope file:src/main.py < src/main.py
+```
+
+Das Go-Binary ist ein Protokoll-Uebersetzer: es nimmt SSH-stdin/stdout
+und spricht intern gegen die REST-API (POST /api/task, GET /api/task/{id}/events).
+Die REST-API selbst kennt kein SSH. Schnittstellen-Details: spec_rest-api.md.
+
 ## I-S.2  Auth-Schicht (fail-safe)
 
 ```

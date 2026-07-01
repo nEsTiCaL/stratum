@@ -27,6 +27,14 @@
            font-family: monospace; font-size: .8rem; }
   .btn-claim  { background: #1e3a1e; color: #6f6; }
   .btn-claim:hover  { background: #234a23; }
+  .btn-show-prompt { background: #1e2a3a; color: #88a; border: 1px solid #2a3a4a; }
+  .btn-show-prompt:hover { background: #243040; color: #aaf; }
+
+  /* progress */
+  .progress-wrap { display: flex; flex-direction: column; gap: .25rem; }
+  .progress-bar-bg { height: 3px; background: #1a1a1a; border-radius: 2px; width: 80px; }
+  .progress-bar-fg { height: 3px; background: #4466aa; border-radius: 2px; transition: width .5s; }
+  .progress-stats { font-size: .68rem; color: #556; white-space: nowrap; }
 
   /* ── claim panel ── */
   #claim-panel { display: none; margin-top: 2rem; }
@@ -222,9 +230,28 @@
         : t.status === 'running'
           ? '<span class="badge badge-running">läuft</span>'
           : '<span class="badge badge-pending">wartend</span>';
-      const action = canClaim
-        ? `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`
-        : '—';
+      let action;
+      if (canClaim) {
+        action = `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`;
+      } else if (t.status === 'running') {
+        const p = t.progress;
+        let progressHtml = '';
+        if (p) {
+          const pct = p.pct || 0;
+          const toks = p.tok_s ? `${p.tok_s} tok/s` : `${p.tokens} tok`;
+          const elapsed = p.elapsed ? fmtSec(p.elapsed) : '';
+          const eta = (p.tok_s && p.tokens)
+            ? fmtSec(Math.max(0, (350 - p.tokens) / p.tok_s)) : '';
+          progressHtml = `
+            <div class="progress-bar-bg"><div class="progress-bar-fg" style="width:${pct}%"></div></div>
+            <div class="progress-stats">${toks} · ${elapsed}${eta ? ' · ~' + eta : ''}</div>`;
+        }
+        action = `<div class="progress-wrap">${progressHtml}
+          <button class="btn-show-prompt" onclick="showPrompt(${t.id})">Prompt</button>
+        </div>`;
+      } else {
+        action = '—';
+      }
       const scope = t.scope.replace(/^file:/, '');
       return `<tr>
         <td>${t.id}</td>
@@ -234,6 +261,32 @@
         <td>${t.attempts}</td><td>${action}</td>
       </tr>`;
     }).join('');
+  }
+
+  /* ── Prompt anzeigen (ohne Claim) ── */
+  async function showPrompt(id) {
+    const r = await fetch(`/api/prompt/${id}`);
+    if (!r.ok) {
+      alert(`Prompt nicht verfügbar (${r.status}): ${(await r.json()).detail}`);
+      return;
+    }
+    const d = await r.json();
+    _claimedId   = d.id;
+    _claimedType = d.task_type;
+    document.getElementById('claim-meta').innerHTML =
+      `<strong>ID:</strong> ${d.id} &nbsp;`+
+      `<strong>Aufgabe:</strong> ${esc(d.task_type)} &nbsp;`+
+      `<strong>Scope:</strong> ${esc(d.scope)}`;
+    document.getElementById('sys-pre').textContent = d.system_prompt || '';
+    document.getElementById('msg-pre').textContent = d.user_message  || '';
+    document.getElementById('submit-msg').textContent = '';
+    _promptVisible = true;
+    document.getElementById('prompt-section').style.display = '';
+    document.getElementById('prompt-toggle-btn').textContent = '▲ Prompt ausblenden';
+    document.getElementById('toggle-hint').textContent = 'Prompt sichtbar — hier klicken um Platz zu sparen';
+    document.getElementById('claim-panel').style.display = 'block';
+    window.scrollTo({ top: document.getElementById('claim-panel').offsetTop - 16,
+                      behavior: 'smooth' });
   }
 
   /* ── Claim ── */
@@ -359,5 +412,10 @@
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
                     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtSec(s) {
+    if (s < 60) return `${Math.round(s)}s`;
+    return `${Math.floor(s/60)}m${Math.round(s%60)}s`;
   }
 </script>
