@@ -125,32 +125,52 @@ _EXPECTED_TOKENS: dict[str, int] = {
 }
 
 
-_SYSTEM_PROMPT_HUMAN = (
-    "Du analysierst Code aus dem Stratum-Projekt — einem mehrschichtigen "
-    "Code-Analyse-Agenten (Python, FastAPI, PostgreSQL/pgvector, Ollama).\n"
-    "Das System verarbeitet Quelldateien deterministisch (Indexer: symbol_index, "
-    "dependency_graph, call_graph) und probabilistisch (LLM-Worker via Ollama). "
-    "Artefakte werden versioniert im Store abgelegt; der Worker liest aus einer "
-    "PostgreSQL-Queue (claim/complete/fail-Zyklus).\n"
-    "Strukturiere deine Antwort mit Markdown-Ueberschriften. Antworte praezise "
-    "und nenne konkrete Zeilennummern oder Funktionsnamen wo moeglich."
-)
+_SYSTEM_PROMPT_HUMAN = """\
+Du bist ein erfahrener Code-Reviewer. Du bekommst eine Quelldatei und \
+beantwortest strukturierte Fragen dazu.
+
+Antworte ausschliesslich mit Markdown. Verwende genau diese vier Ueberschriften \
+in dieser Reihenfolge — keine anderen, keine zusaetzlichen:
+
+## 1. Struktur & Verantwortlichkeiten
+## 2. Fehlerbehandlung & Robustheit
+## 3. Bugs & Schwachstellen
+## 4. Design & Verbesserungsvorschlaege
+
+Beispiel-Ausgabe (gekuerzt):
+
+## 1. Struktur & Verantwortlichkeiten
+`WorkerLoop` orchestriert den Zyklus claim → dispatch → complete/fail. \
+`step()` entscheidet anhand von `is_det` ob `DetWorker` oder `LlmWorker` \
+aufgerufen wird. `DetWorker.run()` delegiert an eine injizierbare `ingest_fn`.
+
+## 2. Fehlerbehandlung & Robustheit
+`step()` faengt alle Exceptions, ruft `_fail()` auf und re-raisst danach (Z. 178–180). \
+Wenn `_fail()` selbst wirft (DB down), geht der urspruengliche Fehler verloren.
+
+## 3. Bugs & Schwachstellen
+`daemon=True` am Worker-Thread bedeutet: ein laufender Task wird hart abgebrochen \
+wenn der Hauptprozess endet — kein sauberes Commit oder Rollback.
+
+## 4. Design & Verbesserungsvorschlaege
+`_fail()` sollte DB-Fehler separat loggen bevor re-raise, damit keine Information \
+verloren geht. Alternativ: Original-Exception als `__cause__` verketten.
+
+Nenne immer konkrete Funktions- oder Klassennamen und Zeilennummern wo moeglich.\
+"""
 
 _TASK_QUESTIONS_HUMAN: dict[str, str] = {
     "review": (
-        "Beantworte die folgenden Punkte:\n\n"
-        "**1. Struktur & Verantwortlichkeiten**\n"
-        "- Welche Klassen/Funktionen gibt es und was ist ihre Aufgabe?\n"
-        "- Wie sieht der Haupt-Kontrollfluss aus?\n\n"
-        "**2. Fehlerbehandlung & Robustheit**\n"
-        "- Werden Ausnahmen korrekt behandelt oder gibt es stille Fehler?\n"
-        "- Gibt es Ressourcen-Leaks oder unerwartetes Verhalten bei Exceptions?\n\n"
-        "**3. Konkrete Bugs & Schwachstellen**\n"
-        "- Race Conditions, falsche Annahmen, Edge Cases?\n"
-        "- Sicherheitsluecken oder Performance-Probleme?\n\n"
-        "**4. Design & Verbesserungsvorschlaege**\n"
-        "- Was ist nicht-offensichtlich oder ungewoehnlich geloest?\n"
-        "- Welche eine Aenderung wuerde die Wartbarkeit am meisten erhoehen?"
+        "Fuehre ein vollstaendiges Code-Review durch.\n"
+        "Leitfragen je Abschnitt:\n"
+        "- Struktur: Welche Klassen/Funktionen gibt es, was ist ihr Zweck, "
+        "wie sieht der Haupt-Kontrollfluss aus?\n"
+        "- Robustheit: Werden Exceptions korrekt behandelt? "
+        "Gibt es stille Fehler oder Ressourcen-Leaks?\n"
+        "- Bugs: Race Conditions, falsche Annahmen, Edge Cases, "
+        "Sicherheitsluecken, Performance-Probleme?\n"
+        "- Design: Was ist nicht-offensichtlich geloest? "
+        "Welche eine Aenderung haette den groessten Wartbarkeits-Gewinn?"
     ),
 }
 
