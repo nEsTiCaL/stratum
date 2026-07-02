@@ -21,11 +21,14 @@ nur im Image installiert (Dockerfile: `uv pip install --system ".[web]"`). Folge
 `docker compose` (aus ~/stratum) baut mit `build: .` aus dem WSL-Klon, NICHT aus
 dem Windows-Baum. Also erst geaenderte Dateien nach ~/stratum syncen (Phase-A-cp,
 `ops_sync-workflow`), dann:
-  wsl -d Debian -- bash -c "cd ~/stratum && docker compose up -d --build server"
-Nur Env aendern (kein Code) -> ohne --build: `docker compose up -d server`
-(recreated). PYTHONUNBUFFERED=1 (compose env) ist noetig, sonst haengen die
-print()-Logs des Worker-Threads im stdout-Blockpuffer und erscheinen nie in
-`docker logs`.
+  wsl -d Debian -- bash -c "cd ~/stratum && docker compose up -d --build --no-deps server"
+`--no-deps` ist Pflicht: ohne es interagiert Compose mit dem db-Container und kann
+einen Restart-Loop ausloesen (DB bekommt SIGTERM, server verliert Connection,
+beide crashen alle ~15 s bis Docker-Backoff greift). Mit --no-deps wird die
+laufende DB ignoriert. Nur Env aendern (kein Code) -> ohne --build:
+`docker compose up -d --no-deps server`. PYTHONUNBUFFERED=1 (compose env) ist
+noetig, sonst haengen die print()-Logs des Worker-Threads im stdout-Blockpuffer
+und erscheinen nie in `docker logs`.
 
 ## Task End-to-End laufen lassen
 

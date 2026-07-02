@@ -110,7 +110,7 @@ wsl -d Debian -- bash -c $bashSync
 if ($LASTEXITCODE -ne 0) { throw "WSL Force-Sync (fetch/reset --hard) fehlgeschlagen" }
 
 Write-Host "Baue Server-Container neu..."
-$bashBuild = 'cd ' + $WslRepo + ' && docker compose up -d --build server'
+$bashBuild = 'cd ' + $WslRepo + ' && docker compose up -d --build --no-deps server'
 wsl -d Debian -- bash -c $bashBuild
 if ($LASTEXITCODE -ne 0) { throw "Docker-Build fehlgeschlagen" }
 
