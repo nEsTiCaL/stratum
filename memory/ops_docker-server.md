@@ -43,6 +43,27 @@ Diagnose-Skript nach /tmp; PYTHONPATH=/app ist der Modul-Root:
   docker cp diag.py stratum-server:/tmp/diag.py
   docker exec -e PYTHONPATH=/app -w /app stratum-server python /tmp/diag.py
 
+## API-Key erzeugen (Login-Overlay / curl)
+
+`sk-stratum-` + 64 Nullen ist NUR ein Unit-Test-Fixture (tests/conftest.py),
+wird in eine Wegwerf-testcontainers-DB eingetragen, NICHT in die echte stratum-db.
+Fuer den laufenden Server einen echten Key erzeugen:
+
+  wsl -d Debian -- bash -c "cd ~/stratum && docker exec stratum-server python -m core.auth create <owner>"
+
+Klartext-Key wird einmalig ausgegeben. Verwendung:
+  curl -H "Authorization: Bearer <key>" http://localhost:8000/api/whoami
+
+## Docker-Daemon fuer DB-Tests
+
+DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon.
+Docker Engine laeuft als systemd-Dienst in WSL2 (kein Docker Desktop).
+Symptom wenn nicht laeuft: FileNotFoundError auf dem Socket.
+Autostart: `sudo systemctl enable --now docker` (einmalig). Preflight: `ops_dogfooding-smoketest`.
+
+Lehre: bei "testcontainers findet keinen Docker-Daemon" zuerst die billigste
+Ursache pruefen (laeuft der Dienst?), bevor Integration/Konfiguration debuggt wird.
+
 ## Quoting-Fallen (wsl bash -c)
 
 - Kommandos/SQL mit Leerzeichen NICHT in `$(...)`-Schleifen mit verschachtelten

@@ -47,12 +47,14 @@ ops_wsl.md               | kanonischer WSL-Aufruf: Form A (activate, bevorzugt) 
                          |   (.venv/bin/python); make-lint-Falle + verifizierte Nicht-Wege        |   uv.exe, ruff, pytest
 ops_n1-queries.md        | Index statt Quelldateien: devcli symbol_lookup/index/               | migrate, ingest, dogfooding, kaltstart,
                          |   dependency_map, Preflight                                         |   devcli
-ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B-commit-push, Abnahme-Script          | pytest, git pull, testcontainers,
-                         |   .local/sync.ps1, Testaufruf, Docker, Falle Commit-Message-Here-String |   commit-message, here-string, @, sync.ps1
+ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B via sync.ps1, Entscheidung           | cp, git reset --hard, zwei-klon,
+                         |   Zwei-Klon-beibehalten, Falle Commit-Message-Here-String             |   commit-message, here-string
+ops_sync-script.md       | Inhalt .local/sync.ps1 (Commit+Push+WSL-Sync), Aufrufform            | sync.ps1, powershell, WIN_REPO_PFAD
 ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nutzen-Begruendung | smoketest, ollama-erreichbar,
                          |   fuers aktive N1-Dogfooding, Fund WSL-Klon-Drift + Pfad-Umzug        |   wsl-drift, pfad-umzug
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
-                         |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag, Quoting  |   pythonpath, pyunbuffered, quoting
+                         |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag,          |   pythonpath, pyunbuffered, quoting,
+                         |   Docker-Daemon fuer DB-Tests, API-Key erzeugen                       |   testcontainers, api-key, core.auth
 
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel

@@ -1,7 +1,7 @@
-# Editier-/Sync-Workflow und Testaufruf (Dev)
+# Editier-/Sync-Workflow (Dev)
 
 Operativer Dev-Loop fuer dieses Setup. Aufruf-Praefix: `ops_wsl`.
-Umgebungs-Constraints: `env_portabilitaet`.
+Umgebungs-Constraints: `env_portabilitaet`. Script-Inhalt: `ops_sync-script`.
 
 Claude schreibt Dateien auf den Windows-Pfad; Bauen/Testen laeuft im WSL-Repo
 (`~/stratum`). Beide sind getrennte Klone. Zwei Phasen mit unterschiedlichem
@@ -21,120 +21,31 @@ Sync-Mechanismus.
 
 Kein Verstoss gegen "kein /mnt-Trick": jener Punkt verbietet, AUS /mnt heraus
 zu bauen/testen (inotify/case-sensitivity-Bruch). Reines Kopieren einzelner
-Dateien nach ~/stratum vor dem Testlauf ist unkritisch, da Ausfuehrung weiter im
-WSL-nativen FS passiert.
+Dateien nach ~/stratum vor dem Testlauf ist unkritisch.
 
 ## Phase B: Abnahme (Haeppchen fertig, Tests gruen)
 
 ```
 1. Commit-Message mit Nutzer besprechen (CLAUDE.md)
-2. Commit + push AUS WINDOWS (Credentials nur dort; WSL hat kein gh, keinen
-   Credential-Helper; konkreter Pfad = WIN_REPO_PFAD in `.local/host.md`, S9):
-   git -C "<WIN_REPO_PFAD>" add <dateien>
-   git -C "<WIN_REPO_PFAD>" commit -m "..."
-   git -C "<WIN_REPO_PFAD>" push
-3. WSL-Repo zwangssynchronisieren (ungefragt, verwirft lokale WSL-Aenderungen):
-   wsl -d Debian -- bash -c "cd ~/stratum && git fetch origin && git reset --hard @{u}"
-   Ersetzt bewusst ein einfaches `git pull`: Phase-A-cp-Dateien landen manchmal
-   modifiziert/staged im WSL-Index und blockieren einen Fast-Forward-Pull.
-   `reset --hard` auf den Upstream-Branch macht das Unstagen/Loeschen ueberfluessig,
-   da Windows (push) ohnehin die massgebliche, zuletzt getestete Quelle ist.
+2. Commit + push AUS WINDOWS via .local/sync.ps1 (siehe `ops_sync-script`):
+   powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "msg"
+3. WSL-Repo wird vom Script zwangssynchronisiert (reset --hard @{u}).
 ```
 
-Git bleibt einziger Wahrheits-Sync (kein dauerhafter Drift zwischen den Klonen),
-aber nur an der Abnahme-Grenze noetig, nicht pro Testlauf. Die WSL-Seite ist
-an dieser Grenze bewusst wegwerfbar: sie haelt nie Aenderungen, die nicht auch
-schon von Windows gepusht wurden.
+Git bleibt einziger Wahrheits-Sync; WSL-Seite ist an der Abnahme-Grenze
+bewusst wegwerfbar.
 
-## Abnahme-Script (.local/sync.ps1)
-
-Phase B (Schritte 2+3 oben: Commit+Push aus Windows, dann WSL-Zwangssync) laesst
-sich als ein Script buendeln. Liegt bewusst in `.local/` (gitignored, S9) und
-NICHT in memory/ oder scripts/: das Script selbst ist host-agnostisch (Logik
-identisch auf jedem Host), aber es liest die Host-Werte WIN_REPO_PFAD und
-WSL_REPO_PFAD aus `.local/host.md`. Da `.local/` nicht mitversioniert wird,
-existiert das Script nach einem frischen Klon auf keinem neuen Host - es muss
-dort einmalig neu angelegt werden (Inhalt unten, 1:1 kopierbar).
-
-Aufruf (Commit-Message als Parameter, IMMER absoluter Pfad -> WIN_REPO_PFAD aus
-`.local/host.md`, nicht relativ, da der Aufrufort/das cwd nicht garantiert das
-Repo-Root ist):
-```
-powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "commit message"
-```
-
-Voraussetzung in `.local/host.md`: Zeilen `WIN_REPO_PFAD = ...` und
-`WSL_REPO_PFAD = ...` (Format wie in host.md dokumentiert, ein optionaler
-Klammer-Kommentar am Zeilenende wird beim Parsen ignoriert).
-
-Skript-Inhalt (`.local/sync.ps1`):
-```powershell
-param(
-    [Parameter(Mandatory = $true)]
-    [string]$CommitMessage
-)
-
-$ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HostMd = Join-Path $ScriptDir "host.md"
-
-function Get-HostValue {
-    param([string]$Key)
-    $line = Select-String -Path $HostMd -Pattern "^\s*$Key\s*=" | Select-Object -First 1
-    if (-not $line) { throw "Wert $Key nicht in $HostMd gefunden" }
-    $value = $line.Line -replace "^\s*$Key\s*=\s*", ""
-    $value = $value -replace "\s*\(.*\)\s*$", ""
-    return $value.Trim()
-}
-
-$WinRepo = Get-HostValue "WIN_REPO_PFAD"
-$WslRepo = Get-HostValue "WSL_REPO_PFAD"
-
-git -C $WinRepo add -A
-if ($LASTEXITCODE -ne 0) { throw "git add fehlgeschlagen" }
-
-git -C $WinRepo commit -m $CommitMessage
-if ($LASTEXITCODE -ne 0) { throw "git commit fehlgeschlagen (nichts zu committen?)" }
-
-git -C $WinRepo push
-if ($LASTEXITCODE -ne 0) { throw "git push fehlgeschlagen" }
-
-wsl -d Debian -- bash -c "cd $WslRepo && git fetch origin && git reset --hard @{u}"
-if ($LASTEXITCODE -ne 0) { throw "WSL Force-Sync (fetch/reset --hard) fehlgeschlagen" }
-
-Write-Host "OK: committed, gepusht, WSL-Repo zwangssynchronisiert (lokale Aenderungen dort verworfen)."
-```
-
-Bewusst kein cp wie in Phase A: die Abnahme-Grenze synct ueber git (einzige
-Wahrheitsquelle, siehe Absatz nach Phase B oben), nicht per Datei-Kopie. Bewusst
-`reset --hard` statt `pull`: verwirft lokale WSL-Aenderungen ungefragt statt bei
-Konflikt (z.B. modifizierte Phase-A-cp-Dateien) fehlzuschlagen - Windows/push ist
-nach Schritt 2 die massgebliche Quelle, WSL hat nichts Eigenes zu verlieren.
-WSL-Distro `Debian` ist hier hart wie in `ops_wsl` (projektweite Konvention,
-kein Host-Wert).
+> Entscheidung 2026-07-02: Zwei-Klon-Ansatz bleibt vorerst so. Alternativen
+> (VS Code Remote WSL, Auto-Sync, /mnt als Build-Kontext) wurden diskutiert
+> und zurueckgestellt. Keinen Umstrukturierungsvorschlag machen, solange das
+> nicht neu aufgegriffen wird.
 
 ## Falle: mehrzeilige Commit-Message (wiederkehrend)
 
 NIE PowerShell-Here-String `@'...'@` im Bash-Tool verwenden -- die Delimiter
-landen woertlich in der Message (Titel wird "@", "@" am Ende). Das ist schon
-mehrfach passiert. Ursache: zwei Shells im Environment (Bash-Tool = Git
-Bash/POSIX, PowerShell-Tool = PS-Syntax) nicht mischen.
-
-Sichere Wege fuer eine mehrzeilige Message:
+landen woertlich in der Message. Sichere Wege:
 ```
-git commit -F <datei>            # Message vorher in eine Datei schreiben (robust)
+git commit -F <datei>            # Message vorher in eine Datei schreiben
 git commit -m "titel" -m "rumpf" # mehrere -m = mehrere Absaetze
 ```
-Passiert es doch: `git commit --amend -F <datei>` VOR dem Push korrigiert es.
-
-## Docker fuer DB-Tests
-
-DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon.
-Docker Engine laeuft als systemd-Dienst in WSL2 (kein Docker Desktop).
-
-Lehre (2026-06-30): Symptom "testcontainers findet keinen Docker-Daemon"
-(FileNotFoundError auf dem Socket) hatte die EINFACHE Ursache: der Dienst lief
-schlicht nicht. Konsequenz: laufende Dienste (Postgres-Container, Ollama ab S2)
-sind ein Preflight-Punkt (`env_core`) -> vor dem Bauen pruefen. Bei Infrastruktur-
-Fehlern zuerst die billigste Ursache pruefen (Laeuft der Dienst?), bevor man
-Integration/Konfiguration/Pfade debuggt. Autostart via systemd enable --now docker.
+Passiert es doch: `git commit --amend -F <datei>` VOR dem Push.
