@@ -142,11 +142,20 @@ Einreichen (`/api/submit/{id}`) ist FORMAT-TOLERANT (Copy-Paste aus Chatbots lie
 selten sauberes JSON). `_result_from_submission` probiert in dieser Reihenfolge:
 1. vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen;
 2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) via `parse_llm_response`;
-3. freier Text / gerendertes Markdown, auch in ```-Fence -> komplett als
-   `content.text`. Leere/nur-Ueberschrift-Antwort -> klare 422-Meldung.
+3. freier Text / gerendertes Markdown, auch in ```-Fence -> Ueberschriften-Split.
+   Leere/nur-Ueberschrift-Antwort -> klare 422-Meldung.
 Damit spiegelt der Submit-Pfad den `LlmWorker` (Text parsen -> ResultProb aus
 task_type bauen), statt wie zuvor stur `extract_json` zu erzwingen. Menschlich
 verfasste Antworten bekommen `confidence = 0.9` (Modell-Tier-Proxy existiert nicht).
+
+Ueberschriften-Split (Option A, `_split_human_review` + `_SECTION_MAP`): die vier
+festen Prompt-Ueberschriften werden auf `content`-Felder gemappt — 1+2 -> `text`,
+3 (Bugs & Schwachstellen) -> `findings`, 4 (Design & Verbesserungsvorschlaege) ->
+`recommendations`. `_normalize_heading` matcht tolerant: Chatbots rendern Markdown,
+wodurch `##` verloren geht (Zeile heisst dann nur "3. Bugs & Schwachstellen") oder
+`**bold**`/Umlaut (schlaege<->schläge) variiert. Greift der Split nicht (keine
+Ueberschrift erkannt), landet alles in `content.text` (Fallback, verlustfrei).
+Der Split gilt fuer NEUE Submits; bereits gespeicherte Artefakte aendern sich nicht.
 
 ## Aufruf-Beispiele (curl)
 

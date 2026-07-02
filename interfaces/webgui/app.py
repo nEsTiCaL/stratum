@@ -29,6 +29,7 @@ Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight):
 from __future__ import annotations
 
 import dataclasses
+import re
 import time
 import uuid
 from pathlib import Path
@@ -221,6 +222,120 @@ def _strip_code_fence(raw: str) -> str:
     if s.rstrip().endswith("```"):
         s = s.rstrip()[:-3]
     return s.strip()
+
+
+# Die vier festen Ueberschriften des Human-Review-Prompts -> Zielfeld in content.
+# 1+2 -> text, 3 -> findings, 4 -> recommendations (Option A). Match ist tolerant
+# ggue. Markdown-Deko (#/**), fuehrender Nummer und Umlaut/ae (Chatbots rendern
+# oft, wodurch ## verloren geht und ae<->ae variiert).
+_SECTION_MAP: dict[str, str] = {
+    "struktur & verantwortlichkeiten": "text",
+    "fehlerbehandlung & robustheit": "text",
+    "bugs & schwachstellen": "findings",
+    "design & verbesserungsvorschlaege": "recommendations",
+}
+
+
+def _normalize_heading(line: str) -> str:
+    """Reduziert eine Zeile auf ihren nackten Ueberschrift-Text (lower, ohne
+    #/*/Bullet, ohne fuehrende 'N.'/'N)', Umlaut->ae). Fuer den ==-Vergleich."""
+    s = line.strip().lower().lstrip("#*-• \t")
+    s = re.sub(r"^\d+\s*[.)]\s*", "", s)  # fuehrende "3." / "3)"
+    s = s.strip("*_ \t").rstrip(":").strip()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        s = s.replace(a, b)
+    return s
+
+
+def _split_human_review(text: str) -> dict[str, str]:
+    """Teilt ein Markdown-Review anhand der vier festen Ueberschriften in Felder.
+
+    Rueckgabe: nur nicht-leere Felder aus {text, findings, recommendations}. Die
+    Ueberschriften-Zeile selbst bleibt im jeweiligen Feld (Traceability). Wird eine
+    Ueberschrift nicht erkannt, faellt ihr Inhalt in das offene Feld (Default text).
+    """
+    buckets: dict[str, list[str]] = {"text": [], "findings": [], "recommendations": []}
+    current = "text"
+    for line in text.splitlines():
+        target = _SECTION_MAP.get(_normalize_heading(line))
+        if target is not None:
+            current = target
+        buckets[current].append(line)
+    return {k: "\n".join(v).strip() for k, v in buckets.items() if "\n".join(v).strip()}
+
+
+def _result_from_submission(
+    response: str, task_type: TaskType, scope: str, producer: str, root: Path
+) -> ResultProb:
+    """Baut ein ResultProb aus einer eingereichten Antwort — format-tolerant.
+
+    Faengt die Muster ab, die beim Copy-Paste aus einem Chatbot auftreten:
+      1. Vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen.
+      2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) -> via parse_llm_response.
+      3. Freier Text / gerendertes Markdown, evtl. in ```-Fence -> Ueberschriften-
+         Split (1+2 text, 3 findings, 4 recommendations); greift der Split nicht,
+         landet alles in content.text (plus etwaige Label-Felder).
+    Wirft ValueError mit erklaerender Meldung, wenn kein verwertbarer Text bleibt.
+    """
+    artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
+
+    # 1. Vollstaendiges JSON-Objekt (nur wenn alle Pflichtfelder da sind).
+    try:
+        data = extract_json(response)
+    except Exception:
+        data = None
+    if isinstance(data, dict) and {"scope", "artifact_type", "content"} <= data.keys():
+        prov = build_prob_provenance(
+            scope=data["scope"],
+            artifact_type=data["artifact_type"],
+            producer=producer,
+            root=root,
+        )
+        return ResultProb.model_validate(
+            {**data, "provenance": prov.model_dump(mode="json")}
+        )
+
+    # 2./3. Label-Prefix oder freier Text/Markdown.
+    parsed = parse_llm_response(_strip_code_fence(response))
+    if not parsed.text.strip():
+        raise ValueError(
+            "Antwort enthaelt keinen verwertbaren Text. Bitte den vollstaendigen "
+            "Review-Text (Markdown) einfuegen — nicht nur eine Ueberschrift, ein "
+            "leeres Feld oder einen reinen Link/Codeblock."
+        )
+
+    # Ueberschriften-Split nur uebernehmen, wenn er wirklich aufgeteilt hat
+    # (text-Feld gefuellt UND mind. ein strukturiertes Feld) — sonst Fallback.
+    sections = _split_human_review(parsed.text)
+    if sections.get("text") and (
+        sections.get("findings") or sections.get("recommendations")
+    ):
+        content: dict[str, Any] = {"text": sections["text"]}
+        if sections.get("findings"):
+            content["findings"] = sections["findings"]
+        if sections.get("recommendations"):
+            content["recommendations"] = sections["recommendations"]
+        if parsed.risks:
+            content["risks"] = parsed.risks
+    else:
+        content = {"text": parsed.text}
+        if parsed.findings:
+            content["findings"] = parsed.findings
+        if parsed.risks:
+            content["risks"] = parsed.risks
+        if parsed.recommendations:
+            content["recommendations"] = parsed.recommendations
+
+    prov = build_prob_provenance(
+        scope=scope, artifact_type=artifact_type_str, producer=producer, root=root
+    )
+    return ResultProb(
+        artifact_type=ArtifactType(artifact_type_str),
+        scope=scope,
+        content=content,
+        confidence=_HUMAN_CONFIDENCE,
+        provenance=prov,
+    )
 
 
 def _result_from_submission(
