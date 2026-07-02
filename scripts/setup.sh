@@ -152,6 +152,15 @@ if want s1; then
   if docker compose version >/dev/null 2>&1; then ok "docker compose v2"
   else miss "docker compose v2 fehlt" "sudo apt-get install -y docker-compose-plugin"; fi
 
+  # Docker-Desktop-Credential-Ueberbleibsel: config.json verweist auf
+  # docker-credential-desktop.exe, das in WSL nicht existiert -> Pull schlaegt fehl.
+  _dcfg="$HOME/.docker/config.json"
+  if [ -f "$_dcfg" ] && grep -q 'desktop' "$_dcfg" && ! command -v docker-credential-desktop.exe >/dev/null 2>&1; then
+    miss "docker config.json: Credential-Helper 'desktop' nicht verfuegbar" \
+      "echo '{}' > ~/.docker/config.json"
+    confirm && echo '{}' > "$_dcfg" && ok "docker config.json bereinigt"
+  fi
+
   if docker info >/dev/null 2>&1; then ok "Docker-Daemon laeuft"
   else
     miss "Docker-Daemon nicht erreichbar" "sudo systemctl start docker"

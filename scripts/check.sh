@@ -29,6 +29,12 @@ else
   fail "Docker-Daemon nicht erreichbar -- sudo systemctl start docker"
 fi
 
+# Docker-Desktop-Credential-Ueberbleibsel (Pull-Fehler wenn docker-credential-desktop.exe fehlt).
+_dcfg="$HOME/.docker/config.json"
+if [ -f "$_dcfg" ] && grep -q 'desktop' "$_dcfg" && ! command -v docker-credential-desktop.exe >/dev/null 2>&1; then
+  fail "docker config.json: Credential-Helper 'desktop' nicht verfuegbar -- echo '{}' > ~/.docker/config.json"
+fi
+
 if docker compose version >/dev/null 2>&1; then
   _cver="$(docker compose version 2>/dev/null | awk '{print $NF}')"
   ok "docker compose v2 ($_cver)"

@@ -27,8 +27,9 @@ oben in den Spec-Dateien (planung/inkremente-*). Doku-Pruefung, kein Skript.
 
 ```
 Schicht 0  Baseline (einmalig)
-  WSL2 (Debian), Docker Desktop (WSL2-Backend), git, make,
-  Python 3.12+ (venv/uv), Go 1.22+, Ollama (Windows, GPU).
+  WSL2 (Debian), Docker Engine (systemd-Dienst in WSL2, kein Docker Desktop),
+  git, make, Python 3.12+ (venv/uv), Go 1.22+,
+  Ollama (systemd-Dienst in WSL2, OLLAMA_HOST=0.0.0.0:11434).
   Repo-Configs (.gitattributes/.editorconfig) -> erledigt.
 
 +S1 Substrat
