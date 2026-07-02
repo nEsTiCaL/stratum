@@ -125,40 +125,6 @@ _EXPECTED_TOKENS: dict[str, int] = {
 }
 
 
-_SYSTEM_PROMPT_HUMAN = """\
-Du bist ein erfahrener Code-Reviewer. Du bekommst eine Quelldatei und \
-beantwortest strukturierte Fragen dazu.
-
-Antworte ausschliesslich mit Markdown. Verwende genau diese vier Ueberschriften \
-in dieser Reihenfolge — keine anderen, keine zusaetzlichen:
-
-## 1. Struktur & Verantwortlichkeiten
-## 2. Fehlerbehandlung & Robustheit
-## 3. Bugs & Schwachstellen
-## 4. Design & Verbesserungsvorschlaege
-
-Beispiel-Ausgabe (gekuerzt):
-
-## 1. Struktur & Verantwortlichkeiten
-`WorkerLoop` orchestriert den Zyklus claim → dispatch → complete/fail. \
-`step()` entscheidet anhand von `is_det` ob `DetWorker` oder `LlmWorker` \
-aufgerufen wird. `DetWorker.run()` delegiert an eine injizierbare `ingest_fn`.
-
-## 2. Fehlerbehandlung & Robustheit
-`step()` faengt alle Exceptions, ruft `_fail()` auf und re-raisst danach (Z. 178–180). \
-Wenn `_fail()` selbst wirft (DB down), geht der urspruengliche Fehler verloren.
-
-## 3. Bugs & Schwachstellen
-`daemon=True` am Worker-Thread bedeutet: ein laufender Task wird hart abgebrochen \
-wenn der Hauptprozess endet — kein sauberes Commit oder Rollback.
-
-## 4. Design & Verbesserungsvorschlaege
-`_fail()` sollte DB-Fehler separat loggen bevor re-raise, damit keine Information \
-verloren geht. Alternativ: Original-Exception als `__cause__` verketten.
-
-Nenne immer konkrete Funktions- oder Klassennamen und Zeilennummern wo moeglich.\
-"""
-
 _TASK_QUESTIONS_HUMAN: dict[str, str] = {
     "review": (
         "Fuehre ein vollstaendiges Code-Review durch.\n"
@@ -180,9 +146,7 @@ _TASK_QUESTIONS_HUMAN_DEFAULT = (
 )
 
 
-def _make_system_prompt(for_human: bool = False) -> str:
-    if for_human:
-        return _SYSTEM_PROMPT_HUMAN
+def _make_system_prompt() -> str:
     return (
         "Du bist ein praeziser Code-Analyse-Assistent. "
         "Antworte ausschliesslich mit dem angeforderten JSON-Objekt — "
@@ -191,19 +155,8 @@ def _make_system_prompt(for_human: bool = False) -> str:
 
 
 def _make_user_message(
-    task_type: str, scope: str, source_code: str, extra_prompt: str,
-    for_human: bool = False,
+    task_type: str, scope: str, source_code: str, extra_prompt: str
 ) -> str:
-    if for_human:
-        questions = _TASK_QUESTIONS_HUMAN.get(task_type, _TASK_QUESTIONS_HUMAN_DEFAULT)
-        parts = [f"Scope: {scope}"]
-        if source_code:
-            parts.append(f"\n```python\n{source_code}\n```")
-        if extra_prompt:
-            parts.append(f"\nHinweis: {extra_prompt}")
-        parts.append(f"\n{questions}")
-        return "\n".join(parts)
-
     context = _TASK_CONTEXT.get(task_type, "Analysiere den folgenden Code.")
     parts = [context, f"\nScope: {scope}"]
     if source_code:
@@ -211,6 +164,44 @@ def _make_user_message(
     if extra_prompt:
         parts.append(f"\nHinweis: {extra_prompt}")
     parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
+    return "\n".join(parts)
+
+
+def _make_human_prompt(
+    task_type: str, scope: str, source_code: str, extra_prompt: str
+) -> str:
+    """Einzelner kombinierter Prompt fuer Human-Tasks (direkt kopierbar)."""
+    questions = _TASK_QUESTIONS_HUMAN.get(task_type, _TASK_QUESTIONS_HUMAN_DEFAULT)
+    parts = [
+        "Du bist ein erfahrener Code-Reviewer. Du bekommst eine Quelldatei und "
+        "beantwortest strukturierte Fragen dazu.\n"
+        "Antworte ausschliesslich mit Markdown. Verwende genau diese vier "
+        "Ueberschriften in dieser Reihenfolge — keine anderen:\n"
+        "## 1. Struktur & Verantwortlichkeiten\n"
+        "## 2. Fehlerbehandlung & Robustheit\n"
+        "## 3. Bugs & Schwachstellen\n"
+        "## 4. Design & Verbesserungsvorschlaege\n\n"
+        "Beispiel (gekuerzt):\n"
+        "## 1. Struktur & Verantwortlichkeiten\n"
+        "`Dispatcher.run()` iteriert ueber Jobs und delegiert per Typ an "
+        "`HandlerA` oder `HandlerB`. Rueckgabe: Anzahl verarbeiteter Items.\n"
+        "## 2. Fehlerbehandlung & Robustheit\n"
+        "`run()` faengt `Exception`, loggt und re-raisst (Z. 42). "
+        "Wenn der Cleanup-Handler selbst wirft, geht der Originalfehler verloren.\n"
+        "## 3. Bugs & Schwachstellen\n"
+        "`daemon=True` am Worker-Thread: laufender Job wird hart abgebrochen "
+        "wenn der Hauptprozess endet — kein sauberes Rollback.\n"
+        "## 4. Design & Verbesserungsvorschlaege\n"
+        "Cleanup-Handler sollte Fehler separat loggen; Original-Exception "
+        "als `__cause__` verketten.\n\n"
+        "---",
+        f"\nScope: {scope}",
+    ]
+    if source_code:
+        parts.append(f"\n```python\n{source_code}\n```")
+    if extra_prompt:
+        parts.append(f"\nHinweis: {extra_prompt}")
+    parts.append(f"\n{questions}")
     return "\n".join(parts)
 
 
@@ -385,18 +376,28 @@ def create_app(
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
 
-        for_human = item.model == "human"
+        if item.model == "human":
+            return {
+                "id": item.id,
+                "task_type": item.task_type,
+                "scope": item.scope,
+                "prompt": _make_human_prompt(
+                    item.task_type,
+                    item.scope,
+                    source_code,
+                    item.payload.get("prompt", ""),
+                ),
+            }
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "system_prompt": _make_system_prompt(for_human=for_human),
+            "system_prompt": _make_system_prompt(),
             "user_message": _make_user_message(
                 item.task_type,
                 item.scope,
                 source_code,
                 item.payload.get("prompt", ""),
-                for_human=for_human,
             ),
         }
 
@@ -413,15 +414,19 @@ def create_app(
             src = source_root / scope[5:]
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
-        for_human = info.get("model") == "human"
+        if info.get("model") == "human":
+            return {
+                "id": task_id,
+                "task_type": task_type,
+                "scope": scope,
+                "prompt": _make_human_prompt(task_type, scope, source_code, ""),
+            }
         return {
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "system_prompt": _make_system_prompt(for_human=for_human),
-            "user_message": _make_user_message(
-                task_type, scope, source_code, "", for_human=for_human
-            ),
+            "system_prompt": _make_system_prompt(),
+            "user_message": _make_user_message(task_type, scope, source_code, ""),
         }
 
     @app.post("/api/validate")
