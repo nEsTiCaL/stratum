@@ -28,7 +28,7 @@ Ergebnis reviewen und iterieren. Web-Dashboard fuer manuelles Copy-Paste: Nutzer
 
 ## Commits
 
-Commit-Message vorschlagen, NICHT selbst committen. Befehl fuer Nutzer ausgeben:
+kompakte, technische Commit-Message vorschlagen, NICHT selbst committen. Befehl fuer Nutzer ausgeben:
 ```
 powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "message"
 ```

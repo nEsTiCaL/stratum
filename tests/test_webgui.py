@@ -1,7 +1,7 @@
-"""I-D.2 + I-REST.1 + I-REST.2: Web-Dashboard — det-Akzeptanz (API-Vertrag).
+"""I-D.2 + I-REST.1 + I-REST.2 + Dev-Harness: Web-Dashboard — det-Akzeptanz.
 
-Getestet wird der API-Vertrag (Auth, Anfrage, Claim, Submit, Result) ohne
-echten Browser. GUI-Bedienung wird dev-verifiziert.
+Getestet wird der API-Vertrag (Auth, Anfrage, Claim, Submit, Result, Dev-Endpoints)
+ohne echten Browser. GUI-Bedienung wird dev-verifiziert.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from core.ingest import ingest_content
 from core.queue import Queue
 from core.repository import Repository
 from core.template_registry import DagNode, TaskDag
@@ -336,3 +337,113 @@ class TestIndexRoute:
         r = client.get("/")
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]
+
+
+# ── Dev-Harness Endpunkte ──────────────────────────────────────────────────────
+
+_SIMPLE_PY = "def SimpleFunc():\n    pass\n\nclass SimpleClass:\n    pass\n"
+
+
+@pytest.fixture
+def client_seeded(conn):
+    """Client mit vorindiziertem Inhalt (ingest_content, kein git noetig)."""
+    queue = Queue(conn)
+    repo = Repository(conn)
+    ingest_content(repo, "simple.py", _SIMPLE_PY, source_hash="h-seed")
+    app = create_app(queue, repo)
+    with TestClient(app, raise_server_exceptions=True) as c:
+        yield c
+
+
+class TestDevHarnessEndpoints:
+    """Dev-Harness REST-Endpoints: /api/dev/* (N1-Preflight + devcli-Ersatz)."""
+
+    # --- migrate ---
+
+    def test_migrate_requires_auth(self, client):
+        r = client.post("/api/dev/migrate")
+        assert r.status_code == 401
+
+    def test_migrate_idempotent_returns_ok(self, client):
+        r = client.post("/api/dev/migrate", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json() == {"status": "ok"}
+
+    # --- ingest ---
+
+    def test_ingest_requires_auth(self, client):
+        r = client.post("/api/dev/ingest")
+        assert r.status_code == 401
+
+    def test_ingest_without_source_root_returns_503(self, client):
+        r = client.post("/api/dev/ingest", headers=AUTH)
+        assert r.status_code == 503
+
+    # --- symbol ---
+
+    def test_symbol_requires_auth(self, client):
+        r = client.get("/api/dev/symbol?name=Repository")
+        assert r.status_code == 401
+
+    def test_symbol_no_hit_returns_empty_list(self, client):
+        r = client.get("/api/dev/symbol?name=NoSuchSymbolXYZ", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_symbol_hit_has_required_fields(self, client_seeded):
+        r = client_seeded.get("/api/dev/symbol?name=SimpleFunc", headers=AUTH)
+        assert r.status_code == 200
+        hits = r.json()
+        assert len(hits) >= 1
+        for field in ("scope", "name", "kind", "span"):
+            assert field in hits[0]
+
+    def test_symbol_kind_filter_matches(self, client_seeded):
+        r = client_seeded.get(
+            "/api/dev/symbol?name=SimpleClass&kind=class", headers=AUTH
+        )
+        assert r.status_code == 200
+        hits = r.json()
+        assert len(hits) >= 1
+        assert all(h["kind"] == "class" for h in hits)
+
+    def test_symbol_kind_filter_excludes_wrong_kind(self, client_seeded):
+        r = client_seeded.get(
+            "/api/dev/symbol?name=SimpleFunc&kind=class", headers=AUTH
+        )
+        assert r.status_code == 200
+        assert r.json() == []
+
+    # --- index ---
+
+    def test_index_requires_auth(self, client):
+        r = client.get("/api/dev/index?scope=file:core/queue.py")
+        assert r.status_code == 401
+
+    def test_index_not_indexed_returns_404(self, client):
+        r = client.get("/api/dev/index?scope=file:nonexistent.py", headers=AUTH)
+        assert r.status_code == 404
+
+    def test_index_seeded_file_returns_artifact(self, client_seeded):
+        r = client_seeded.get("/api/dev/index?scope=file:simple.py", headers=AUTH)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["artifact_type"] == "symbol_index"
+        assert data["scope"] == "file:simple.py"
+
+    # --- deps ---
+
+    def test_deps_requires_auth(self, client):
+        r = client.get("/api/dev/deps?scope=file:core/queue.py")
+        assert r.status_code == 401
+
+    def test_deps_not_indexed_returns_404(self, client):
+        r = client.get("/api/dev/deps?scope=file:nonexistent.py", headers=AUTH)
+        assert r.status_code == 404
+
+    def test_deps_seeded_file_returns_artifact(self, client_seeded):
+        r = client_seeded.get("/api/dev/deps?scope=file:simple.py", headers=AUTH)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["artifact_type"] == "dependency_graph"
+        assert data["scope"] == "file:simple.py"

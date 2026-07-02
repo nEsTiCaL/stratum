@@ -16,10 +16,18 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/prompt/{id}        -> Prompt lesen (Owner-Check)
   POST /api/submit/{id}        -> Antwort einreichen (Owner-Check)
   POST /api/validate           -> Dry-run-Validierung
+
+Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight + devcli-Ersatz):
+  POST /api/dev/migrate        -> DB-Migrationen anwenden (idempotent)
+  POST /api/dev/ingest         -> Quelldateien ingestieren, gibt {"indexed": N}
+  GET  /api/dev/symbol         -> Symbol-Lookup repo-weit (?name=X&kind=Y)
+  GET  /api/dev/index          -> Symbol-Index einer Datei (?scope=file:X)
+  GET  /api/dev/deps           -> Abhaengigkeiten einer Datei (?scope=file:X)
 """
 
 from __future__ import annotations
 
+import dataclasses
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +37,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.db import apply_migrations
+from core.ingest import ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ResultProb
 from core.provenance_stamp import build_prob_provenance
@@ -408,6 +418,56 @@ def create_app(
 
         queue.complete(task_id)
         return {"status": "ok"}
+
+    # ── Dev-Harness Endpunkte (N1-Preflight + devcli-Ersatz) ──────────────────
+
+    @app.post("/api/dev/migrate")
+    async def dev_migrate(owner: str = Depends(_require_owner)) -> dict[str, str]:
+        """Wendet DB-Migrationen an (idempotent). Aufruf: core.db migrate"""
+        apply_migrations()
+        return {"status": "ok"}
+
+    @app.post("/api/dev/ingest")
+    async def dev_ingest(owner: str = Depends(_require_owner)) -> dict[str, int]:
+        """Ingestiert Quelldateien in den Index. Gibt Anzahl indizierter Dateien."""
+        if source_root is None:
+            raise HTTPException(
+                status_code=503, detail="source_root nicht konfiguriert"
+            )
+        results = ingest_repo(repo, source_root)
+        return {"indexed": len(results)}
+
+    @app.get("/api/dev/symbol")
+    async def dev_symbol_lookup(
+        name: str,
+        kind: str | None = None,
+        owner: str = Depends(_require_owner),
+    ) -> list[dict[str, Any]]:
+        """Symbol-Lookup repo-weit. Entspricht: devcli symbol_lookup <name>."""
+        hits = repo.find_symbol(name, kind=kind)
+        return [dataclasses.asdict(h) for h in hits]
+
+    @app.get("/api/dev/index")
+    async def dev_file_index(
+        scope: str,
+        owner: str = Depends(_require_owner),
+    ) -> dict[str, Any]:
+        """Symbol-Index einer Datei. Entspricht: devcli index <scope>"""
+        artifact = repo.get_current(scope, "symbol_index")
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Nicht indiziert")
+        return artifact.model_dump(mode="json")
+
+    @app.get("/api/dev/deps")
+    async def dev_dependency_map(
+        scope: str,
+        owner: str = Depends(_require_owner),
+    ) -> dict[str, Any]:
+        """Abhaengigkeiten einer Datei. Entspricht: devcli dependency_map <scope>"""
+        artifact = repo.get_current(scope, "dependency_graph")
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Nicht indiziert")
+        return artifact.model_dump(mode="json")
 
     # sse_delay / sse_max_events / sse_queue Parameter werden nicht mehr
     # verwendet (SSE entfernt), aber behalten fuer rueckwaertskompatible
