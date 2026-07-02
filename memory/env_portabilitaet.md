@@ -9,8 +9,10 @@ Ueberraschungen. Ergaenzt `env_core`. Operativer Dev-Loop (Sync, Testaufruf):
 ```
 WSL2 (Debian) = Bauumgebung -> echte Linux-Paritaet (psycopg, tree-sitter,
                 Pfade, Zeilenenden stimmen mit dem Container ueberein)
-Windows-nativ = nur Host: Ollama/GPU und Editor. NICHTS Prod-Relevantes
-                Windows-nativ bauen oder ausfuehren.
+Windows-nativ = Host: Editor (+ optional Ollama/GPU, siehe unten). NICHTS
+                Prod-Relevantes Windows-nativ bauen oder ausfuehren.
+Ollama        = host-abhaengig: Windows-nativ ODER als systemd-Dienst IN WSL2
+                (mit GPU-Passthrough). WO auf dieser Maschine: .local/host.md.
 Postgres      = immer Docker-Compose-Dienst, nie Windows-nativ.
 ```
 
@@ -54,10 +56,14 @@ slim-Base-Image enger.
 9 CI auf Linux als massgebliches Gate (det-Suite gegen Postgres-Container).
   Optionaler Windows-Job faengt Bruch der lokalen Dev-Umgebung.
 
-10 Ollama-Erreichbarkeit aus WSL2: Host-Ollama auf 0.0.0.0 (bindet ::),
-   WSL2 ueber die Bridge-IP (Default-Gateway). Windows 11: ohne Firewall-Regel
-   erreichbar (getestet). Windows 10: Inbound-Allow-Regel fuer Port 11434
-   noetig, sonst blockt die Firewall. Detail: scripts/README.md.
+10 Ollama-Erreichbarkeit aus WSL2 (nur wenn Ollama Windows-nativ laeuft):
+   Host-Ollama auf 0.0.0.0 (bindet ::), WSL2 ueber die Bridge-IP
+   (Default-Gateway). Windows 11: ohne Firewall-Regel erreichbar (getestet).
+   Windows 10: Inbound-Allow-Regel fuer Port 11434 noetig, sonst blockt die
+   Firewall. Detail: scripts/README.md.
+   Laeuft Ollama dagegen IN der WSL (systemd-Dienst, 0.0.0.0:11434), entfaellt
+   das alles: aus der WSL localhost:11434, aus dem Container
+   host.docker.internal:11434. Keine Bridge-IP, keine Host-Firewall-Regel.
 
 11 Ollama GPU-Backend-Auswahl (Windows-Host): Falls CUDA defekt oder veraltet
    (Symptom: "PTX was compiled with an unsupported toolchain"), vor dem
@@ -74,10 +80,11 @@ slim-Base-Image enger.
 
 ## RAM-Teilung Host / WSL2 (CPU-Profil)
 
-Ollama laeuft auf dem Windows-Host, nicht in WSL2. Beide teilen sich den RAM;
-WSL2 nimmt per Default ~50 %. Fuer GPU-lose Maschinen WSL2 deckeln
+Gilt fuer die Variante Ollama Windows-nativ (GPU-lose CPU-Maschine): Ollama und
+WSL2 teilen sich den RAM, WSL2 nimmt per Default ~50 %. Dann WSL2 deckeln
 (%USERPROFILE%\.wslconfig, z.B. memory=6GB), damit der Host genug fuer das
-Modell behaelt. Details: `modell_cpu-profil`.
+Modell behaelt. Details: `modell_cpu-profil`. Laeuft Ollama IN der WSL, ist die
+Teilung gegenstandslos (ein Adressraum).
 
 ## Bereits umgesetzt
 

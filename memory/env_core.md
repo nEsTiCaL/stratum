@@ -5,14 +5,15 @@ Projektweite Voraussetzungen und Grenzen.
 ## Portabilitaet Windows-Dev -> Linux-Server
 
 Eigene Notiz: `env_portabilitaet`. Kurz: WSL2 ist die Bauumgebung (Linux-
-Paritaet), Windows nur Host fuer Ollama/GPU und Editor; Postgres immer in
-Docker. Zeilenenden/Encoding sind im Repo erzwungen (.gitattributes,
+Paritaet), Windows Host fuer Editor; Postgres immer in Docker. Ollama/GPU
+host-abhaengig (Windows-nativ ODER systemd-Dienst in WSL2, siehe
+`env_portabilitaet` + .local/host.md). Zeilenenden/Encoding sind im Repo erzwungen (.gitattributes,
 .editorconfig, repo-lokal core.autocrlf=false).
 
 ## Voraussetzungen (Laufzeit)
 
 - GPU mit 12-16 GB VRAM fuer lokale Modelle
-- Ollama nativ auf dem Host
+- Ollama laufend (host-abhaengig Windows-nativ oder systemd-Dienst in WSL2)
 - Docker / Docker Compose fuer die Funktionsschicht
 - PostgreSQL als Compose-Dienst
 - Python (Kern), Go (CLI)
