@@ -41,5 +41,5 @@ def conn(pg_dsn: str):
         yield c
         c.execute(
             "TRUNCATE artifacts, trace, queue, model_metrics, cloud_costs, "
-            "capabilities RESTART IDENTITY CASCADE"
+            "capabilities, graph_edges RESTART IDENTITY CASCADE"
         )

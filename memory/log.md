@@ -1,5 +1,9 @@
 # Log
 
+## [2026-07-02] decision | I-4.1 abgeschlossen: graph_edges + Befuellung aus Artefakten. Migration 0006: Tabelle graph_edges (src, dst, edge_type, confidence, source_hash, superseded) mit partiellen Indizes auf src/dst/edge_type (WHERE superseded=false). core/graph.py: GraphEdge-Dataclass + edges_from_dependency_graph (import-Kanten, dst=file: oder module:), edges_from_call_graph (call-Kanten mit confidence, unaufgeloeste Callees uebersprungen, dst=symbol::), edges_from_symbol_index (contains-Kanten, dst=symbol:path::name). Repository: put_edges (atomares supersede+insert per TX), get_edges. ingest_content eingehaengt via all_edges_for_artifacts nach den drei Artefakt-Builds. conftest: graph_edges in TRUNCATE. 20 neue Tests (test_graph.py), 465 gesamt gruen, ruff clean. Scope-Konvention fuer Kanten: src=file-scope der analysierten Datei (erlaubt einfaches WHERE src=scope beim Superseden).
+
+## [2026-07-02] finding | ops_rest-curl.md angelegt: Curl-Zugriff auf REST-API aus Windows und WSL. WSL2 erreicht localhost:8000 direkt (Port-Forwarding). PowerShell-Falle: curl.exe zerstoert Single-Quoted JSON-Strings in PS5.1 -> Invoke-RestMethod als kanonischer Windows-Weg dokumentiert.
+
 ## [2026-07-02] lint | ops_sync-workflow.md aufgeteilt: Script-Inhalt -> ops_sync-script.md, Docker-Daemon-Hinweis -> ops_docker-server.md; MANIFEST nachgezogen.
 
 ## [2026-07-02] decision | Zwei-Klon-Workflow (Windows/WSL) bewusst beibehalten; Alternativen (Remote WSL, Auto-Sync) zurueckgestellt. Entscheidung in ops_sync-workflow.md verankert.

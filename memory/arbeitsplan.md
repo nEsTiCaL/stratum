@@ -133,7 +133,7 @@ Realer Cloud-Egress erst nach I-3.4.
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-4.1   graph_edges + Befuellung       det   I-1.5/1.6 R4
+I-4.1   graph_edges + Befuellung       det   I-1.5/1.6 R4             fertig
 I-4.2   rekursive CTE + CYCLE          det   I-4.1     R4
 I-4.3   Symbol-Diff -> Aenderungsart   det   I-1.4     R4
 I-4.4   diff. Invalidierung + stale    det   I-4.2/4.3 R4
@@ -171,6 +171,10 @@ I-S.5     Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 ```
 
 ## Status
+
+I-4.1 fertig: graph_edges-Tabelle (Migration 0006) + Befuellung aus Artefakten
+(import/call/contains). core/graph.py: GraphEdge + edges_from_* Funktionen.
+Repository: put_edges/get_edges. ingest_content eingehaengt. 20 Tests gruen.
 
 I-3.5 fertig: Kosten-Telemetrie + Tageskappung. Schritt 3 (Cloud-Bruecke) VOLLSTAENDIG.
 I-D.3 fertig: Manual-Adapter (Copy-Paste-Bruecke). N2-Dogfooding ohne VSCode moeglich.

@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.graph import all_edges_for_artifacts
 from core.indexer import (
     call_graph_result,
     dependency_graph_result,
@@ -86,16 +87,27 @@ def ingest_content(
     )
 
     artifact_ids: dict[str, int] = {}
+    built: dict[str, object] = {}
     for builder in _BUILDER_SETS[language]:
         result = builder(scope, src, source_hash=source_hash, language=language)
         art_id = repo.put_artifact(result)
         artifact_ids[result.artifact_type.value] = art_id
+        built[result.artifact_type.value] = result
         repo.write_trace(
             session_id,
             "index",
             artifact_id=art_id,
             detail={"artifact_type": result.artifact_type.value},
         )
+
+    edges = all_edges_for_artifacts(
+        scope,
+        symbol_content=built["symbol_index"].content,  # type: ignore[union-attr]
+        dep_content=built["dependency_graph"].content,  # type: ignore[union-attr]
+        call_content=built["call_graph"].content,  # type: ignore[union-attr]
+        source_hash=source_hash,
+    )
+    repo.put_edges(scope, edges)
 
     scan = scan or NoopSecretScan()
     scan_result = scan.scan(src, scope)

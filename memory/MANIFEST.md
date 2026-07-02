@@ -55,6 +55,9 @@ ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nu
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
                          |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag,          |   pythonpath, pyunbuffered, quoting,
                          |   Docker-Daemon fuer DB-Tests, API-Key erzeugen                       |   testcontainers, api-key, core.auth
+ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreichbarkeit,        | curl, invoke-restmethod, powershell,
+                         |   WSL2-Port-Forwarding, PowerShell-Quoting-Falle (curl.exe vs.        |   quoting-falle, localhost, bearer,
+                         |   Invoke-RestMethod), kanonische Befehlsformen je Plattform            |   windows, wsl2, single-quote
 
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel

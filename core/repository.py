@@ -15,6 +15,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
+from core.graph import GraphEdge
 from core.models.provenance_schema import ProducerClass, Provenance
 from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
@@ -213,6 +214,49 @@ class Repository:
                 row = cur.fetchone()
                 assert row is not None
                 return row[0]
+
+    def put_edges(self, scope: str, edges: list[GraphEdge]) -> None:
+        """Superseded alte Kanten fuer diesen scope, fuegt neue ein (I-4.1).
+
+        Atomare TX: alle alten Kanten mit src=scope werden superseded, dann
+        werden die neuen eingefuegt. Leere edges-Liste = alle alten entfernen.
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graph_edges SET superseded = true "
+                    "WHERE src = %s AND superseded = false",
+                    (scope,),
+                )
+                if edges:
+                    cur.executemany(
+                        "INSERT INTO graph_edges "
+                        "(src, dst, edge_type, confidence, source_hash) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        [
+                            (e.src, e.dst, e.edge_type, e.confidence, e.source_hash)
+                            for e in edges
+                        ],
+                    )
+
+    def get_edges(self, scope: str) -> list[GraphEdge]:
+        """Gibt alle aktuellen (nicht superseded) Kanten eines Scopes zurueck."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT src, dst, edge_type, confidence, source_hash "
+                "FROM graph_edges WHERE src = %s AND superseded = false",
+                (scope,),
+            )
+            return [
+                GraphEdge(
+                    src=row[0],
+                    dst=row[1],
+                    edge_type=row[2],
+                    confidence=row[3],
+                    source_hash=row[4],
+                )
+                for row in cur.fetchall()
+            ]
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
