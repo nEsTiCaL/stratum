@@ -1,31 +1,35 @@
 ## Projektgedaechtnis
 
-Dateibasiertes Gedaechtnis unter memory/. Bei Sitzungsstart IMMER direkt lesen,
-ungefragt, bevor du auf die Aufgabe eingehst: memory/memory_start.md und
-(falls vorhanden) .local/host.md.
+Sitzungsstart: sofort lesen (ungefragt) -> memory/memory_start.md + .local/host.md.
+Routing: Fakt -> `grep memory/`; Kontext -> memory/MANIFEST.md; Bauen -> memory/arbeitsplan.md.
+Nicht raten: erst grep/MANIFEST bevor projektbezogene Fragen beantwortet werden.
+Schreiben: Erkenntnisse/Entscheidungen sofort festhalten -> memory/rules.md.
 
-Kurz-Routing danach: Fakt (Befehl, Name, Konstante) -> grep memory/; Kontext
-(Begruendung, Stand) -> memory/MANIFEST.md; Modul bauen -> memory/arbeitsplan.md.
+## Dev-Harness
 
-Nicht aus dem Gedaechtnis raten: bevor du eine projektbezogene Frage
-beantwortest oder einen Befehl/Namen aus der Erinnerung nutzt, erst grep/MANIFEST.
-Den ganzen Speicher nie pauschal lesen.
+Vor Quelldateien lesen oder Code schreiben: Harness zuerst befragen.
 
-Schreiben: sobald etwas festzuhalten ist (Erkenntnis, Entscheidung, geloestes
-Problem, offene Frage, geaenderte Annahme) dokumentiere dies! Richte dich dabei nach memory/rules.md.
+**A — Strukturabfragen (devcli, WSL):** symbol_lookup / index / dependency_map.
+Claude formuliert Befehl, Nutzer fuehrt aus, Claude reviewt iterativ.
+Details + Preflight: memory/ops_n1-queries.md.
 
-## Host-spezifische Notizen
+**B — LLM-Tasks (curl, direkt ausfuehren):** summarize / explain / review / document etc.
+API-Key aus .local/host.md. Server: http://localhost:8000. Endpoints: memory/spec_rest-api.md.
 
-`.local/host.md` (gitignored) enthaelt host-spezifische Kommandos und
-Aufrufparameter (WSL-Testaufruf, Git-Aliase, Umgebungshinweise). Wird bei
-Sitzungsstart zusammen mit memory/memory_start.md direkt gelesen, falls
-vorhanden.
+```bash
+curl -s -X POST http://localhost:8000/api/task \
+  -H "Authorization: Bearer <KEY>" -H "Content-Type: application/json" \
+  -d '{"task_type":"<typ>","scope":"file:<pfad>"}' # -> {"id":42}
+curl -sN -H "Authorization: Bearer <KEY>" http://localhost:8000/api/task/42/events
+curl -s  -H "Authorization: Bearer <KEY>" http://localhost:8000/api/result/42
+```
+
+Ergebnis reviewen und iterieren. Web-Dashboard fuer manuelles Copy-Paste: Nutzer fragen.
 
 ## Commits
 
-Schlage eine aussagekraeftige, kurze Commit-Message vor. Committet wird
-NICHT selbst per Bash/git, sondern ueber `.local/sync.ps1` (Commit+Push+WSL-
-Zwangssync in einem): du gibst nur den fertigen Shell-Befehl dafuer, mit ABSOLUTEM Pfad
-(WIN_REPO_PFAD aus .local/host.md), nie relativ, der Nutzer fuehrt ihn selbst
-aus. Exakte Aufrufsform (inkl. powershell-Praefix): memory/ops_sync-workflow.md,
-Abschnitt "Abnahme-Script". Keine Co-Authored-By-Zeile in Commit-Messages.
+Commit-Message vorschlagen, NICHT selbst committen. Befehl fuer Nutzer ausgeben:
+```
+powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "message"
+```
+WIN_REPO_PFAD aus .local/host.md. Kein Co-Authored-By. Script: memory/ops_sync-script.md.
