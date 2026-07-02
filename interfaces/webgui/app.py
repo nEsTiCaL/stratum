@@ -338,63 +338,6 @@ def _result_from_submission(
     )
 
 
-def _result_from_submission(
-    response: str, task_type: TaskType, scope: str, producer: str, root: Path
-) -> ResultProb:
-    """Baut ein ResultProb aus einer eingereichten Antwort — format-tolerant.
-
-    Faengt die Muster ab, die beim Copy-Paste aus einem Chatbot auftreten:
-      1. Vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen.
-      2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) -> via parse_llm_response.
-      3. Freier Text / gerendertes Markdown, evtl. in ```-Fence -> als content.text
-         (findings/risks/recommendations werden extrahiert, falls als Label da).
-    Wirft ValueError mit erklaerender Meldung, wenn kein verwertbarer Text bleibt.
-    """
-    artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
-
-    # 1. Vollstaendiges JSON-Objekt (nur wenn alle Pflichtfelder da sind).
-    try:
-        data = extract_json(response)
-    except Exception:
-        data = None
-    if isinstance(data, dict) and {"scope", "artifact_type", "content"} <= data.keys():
-        prov = build_prob_provenance(
-            scope=data["scope"],
-            artifact_type=data["artifact_type"],
-            producer=producer,
-            root=root,
-        )
-        return ResultProb.model_validate(
-            {**data, "provenance": prov.model_dump(mode="json")}
-        )
-
-    # 2./3. Label-Prefix oder freier Text/Markdown.
-    parsed = parse_llm_response(_strip_code_fence(response))
-    if not parsed.text.strip():
-        raise ValueError(
-            "Antwort enthaelt keinen verwertbaren Text. Bitte den vollstaendigen "
-            "Review-Text (Markdown) einfuegen — nicht nur eine Ueberschrift, ein "
-            "leeres Feld oder einen reinen Link/Codeblock."
-        )
-    content: dict[str, Any] = {"text": parsed.text}
-    if parsed.findings:
-        content["findings"] = parsed.findings
-    if parsed.risks:
-        content["risks"] = parsed.risks
-    if parsed.recommendations:
-        content["recommendations"] = parsed.recommendations
-    prov = build_prob_provenance(
-        scope=scope, artifact_type=artifact_type_str, producer=producer, root=root
-    )
-    return ResultProb(
-        artifact_type=ArtifactType(artifact_type_str),
-        scope=scope,
-        content=content,
-        confidence=_HUMAN_CONFIDENCE,
-        provenance=prov,
-    )
-
-
 def _augment_progress(tasks: list[dict], progress_store: dict) -> list[dict]:
     now = time.monotonic()
     result = []
