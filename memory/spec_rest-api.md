@@ -32,6 +32,13 @@ GET  /api/prompt/{id}     → Prompt eines Tasks (Owner-Check)
 POST /api/claim/{id}      → Task claimen (Owner-Check) → system_prompt + user_message
 POST /api/submit/{id}     → Antwort einreichen, validieren, speichern (Owner-Check)
 POST /api/validate        → Dry-run-Validierung ohne Speichern
+
+POST /api/dev/migrate     → DB-Migrationen anwenden (idempotent)
+POST /api/dev/ingest      → Quelldateien ingestieren → {"indexed": N}
+GET  /api/dev/symbol      → Symbol-Lookup repo-weit (?name=X&kind=Y)
+GET  /api/dev/index       → Symbol-Index einer Datei (?scope=file:X) → symbol_index
+GET  /api/dev/deps        → Abhaengigkeiten einer Datei (?scope=file:X) → dependency_graph
+GET  /api/dev/calls       → Call-Graph einer Datei (?scope=file:X) → call_graph
 ```
 
 Entfernt (waren SSE-basiert, ersetzt durch Polling):

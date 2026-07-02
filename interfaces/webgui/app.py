@@ -17,12 +17,13 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   POST /api/submit/{id}        -> Antwort einreichen (Owner-Check)
   POST /api/validate           -> Dry-run-Validierung
 
-Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight + devcli-Ersatz):
+Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight):
   POST /api/dev/migrate        -> DB-Migrationen anwenden (idempotent)
   POST /api/dev/ingest         -> Quelldateien ingestieren, gibt {"indexed": N}
   GET  /api/dev/symbol         -> Symbol-Lookup repo-weit (?name=X&kind=Y)
   GET  /api/dev/index          -> Symbol-Index einer Datei (?scope=file:X)
   GET  /api/dev/deps           -> Abhaengigkeiten einer Datei (?scope=file:X)
+  GET  /api/dev/calls          -> Call-Graph einer Datei (?scope=file:X)
 """
 
 from __future__ import annotations
@@ -443,7 +444,7 @@ def create_app(
         kind: str | None = None,
         owner: str = Depends(_require_owner),
     ) -> list[dict[str, Any]]:
-        """Symbol-Lookup repo-weit. Entspricht: devcli symbol_lookup <name>."""
+        """Symbol-Lookup repo-weit (?name=X&kind=Y)."""
         hits = repo.find_symbol(name, kind=kind)
         return [dataclasses.asdict(h) for h in hits]
 
@@ -452,7 +453,7 @@ def create_app(
         scope: str,
         owner: str = Depends(_require_owner),
     ) -> dict[str, Any]:
-        """Symbol-Index einer Datei. Entspricht: devcli index <scope>"""
+        """Symbol-Index einer Datei (?scope=file:X)."""
         artifact = repo.get_current(scope, "symbol_index")
         if artifact is None:
             raise HTTPException(status_code=404, detail="Nicht indiziert")
@@ -463,8 +464,19 @@ def create_app(
         scope: str,
         owner: str = Depends(_require_owner),
     ) -> dict[str, Any]:
-        """Abhaengigkeiten einer Datei. Entspricht: devcli dependency_map <scope>"""
+        """Abhaengigkeiten einer Datei (?scope=file:X)."""
         artifact = repo.get_current(scope, "dependency_graph")
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Nicht indiziert")
+        return artifact.model_dump(mode="json")
+
+    @app.get("/api/dev/calls")
+    async def dev_call_graph(
+        scope: str,
+        owner: str = Depends(_require_owner),
+    ) -> dict[str, Any]:
+        """Call-Graph einer Datei (?scope=file:X)."""
+        artifact = repo.get_current(scope, "call_graph")
         if artifact is None:
             raise HTTPException(status_code=404, detail="Nicht indiziert")
         return artifact.model_dump(mode="json")

@@ -2,7 +2,7 @@
 
 Ab N1 (nach Schritt 1) Symbole, Abhaengigkeiten und Imports ueber den
 Dev-Harness abfragen, statt ganze Quelldateien zu lesen. Spart ~35 % Input-Tokens
-pro Session. Aufruf-Praefix: `ops_wsl`.
+pro Session. Zugriff: REST-API via curl (siehe `ops_rest-curl`), NICHT devcli.
 
 ## Wann nutzen
 
@@ -42,25 +42,41 @@ Datei fuer Datei: source_hash wird einmal aufgeloest (ein git rev-parse statt
 N), nicht mehr pro Datei ein eigener Prozessaufruf. Laufzeit ~2-5 s fuer ~30
 Dateien. Idempotent (superseded-Mechanik).
 
-## Queries (devcli)
+## Queries (REST-API via curl)
 
-Alle mit `--json` fuer maschinenlesbare Ausgabe. `<REST> =`:
-```
--m interfaces.devcli symbol_lookup <Name> --json     # Klasse/Funktion exakt, case-sensitiv
--m interfaces.devcli index core/<modul>.py --json    # alle Symbole einer Datei
--m interfaces.devcli dependency_map core/<modul>.py --json  # Imports / Zirkelimport-Check
+KEY aus `.local/host.md`. Basis-URL: `http://localhost:8000`.
+
+```bash
+KEY="<API_KEY>"
+
+# Symbol-Lookup repo-weit (Klasse/Funktion exakt, case-sensitiv)
+curl -s "http://localhost:8000/api/dev/symbol?name=<Name>" \
+  -H "Authorization: Bearer $KEY"
+
+# Symbol-Index einer Datei (alle Symbole)
+curl -s "http://localhost:8000/api/dev/index?scope=file:core/<modul>.py" \
+  -H "Authorization: Bearer $KEY"
+
+# Abhaengigkeiten einer Datei (Imports / Zirkelimport-Check)
+curl -s "http://localhost:8000/api/dev/deps?scope=file:core/<modul>.py" \
+  -H "Authorization: Bearer $KEY"
+
+# Call-Graph einer Datei (Aufrufe mit confidence)
+curl -s "http://localhost:8000/api/dev/calls?scope=file:core/<modul>.py" \
+  -H "Authorization: Bearer $KEY"
 ```
 
 ## Welche Query wann
 
 ```
-Situation                              Query
+Situation                              Endpoint
 -------------------------------------  --------------------------------
-Interface-Muster eines Moduls          symbol_lookup <Klassenname>
-Typ-Definition fuer Payload/Struct     index core/<modul>.py  (alle Symbole)
-Zirkelimport-Check vor neuem Modul     dependency_map core/<modul>.py
-Pruefen ob Symbol noch nicht existiert symbol_lookup <neuer_Name>  -> []?
-Methoden einer Klasse                  index core/<modul>.py  (parent-Filter)
+Interface-Muster eines Moduls          /api/dev/symbol?name=<Klassenname>
+Typ-Definition fuer Payload/Struct     /api/dev/index?scope=file:core/<modul>.py
+Zirkelimport-Check vor neuem Modul     /api/dev/deps?scope=file:core/<modul>.py
+Pruefen ob Symbol noch nicht existiert /api/dev/symbol?name=<neuer_Name> -> []?
+Methoden einer Klasse                  /api/dev/index?scope=...  (alle Symbole)
+Call-Kanten + confidence einer Datei   /api/dev/calls?scope=file:core/<modul>.py
 ```
 
 ## Fallstricke
