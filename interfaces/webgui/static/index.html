@@ -203,7 +203,7 @@
   <p class="panel-meta" id="claim-meta"></p>
 
   <div id="prompt-section">
-    <div class="copy-block sys">
+    <div class="copy-block sys" id="block-sys">
       <div class="copy-block-header">
         <div class="block-label">
           <span class="num">①</span>
@@ -218,9 +218,9 @@
     <div class="copy-block msg">
       <div class="copy-block-header">
         <div class="block-label">
-          <span class="num">②</span>
+          <span class="num" id="msg-num">②</span>
           <span class="title">Prompt</span>
-          <span class="desc">→ Rolle · Kontext · Quellcode · Aufgabe · Format</span>
+          <span class="desc" id="msg-desc">→ Rolle · Kontext · Quellcode · Aufgabe · Format</span>
         </div>
         <button class="btn-copy" onclick="copyBlock('msg-pre', this)">📋 Kopieren</button>
       </div>
@@ -236,9 +236,9 @@
   <div class="copy-block ans">
     <div class="copy-block-header">
       <div class="block-label">
-        <span class="num">③</span>
+        <span class="num" id="ans-num">③</span>
         <span class="title">Antwort</span>
-        <span class="desc">→ JSON-Ausgabe des LLM einfügen, dann prüfen &amp; einreichen</span>
+        <span class="desc" id="ans-desc">→ JSON-Ausgabe des LLM einfügen, dann prüfen &amp; einreichen</span>
       </div>
     </div>
     <textarea id="response-box"
@@ -431,8 +431,34 @@
       `<strong>ID:</strong> ${d.id} &nbsp;`+
       `<strong>Aufgabe:</strong> ${esc(d.task_type)} &nbsp;`+
       `<strong>Scope:</strong> ${esc(d.scope)}`;
-    document.getElementById('sys-pre').textContent = d.system_prompt || '';
-    document.getElementById('msg-pre').textContent = d.user_message  || '';
+
+    const sysBlock = document.getElementById('block-sys');
+    if (d.prompt != null) {
+      // Human-Task: alles in einem kopierbaren Feld
+      sysBlock.style.display = 'none';
+      document.getElementById('msg-pre').textContent = d.prompt;
+      document.getElementById('msg-num').textContent  = '①';
+      document.getElementById('msg-desc').textContent =
+        '→ komplett kopieren: Rolle · Kontext · Quellcode · Aufgabe · Format';
+      document.getElementById('ans-num').textContent  = '②';
+      document.getElementById('ans-desc').textContent =
+        '→ Markdown-Antwort einfügen, dann prüfen & einreichen';
+      document.getElementById('response-box').placeholder =
+        '## 1. Struktur & Verantwortlichkeiten\n…';
+    } else {
+      // LLM-Task: System-Prompt und Nachricht getrennt
+      sysBlock.style.display = '';
+      document.getElementById('sys-pre').textContent = d.system_prompt || '';
+      document.getElementById('msg-pre').textContent = d.user_message  || '';
+      document.getElementById('msg-num').textContent  = '②';
+      document.getElementById('msg-desc').textContent =
+        '→ Rolle · Kontext · Quellcode · Aufgabe · Format';
+      document.getElementById('ans-num').textContent  = '③';
+      document.getElementById('ans-desc').textContent =
+        '→ JSON-Ausgabe des LLM einfügen, dann prüfen & einreichen';
+      document.getElementById('response-box').placeholder =
+        '{ "artifact_type": "...", "scope": "...", "content": {…}, "confidence": 0.85, "provenance": {…} }';
+    }
     document.getElementById('response-box').value  = '';
     document.getElementById('submit-msg').textContent = '';
     _promptVisible = true;
