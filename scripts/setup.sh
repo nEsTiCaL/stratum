@@ -174,17 +174,35 @@ fi
 # --- S2: Orchestrator (Ollama-Modelle) --------------------------------------
 if want s2; then
   sec "S2 Orchestrator (Ollama in WSL + Modelle)"
-  OLLAMA_URL="${OLLAMA_HOST:-http://localhost:11434}"
-  [ -f "$ENV_FILE" ] && OLLAMA_URL="$(grep -E '^OLLAMA_HOST=' "$ENV_FILE" | cut -d= -f2- || echo "$OLLAMA_URL")"
+  # Ollama laeuft WSL-nativ auf localhost:11434 -> immer direkt pruefen,
+  # nicht aus .env lesen (dort koennte noch eine alte Windows-Host-IP stehen).
+  OLLAMA_URL="http://localhost:11434"
+
+  # zstd ist Pflicht-Abhaengigkeit des Ollama-Installers (seit Ollama 0.4+).
+  if have zstd; then ok "zstd vorhanden"
+  else
+    miss "zstd fehlt (benoetigt fuer Ollama-Installation)" "sudo apt-get install -y zstd"
+    confirm && sudo apt-get install -y zstd
+  fi
 
   # Ollama installieren (WSL-nativ, wird als systemd-Dienst eingerichtet).
   if have ollama; then
     ok "ollama CLI ($(ollama --version 2>/dev/null | head -1 || echo 'Version unbekannt'))"
   else
-    miss "ollama fehlt" "curl -fsSL https://ollama.com/install.sh | sh"
+    miss "ollama fehlt" "sudo apt-get install -y zstd && curl -fsSL https://ollama.com/install.sh | sh"
     if confirm; then
+      have zstd || sudo apt-get install -y zstd
       curl -fsSL https://ollama.com/install.sh | sh
     fi
+  fi
+
+  # Abkuerzen: alle folgenden Pruefungen setzen ein installiertes Ollama voraus.
+  if ! have ollama; then
+    warn "Ollama nicht installiert - restliche S2-Pruefungen uebersprungen."
+    MISSING=$((MISSING + 3))  # 0.0.0.0-config + Dienst + Erreichbarkeit
+    echo
+    printf "${y}%d Punkt(e) offen.${x} Behebe sie (Befehle oben) oder starte erneut mit ${d}--install${x}.\n" "$MISSING"
+    exit 1
   fi
 
   # OLLAMA_HOST=0.0.0.0 sicherstellen: noetig damit Docker-Container via
