@@ -58,6 +58,8 @@ ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur i
 ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreichbarkeit,        | curl, invoke-restmethod, powershell,
                          |   WSL2-Port-Forwarding, PowerShell-Quoting-Falle (curl.exe vs.        |   quoting-falle, localhost, bearer,
                          |   Invoke-RestMethod), kanonische Befehlsformen je Plattform            |   windows, wsl2, single-quote
+feedback_ps51-pitfalls.md | PS5.1-Fallstricke: UTF-8 ohne BOM (non-ASCII bricht Strings),        | ps51, encoding, em-dash, @{u},
+                         |   @{u} als Hashtable-Literal in Double-Quoted-Strings                  |   utf8-bom, windows-1252, hashtable
 
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel
