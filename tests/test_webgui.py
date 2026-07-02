@@ -1,6 +1,6 @@
-"""I-D.2: Web-Dashboard — det-Akzeptanz (API-Vertrag).
+"""I-D.2 + I-REST.1 + I-REST.2: Web-Dashboard — det-Akzeptanz (API-Vertrag).
 
-Getestet wird der API-Vertrag (Anfrage, SSE-Stream, Claim, Submit) ohne
+Getestet wird der API-Vertrag (Auth, Anfrage, Claim, Submit, Result) ohne
 echten Browser. GUI-Bedienung wird dev-verifiziert.
 """
 
@@ -15,8 +15,15 @@ from core.queue import Queue
 from core.repository import Repository
 from core.template_registry import DagNode, TaskDag
 from interfaces.webgui.app import create_app
+from tests.conftest import TEST_API_KEY, TEST_OWNER
 
-# gueltige ResultProb-JSON (identisch zu test_manual_adapter.py)
+AUTH = {"Authorization": f"Bearer {TEST_API_KEY}"}
+
+_INSERT_CAP = (
+    "INSERT INTO capabilities (owner, key_hash, key_prefix) VALUES (%s, %s, %s)"
+)
+
+# gueltige ResultProb-JSON
 _RESULT_PROB_JSON = json.dumps(
     {
         "artifact_type": "code_summary",
@@ -67,7 +74,7 @@ def client(conn):
 def client_with_task(conn):
     queue = Queue(conn)
     repo = Repository(conn)
-    (item_id,) = queue.enqueue(_dag(), model="phi4-mini")
+    (item_id,) = queue.enqueue(_dag(), model="phi4-mini", owner=TEST_OWNER)
     conn.execute(
         "UPDATE queue SET payload = %s WHERE id = %s",
         (json.dumps({"prompt": "erklaere queue.py"}), item_id),
@@ -77,112 +84,255 @@ def client_with_task(conn):
         yield c, item_id
 
 
+class TestStatusEndpoint:
+    def test_status_ok_without_auth(self, client):
+        r = client.get("/api/status")
+        assert r.status_code == 200
+        assert r.json() == {"status": "ok"}
+
+
+class TestAuthEndpoint:
+    def test_whoami_returns_owner(self, client):
+        r = client.get("/api/whoami", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["owner"] == TEST_OWNER
+
+    def test_whoami_without_auth_returns_401(self, client):
+        r = client.get("/api/whoami")
+        assert r.status_code == 401
+
+    def test_whoami_wrong_key_returns_401(self, client):
+        r = client.get("/api/whoami", headers={"Authorization": "Bearer wrong-key"})
+        assert r.status_code == 401
+
+
 class TestTasksEndpoint:
     def test_empty_list(self, client):
-        r = client.get("/api/tasks")
+        r = client.get("/api/tasks", headers=AUTH)
         assert r.status_code == 200
         assert r.json() == []
 
-    def test_shows_pending_task(self, client_with_task):
+    def test_requires_auth(self, client):
+        r = client.get("/api/tasks")
+        assert r.status_code == 401
+
+    def test_shows_own_task(self, client_with_task):
         c, item_id = client_with_task
-        tasks = c.get("/api/tasks").json()
+        tasks = c.get("/api/tasks", headers=AUTH).json()
         assert len(tasks) == 1
         assert tasks[0]["id"] == item_id
         assert tasks[0]["status"] == "pending"
 
     def test_result_has_required_fields(self, client_with_task):
         c, _ = client_with_task
-        task = c.get("/api/tasks").json()[0]
+        task = c.get("/api/tasks", headers=AUTH).json()[0]
         for key in ("id", "task_type", "scope", "model", "status", "attempts"):
             assert key in task
+
+    def test_other_owner_sees_no_tasks(self, client_with_task, conn):
+        """Ein zweiter Owner mit eigenem Key sieht keine fremden Tasks."""
+        from core.auth import generate_api_key, hash_key, key_prefix_display
+
+        other_key = generate_api_key()
+        conn.execute(
+            _INSERT_CAP,
+            ("other", hash_key(other_key), key_prefix_display(other_key)),
+        )
+        c, _ = client_with_task
+        tasks = c.get(
+            "/api/tasks", headers={"Authorization": f"Bearer {other_key}"}
+        ).json()
+        assert tasks == []
 
 
 class TestClaimEndpoint:
     def test_claim_pending_task(self, client_with_task):
         c, item_id = client_with_task
-        r = c.post(f"/api/claim/{item_id}")
+        r = c.post(f"/api/claim/{item_id}", headers=AUTH)
         assert r.status_code == 200
         body = r.json()
         assert body["id"] == item_id
         assert body["task_type"] == "summarize"
-        # prompt ist jetzt in user_message eingebettet
         assert "erklaere queue.py" in body["user_message"]
         assert "system_prompt" in body
 
+    def test_claim_requires_auth(self, client_with_task):
+        c, item_id = client_with_task
+        r = c.post(f"/api/claim/{item_id}")
+        assert r.status_code == 401
+
+    def test_claim_wrong_owner_returns_403(self, client_with_task, conn):
+        from core.auth import generate_api_key, hash_key, key_prefix_display
+
+        other_key = generate_api_key()
+        conn.execute(
+            _INSERT_CAP,
+            ("other", hash_key(other_key), key_prefix_display(other_key)),
+        )
+        c, item_id = client_with_task
+        r = c.post(
+            f"/api/claim/{item_id}",
+            headers={"Authorization": f"Bearer {other_key}"},
+        )
+        assert r.status_code == 403
+
     def test_claim_sets_model_to_human(self, client_with_task):
         c, item_id = client_with_task
-        c.post(f"/api/claim/{item_id}")
-        tasks = c.get("/api/tasks").json()
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        tasks = c.get("/api/tasks", headers=AUTH).json()
         task = next(t for t in tasks if t["id"] == item_id)
         assert task["model"] == "human"
         assert task["status"] == "running"
 
-    def test_claim_nonexistent_returns_409(self, client):
-        r = client.post("/api/claim/99999")
-        assert r.status_code == 409
+    def test_claim_nonexistent_returns_404(self, client):
+        r = client.post("/api/claim/99999", headers=AUTH)
+        assert r.status_code == 404
 
     def test_double_claim_returns_409(self, client_with_task):
         c, item_id = client_with_task
-        c.post(f"/api/claim/{item_id}")
-        r = c.post(f"/api/claim/{item_id}")
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        r = c.post(f"/api/claim/{item_id}", headers=AUTH)
         assert r.status_code == 409
 
 
 class TestSubmitEndpoint:
     def test_valid_response_stores_and_completes(self, client_with_task):
         c, item_id = client_with_task
-        c.post(f"/api/claim/{item_id}")
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        r = c.post(
+            f"/api/submit/{item_id}",
+            json={"response": _RESULT_PROB_JSON, "task_type": "summarize"},
+            headers=AUTH,
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+        tasks = c.get("/api/tasks", headers=AUTH).json()
+        assert not any(t["id"] == item_id for t in tasks)
+
+    def test_submit_requires_auth(self, client_with_task):
+        c, item_id = client_with_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
         r = c.post(
             f"/api/submit/{item_id}",
             json={"response": _RESULT_PROB_JSON, "task_type": "summarize"},
         )
-        assert r.status_code == 200
-        assert r.json()["status"] == "ok"
-        # Task ist jetzt done -> nicht mehr in der Liste
-        tasks = c.get("/api/tasks").json()
-        assert not any(t["id"] == item_id for t in tasks)
+        assert r.status_code == 401
+
+    def test_submit_wrong_owner_returns_403(self, client_with_task, conn):
+        from core.auth import generate_api_key, hash_key, key_prefix_display
+
+        other_key = generate_api_key()
+        conn.execute(
+            _INSERT_CAP,
+            ("other", hash_key(other_key), key_prefix_display(other_key)),
+        )
+        c, item_id = client_with_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        r = c.post(
+            f"/api/submit/{item_id}",
+            json={"response": _RESULT_PROB_JSON, "task_type": "summarize"},
+            headers={"Authorization": f"Bearer {other_key}"},
+        )
+        assert r.status_code == 403
 
     def test_invalid_response_returns_422(self, client_with_task):
         c, item_id = client_with_task
-        c.post(f"/api/claim/{item_id}")
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
         r = c.post(
             f"/api/submit/{item_id}",
-            json={"response": "das ist kein gueltiges JSON", "task_type": "summarize"},
+            json={"response": "kein JSON", "task_type": "summarize"},
+            headers=AUTH,
         )
         assert r.status_code == 422
 
     def test_unknown_task_type_returns_400(self, client_with_task):
         c, item_id = client_with_task
-        c.post(f"/api/claim/{item_id}")
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
         r = c.post(
             f"/api/submit/{item_id}",
             json={"response": _RESULT_PROB_JSON, "task_type": "gibberish"},
+            headers=AUTH,
         )
         assert r.status_code == 400
 
 
-class TestSSEEndpoint:
-    def test_returns_event_stream_content_type(self, client):
-        with client.stream("GET", "/api/events") as r:
-            assert r.status_code == 200
-            assert "text/event-stream" in r.headers["content-type"]
+class TestResultEndpoint:
+    def test_result_after_submit(self, client_with_task):
+        c, item_id = client_with_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        c.post(
+            f"/api/submit/{item_id}",
+            json={"response": _RESULT_PROB_JSON, "task_type": "summarize"},
+            headers=AUTH,
+        )
+        r = c.get(f"/api/result/{item_id}", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["artifact_type"] == "code_summary"
+        assert body["scope"] == "file:core/queue.py"
+        assert "content" in body
+        assert "provenance" in body
 
-    def test_first_chunk_is_data_line(self, client):
-        with client.stream("GET", "/api/events") as r:
-            chunk = next(r.iter_lines())
-            assert chunk.startswith("data:")
+    def test_result_requires_auth(self, client_with_task):
+        c, item_id = client_with_task
+        r = c.get(f"/api/result/{item_id}")
+        assert r.status_code == 401
 
-    def test_data_is_valid_json_list(self, client):
-        with client.stream("GET", "/api/events") as r:
-            for line in r.iter_lines():
-                if line.startswith("data:"):
-                    payload = json.loads(line[5:].strip())
-                    assert isinstance(payload, list)
-                    break
+    def test_result_wrong_owner_returns_403(self, client_with_task, conn):
+        from core.auth import generate_api_key, hash_key, key_prefix_display
+
+        other_key = generate_api_key()
+        conn.execute(
+            _INSERT_CAP,
+            ("other", hash_key(other_key), key_prefix_display(other_key)),
+        )
+        c, item_id = client_with_task
+        r = c.get(
+            f"/api/result/{item_id}",
+            headers={"Authorization": f"Bearer {other_key}"},
+        )
+        assert r.status_code == 403
+
+    def test_result_not_found_for_unknown_task(self, client):
+        r = client.get("/api/result/99999", headers=AUTH)
+        assert r.status_code == 404
+
+    def test_result_not_found_for_pending_task(self, client_with_task):
+        c, item_id = client_with_task
+        r = c.get(f"/api/result/{item_id}", headers=AUTH)
+        assert r.status_code == 404
+
+
+class TestCreateTaskEndpoint:
+    def test_create_task_requires_auth(self, client):
+        r = client.post(
+            "/api/task",
+            json={"task_type": "summarize", "scope": "file:core/queue.py"},
+        )
+        assert r.status_code == 401
+
+    def test_create_task_records_owner(self, client):
+        r = client.post(
+            "/api/task",
+            json={"task_type": "summarize", "scope": "file:core/queue.py"},
+            headers=AUTH,
+        )
+        assert r.status_code == 201
+        item_id = r.json()["id"]
+        tasks = client.get("/api/tasks", headers=AUTH).json()
+        assert any(t["id"] == item_id for t in tasks)
+
+    def test_unknown_task_type_returns_400(self, client):
+        r = client.post(
+            "/api/task",
+            json={"task_type": "invalid", "scope": "file:x.py"},
+            headers=AUTH,
+        )
+        assert r.status_code == 400
 
 
 class TestIndexRoute:
-    def test_root_returns_html(self, client):
+    def test_root_returns_html_without_auth(self, client):
         r = client.get("/")
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]

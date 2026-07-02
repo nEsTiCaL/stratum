@@ -69,8 +69,9 @@ spec_schritt-3.md        | Inkremente Schritt 3 (Cloud-Bruecke) I-3.1..3.5, Kons
 spec_schritt-4.md        | Inkremente Schritt 4 (Graph-Tiefe) I-4.1..4.4                       | graph_edges, cte, symbol-diff, invalidierung
 spec_schritt-5.md        | Inkremente Schritt 5 (Betrieb) I-5.1..5.5                           | sse, rest, dashboard, kalibrierung, canary
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
-spec_rest-api.md         | REST-API-Schnittstelle: bestehende + neue Endpoints (POST /api/task, | sse, task-create, ssh-pipe, session-cache,
-                         |   GET /api/task/{id}/events), Phase-2-Go-CLI-Mapping, Scope-Typen    |   scope, curl-beispiele
+spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task,                    | sse, task-create, result-abruf, ssh-pipe,
+                         |   GET /api/task/{id}/events, GET /api/result/{id}),                   |   session-cache, scope, curl-beispiele
+                         |   Phase-2-Go-CLI-Mapping, Scope-Typen (I-REST.1)                      |
 spec_i-d0-devharness.md  | I-D.0 Dev-Harness: find_symbol + devcli (N1-Einstieg)               | repository, jsonb-lateral, symbolhit
 spec_i-2-0-capacity.md   | I-2.0 Capacity-Profil + Lifecycle: 3 Ebenen, resolve, measure       | capacity.toml, model_config, profil-d
 spec_i-2-1-router.md     | I-2.1 Capability-Router (Matrix v2): Achsen, Tiers, Multi-Provider,  | candidates, cost_tier, free-tier, eskalation,

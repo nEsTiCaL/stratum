@@ -188,6 +188,32 @@ class Repository:
             cur.execute(sql, params)
             return [_row_to_symbol_hit(scope, sym) for scope, sym in cur.fetchall()]
 
+    def verify_api_key(self, key: str) -> str | None:
+        """Gibt den Owner-Namen zurueck wenn der Key gueltig ist, sonst None."""
+        from core.auth import hash_key
+
+        key_hash = hash_key(key)
+        row = self._conn.execute(
+            "SELECT owner FROM capabilities "
+            "WHERE key_hash = %s AND revoked = false "
+            "AND (expires_at IS NULL OR expires_at > now())",
+            (key_hash,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def register_capability(self, owner: str, key_hash: str, key_prefix: str) -> int:
+        """Legt einen neuen API-Key an. Gibt die capability-id zurueck."""
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO capabilities (owner, key_hash, key_prefix) "
+                    "VALUES (%s, %s, %s) RETURNING id",
+                    (owner, key_hash, key_prefix),
+                )
+                row = cur.fetchone()
+                assert row is not None
+                return row[0]
+
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
 

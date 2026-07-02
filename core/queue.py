@@ -51,6 +51,7 @@ class Queue:
         dag: TaskDag,
         model: str,
         *,
+        owner: str = "",
         priority: int = 0,
     ) -> list[int]:
         """Schreibt alle pending-Knoten des DAG in die Queue.
@@ -68,8 +69,8 @@ class Queue:
                         """
                         INSERT INTO queue
                             (dag_id, node_id, task_type, scope, model,
-                             priority, depends_on, flags)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                             priority, depends_on, flags, owner)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                         """,
                         (
@@ -81,6 +82,7 @@ class Queue:
                             priority,
                             json.dumps(list(node.depends_on)),
                             json.dumps(sorted(node.flags)),
+                            owner,
                         ),
                     )
                     row = cur.fetchone()
@@ -194,22 +196,48 @@ class Queue:
         ).fetchone()
         return row[0] if row else None
 
+    def get_task_info(self, item_id: int) -> dict[str, Any] | None:
+        """Gibt id, task_type, scope, status und owner eines beliebigen Tasks.
+
+        Im Gegensatz zu list_tasks() auch fuer done-Tasks abfragbar.
+        """
+        row = self._conn.execute(
+            "SELECT id, task_type, scope, status, owner FROM queue WHERE id = %s",
+            (item_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "task_type": row[1],
+            "scope": row[2],
+            "status": row[3],
+            "owner": row[4],
+        }
+
     def list_tasks(
         self,
         *,
         statuses: tuple[str, ...] = ("pending", "running", "failed"),
+        owner: str | None = None,
     ) -> list[dict[str, Any]]:
         """Listet Tasks fuer das Dashboard (read-only, kein Locking).
 
         Gibt pending, running und failed Tasks zurueck (done ausgeblendet).
-        Reihenfolge: created_at aufsteigend (aelteste zuerst).
+        Mit owner-Filter: nur Tasks dieses Owners. Reihenfolge: created_at asc.
         """
         placeholders = ",".join(["%s"] * len(statuses))
+        params: list[Any] = list(statuses)
+        owner_clause = ""
+        if owner is not None:
+            owner_clause = " AND owner = %s"
+            params.append(owner)
         rows = self._conn.execute(
             f"SELECT id, dag_id, task_type, scope, model, status, "
             f"attempts, created_at, claimed_at "
-            f"FROM queue WHERE status IN ({placeholders}) ORDER BY created_at",
-            statuses,
+            f"FROM queue WHERE status IN ({placeholders}){owner_clause} "
+            f"ORDER BY created_at",
+            params,
         ).fetchall()
         keys = (
             "id",

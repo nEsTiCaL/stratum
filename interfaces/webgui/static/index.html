@@ -8,6 +8,46 @@
   h1 { font-size: 1.1rem; letter-spacing: .1em; color: #aaa; margin-bottom: 1.5rem; }
   h1 span { color: #fff; }
 
+  /* ── login overlay ── */
+  #login-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  #login-overlay.active { display: flex; }
+  #login-box {
+    background: #141414; border: 1px solid #2a2a2a; border-radius: 6px;
+    padding: 2rem 2.5rem; min-width: 340px;
+  }
+  #login-box h2 { font-size: .95rem; color: #ccc; margin-bottom: 1.25rem;
+                  letter-spacing: .05em; }
+  #login-box label { display: block; font-size: .75rem; color: #666;
+                     margin-bottom: .4rem; }
+  #login-key {
+    width: 100%; background: #0b0b0b; border: 1px solid #2a2a2a;
+    border-radius: 3px; padding: .45rem .6rem; color: #e0e0e0;
+    font-family: monospace; font-size: .82rem; outline: none;
+    margin-bottom: .9rem;
+  }
+  #login-key:focus { border-color: #3a3a4a; }
+  #login-btn {
+    width: 100%; padding: .45rem; border-radius: 3px; border: none;
+    background: #1e3a5a; color: #6af; font-family: monospace; font-size: .85rem;
+    cursor: pointer;
+  }
+  #login-btn:hover { background: #244870; }
+  #login-err { font-size: .75rem; color: #f44; margin-top: .6rem;
+               min-height: 1.1em; }
+
+  /* ── top bar ── */
+  .topbar { display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; }
+  .owner-badge { font-size: .72rem; color: #555; }
+  .owner-badge span { color: #88a; }
+  .btn-logout { font-size: .7rem; padding: .2rem .55rem; border-radius: 3px;
+                background: #1a1a1a; color: #555; border: 1px solid #222;
+                cursor: pointer; }
+  .btn-logout:hover { color: #f66; border-color: #3a1a1a; }
+
   /* ── table ── */
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
@@ -43,7 +83,6 @@
   .panel-meta  { font-size: .72rem; color: #555; margin-bottom: 1.5rem; }
   .panel-meta strong { color: #777; }
 
-  /* copy block */
   .copy-block { margin-bottom: 1.25rem; border: 1px solid #1e1e1e; border-radius: 5px; }
   .copy-block-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -61,7 +100,6 @@
   }
   .block-label .desc { color: #666; font-size: .65rem; }
 
-  /* colour themes per block */
   .sys  .block-label .num { background: #2a1e3a; color: #b88ef0; }
   .sys  .copy-block-header { border-left: 3px solid #6a3ea0; }
   .msg  .block-label .num { background: #1a2a1a; color: #6ec46e; }
@@ -88,7 +126,6 @@
   .sys pre.copy-pre { color: #c4a8ff; max-height: 120px; }
   .msg pre.copy-pre { color: #c8e8c8; max-height: 480px; }
 
-  /* ── prompt toggle bar ── */
   .prompt-toggle-bar {
     display: flex; align-items: center; gap: .75rem;
     margin: .25rem 0 1.25rem; padding: .4rem .6rem;
@@ -101,7 +138,6 @@
   .btn-toggle:hover { background: #252525; color: #aaa; }
   .toggle-hint { font-size: .68rem; color: #444; }
 
-  /* answer block */
   .ans .copy-block-header { border-bottom: none; border-radius: 5px 5px 0 0; }
   textarea#response-box {
     display: block; width: 100%; min-height: 150px;
@@ -112,7 +148,6 @@
   }
   textarea#response-box:focus { background: #0d0d0d; }
 
-  /* actions */
   .action-row { display: flex; gap: .5rem; align-items: center; margin-top: .9rem; flex-wrap: wrap; }
   .btn-validate {
     background: #1e2a3a; color: #8af; font-size: .85rem;
@@ -129,7 +164,25 @@
   .err { color: #f44; }
 </style>
 
-<h1>STRATUM <span>Dashboard</span></h1>
+<!-- ── Login-Overlay ── -->
+<div id="login-overlay">
+  <div id="login-box">
+    <h2>STRATUM — Anmeldung</h2>
+    <label for="login-key">API-Key</label>
+    <input id="login-key" type="password" placeholder="sk-stratum-…" autocomplete="off">
+    <button id="login-btn" onclick="doLogin()">Anmelden</button>
+    <div id="login-err"></div>
+  </div>
+</div>
+
+<!-- ── Hauptansicht ── -->
+<div class="topbar">
+  <h1>STRATUM <span>Dashboard</span></h1>
+  <div style="display:flex;gap:.75rem;align-items:center">
+    <span class="owner-badge">Angemeldet als <span id="owner-label">—</span></span>
+    <button class="btn-logout" onclick="doLogout()">Abmelden</button>
+  </div>
+</div>
 
 <div class="table-wrap">
   <table id="task-table">
@@ -145,14 +198,11 @@
   </table>
 </div>
 
-<!-- ─────────────── CLAIM PANEL ─────────────── -->
 <div id="claim-panel">
   <p class="panel-title">Task übernommen</p>
   <p class="panel-meta" id="claim-meta"></p>
 
-  <!-- ①② Prompt-Bereich (ein-/ausblendbar) -->
   <div id="prompt-section">
-    <!-- ① System-Prompt -->
     <div class="copy-block sys">
       <div class="copy-block-header">
         <div class="block-label">
@@ -165,7 +215,6 @@
       <pre class="copy-pre" id="sys-pre"></pre>
     </div>
 
-    <!-- ② Prompt -->
     <div class="copy-block msg">
       <div class="copy-block-header">
         <div class="block-label">
@@ -179,13 +228,11 @@
     </div>
   </div>
 
-  <!-- Toggle-Bar zwischen Prompt und Antwort -->
   <div class="prompt-toggle-bar">
     <button class="btn-toggle" id="prompt-toggle-btn" onclick="togglePrompt()">▲ Prompt ausblenden</button>
     <span class="toggle-hint" id="toggle-hint">Prompt sichtbar — hier klicken um Platz zu sparen</span>
   </div>
 
-  <!-- ③ Antwort -->
   <div class="copy-block ans">
     <div class="copy-block-header">
       <div class="block-label">
@@ -208,14 +255,102 @@
 </div>
 
 <script>
-  let _claimedId   = null;
-  let _claimedType = null;
+  let _apiKey       = null;
+  let _claimedId    = null;
+  let _claimedType  = null;
   let _promptVisible = true;
+  let _pollTimer    = null;
 
-  /* ── SSE ── */
-  const es = new EventSource('/api/events');
-  es.onmessage = e => renderTasks(JSON.parse(e.data));
-  es.onerror   = () => {};
+  // ── Hilfsfunktionen ────────────────────────────────────────────────────────
+
+  function authHeaders(extra) {
+    return Object.assign({ 'Authorization': 'Bearer ' + _apiKey }, extra || {});
+  }
+
+  async function apiFetch(path, opts) {
+    opts = opts || {};
+    opts.headers = authHeaders(opts.headers || {});
+    return fetch(path, opts);
+  }
+
+  // ── Initialisierung ────────────────────────────────────────────────────────
+
+  (async function init() {
+    const stored = sessionStorage.getItem('stratum_key');
+    if (stored) {
+      const ok = await tryKey(stored);
+      if (ok) return;
+    }
+    showLogin();
+  })();
+
+  async function tryKey(key) {
+    _apiKey = key;
+    const r = await fetch('/api/whoami', {
+      headers: { 'Authorization': 'Bearer ' + key }
+    });
+    if (!r.ok) { _apiKey = null; return false; }
+    const d = await r.json();
+    sessionStorage.setItem('stratum_key', key);
+    document.getElementById('owner-label').textContent = d.owner;
+    hideLogin();
+    startPolling();
+    return true;
+  }
+
+  async function doLogin() {
+    const key = document.getElementById('login-key').value.trim();
+    const err = document.getElementById('login-err');
+    err.textContent = '';
+    if (!key) { err.textContent = 'Bitte API-Key eingeben.'; return; }
+    const ok = await tryKey(key);
+    if (!ok) err.textContent = 'Ungültiger API-Key.';
+  }
+
+  document.getElementById('login-key').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  function doLogout() {
+    sessionStorage.removeItem('stratum_key');
+    _apiKey = null;
+    stopPolling();
+    cancelClaim();
+    document.getElementById('task-body').innerHTML =
+      '<tr><td colspan="7" id="empty-msg">Verbinde …</td></tr>';
+    showLogin();
+  }
+
+  function showLogin() {
+    document.getElementById('login-overlay').classList.add('active');
+    setTimeout(() => document.getElementById('login-key').focus(), 50);
+  }
+
+  function hideLogin() {
+    document.getElementById('login-overlay').classList.remove('active');
+    document.getElementById('login-key').value = '';
+    document.getElementById('login-err').textContent = '';
+  }
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+
+  function startPolling() {
+    fetchTasks();
+    _pollTimer = setInterval(fetchTasks, 2000);
+  }
+
+  function stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  }
+
+  async function fetchTasks() {
+    const r = await apiFetch('/api/tasks');
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) return;
+    renderTasks(await r.json());
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   function renderTasks(tasks) {
     const tbody = document.getElementById('task-body');
@@ -240,10 +375,10 @@
         const p = t.progress;
         let progressHtml = '';
         if (p) {
-          const pct = p.pct || 0;
-          const toks = p.tok_s ? `${p.tok_s} tok/s` : `${p.tokens} tok`;
+          const pct     = p.pct || 0;
+          const toks    = p.tok_s ? `${p.tok_s} tok/s` : `${p.tokens} tok`;
           const elapsed = p.elapsed ? fmtSec(p.elapsed) : '';
-          const eta = (p.tok_s && p.tokens)
+          const eta     = (p.tok_s && p.tokens)
             ? fmtSec(Math.max(0, (350 - p.tokens) / p.tok_s)) : '';
           progressHtml = `
             <div class="progress-bar-bg"><div class="progress-bar-fg" style="width:${pct}%"></div></div>
@@ -266,65 +401,52 @@
     }).join('');
   }
 
-  /* ── Prompt anzeigen (ohne Claim) ── */
+  // ── Prompt anzeigen ────────────────────────────────────────────────────────
+
   async function showPrompt(id) {
-    const r = await fetch(`/api/prompt/${id}`);
+    const r = await apiFetch(`/api/prompt/${id}`);
     if (!r.ok) {
       alert(`Prompt nicht verfügbar (${r.status}): ${(await r.json()).detail}`);
       return;
     }
     const d = await r.json();
-    _claimedId   = d.id;
-    _claimedType = d.task_type;
-    document.getElementById('claim-meta').innerHTML =
-      `<strong>ID:</strong> ${d.id} &nbsp;`+
-      `<strong>Aufgabe:</strong> ${esc(d.task_type)} &nbsp;`+
-      `<strong>Scope:</strong> ${esc(d.scope)}`;
-    document.getElementById('sys-pre').textContent = d.system_prompt || '';
-    document.getElementById('msg-pre').textContent = d.user_message  || '';
-    document.getElementById('submit-msg').textContent = '';
-    _promptVisible = true;
-    document.getElementById('prompt-section').style.display = '';
-    document.getElementById('prompt-toggle-btn').textContent = '▲ Prompt ausblenden';
-    document.getElementById('toggle-hint').textContent = 'Prompt sichtbar — hier klicken um Platz zu sparen';
-    document.getElementById('claim-panel').style.display = 'block';
-    window.scrollTo({ top: document.getElementById('claim-panel').offsetTop - 16,
-                      behavior: 'smooth' });
+    openPanel(d);
   }
 
-  /* ── Claim ── */
+  // ── Claim ──────────────────────────────────────────────────────────────────
+
   async function claimTask(id) {
-    const r = await fetch(`/api/claim/${id}`, { method: 'POST' });
+    const r = await apiFetch(`/api/claim/${id}`, { method: 'POST' });
     if (!r.ok) {
       alert(`Claim fehlgeschlagen (${r.status}): ${(await r.json()).detail}`);
       return;
     }
-    const d = await r.json();
+    openPanel(await r.json());
+  }
+
+  function openPanel(d) {
     _claimedId   = d.id;
     _claimedType = d.task_type;
-
     document.getElementById('claim-meta').innerHTML =
       `<strong>ID:</strong> ${d.id} &nbsp;`+
       `<strong>Aufgabe:</strong> ${esc(d.task_type)} &nbsp;`+
       `<strong>Scope:</strong> ${esc(d.scope)}`;
-
     document.getElementById('sys-pre').textContent = d.system_prompt || '';
     document.getElementById('msg-pre').textContent = d.user_message  || '';
     document.getElementById('response-box').value  = '';
     document.getElementById('submit-msg').textContent = '';
-
-    // Prompt beim Claimen immer einblenden
     _promptVisible = true;
     document.getElementById('prompt-section').style.display = '';
     document.getElementById('prompt-toggle-btn').textContent = '▲ Prompt ausblenden';
-    document.getElementById('toggle-hint').textContent = 'Prompt sichtbar — hier klicken um Platz zu sparen';
-
+    document.getElementById('toggle-hint').textContent =
+      'Prompt sichtbar — hier klicken um Platz zu sparen';
     document.getElementById('claim-panel').style.display = 'block';
     window.scrollTo({ top: document.getElementById('claim-panel').offsetTop - 16,
                       behavior: 'smooth' });
   }
 
-  /* ── Prompt-Toggle ── */
+  // ── Prompt-Toggle ──────────────────────────────────────────────────────────
+
   function togglePrompt() {
     _promptVisible = !_promptVisible;
     document.getElementById('prompt-section').style.display = _promptVisible ? '' : 'none';
@@ -335,14 +457,15 @@
         ? 'Prompt sichtbar — hier klicken um Platz zu sparen'
         : 'Prompt ausgeblendet — hier klicken um wieder anzuzeigen';
     if (!_promptVisible) {
-      document.getElementById('response-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('response-box').scrollIntoView(
+        { behavior: 'smooth', block: 'start' });
     }
   }
 
-  /* ── Copy ── */
+  // ── Copy ───────────────────────────────────────────────────────────────────
+
   function copyBlock(preId, btn) {
-    const text = document.getElementById(preId).textContent;
-    navigator.clipboard.writeText(text).then(() => {
+    navigator.clipboard.writeText(document.getElementById(preId).textContent).then(() => {
       const orig = btn.textContent;
       btn.textContent = '✓ Kopiert';
       btn.classList.add('copied');
@@ -350,24 +473,21 @@
     });
   }
 
-  /* ── Validate ── */
+  // ── Validate ───────────────────────────────────────────────────────────────
+
   async function validateResponse() {
     const response = document.getElementById('response-box').value.trim();
     const msg = document.getElementById('submit-msg');
     if (!response) { msg.textContent = 'Keine Antwort eingegeben.'; msg.className = 'err'; return; }
-
-    // Schnellcheck: valides JSON?
     try { JSON.parse(response); } catch(e) {
       const tip = e.message.includes("after property value")
-        ? ' — Tipp: Wahrscheinlich doppelte Anführungszeichen im Text (z.B. model="human"). Ersetze durch einfache: model=\'human\'.'
+        ? ' — Tipp: Wahrscheinlich doppelte Anführungszeichen im Text.'
         : '';
       msg.textContent = `Kein valides JSON: ${e.message}${tip}`;
-      msg.className = 'err';
-      return;
+      msg.className = 'err'; return;
     }
-
     msg.textContent = 'Prüfe …'; msg.className = '';
-    const r = await fetch('/api/validate', {
+    const r = await apiFetch('/api/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response, task_type: _claimedType }),
@@ -375,23 +495,21 @@
     const body = await r.json();
     if (body.passed) {
       const conf = body.confidence != null ? ` · confidence: ${body.confidence.toFixed(2)}` : '';
-      msg.textContent = `✓ Valide${conf}`;
-      msg.className = 'ok';
+      msg.textContent = `✓ Valide${conf}`; msg.className = 'ok';
     } else {
       const detail = body.detail ? ` — ${body.detail}` : '';
-      msg.textContent = `Fehler: ${body.trigger}${detail}`;
-      msg.className = 'err';
+      msg.textContent = `Fehler: ${body.trigger}${detail}`; msg.className = 'err';
     }
   }
 
-  /* ── Submit ── */
+  // ── Submit ─────────────────────────────────────────────────────────────────
+
   async function submitResponse() {
     const response = document.getElementById('response-box').value.trim();
     if (!response) { alert('Keine Antwort eingegeben.'); return; }
     const msg = document.getElementById('submit-msg');
     msg.textContent = 'Einreichen …'; msg.className = '';
-
-    const r = await fetch(`/api/submit/${_claimedId}`, {
+    const r = await apiFetch(`/api/submit/${_claimedId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response, task_type: _claimedType }),
@@ -411,6 +529,8 @@
     document.getElementById('response-box').value = '';
     document.getElementById('submit-msg').textContent = '';
   }
+
+  // ── Utils ──────────────────────────────────────────────────────────────────
 
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')

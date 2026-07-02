@@ -1,0 +1,2 @@
+ALTER TABLE queue DROP COLUMN IF EXISTS owner;
+DROP TABLE IF EXISTS capabilities;

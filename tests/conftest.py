@@ -12,7 +12,11 @@ import psycopg
 import pytest
 from testcontainers.postgres import PostgresContainer
 
+from core.auth import hash_key, key_prefix_display
 from core.db import apply_migrations
+
+TEST_API_KEY = "sk-stratum-" + "0" * 64
+TEST_OWNER = "test"
 
 
 @pytest.fixture(scope="session")
@@ -29,8 +33,13 @@ def pg_dsn() -> str:
 @pytest.fixture
 def conn(pg_dsn: str):
     with psycopg.connect(pg_dsn, autocommit=True) as c:
+        c.execute(
+            "INSERT INTO capabilities (owner, key_hash, key_prefix) "
+            "VALUES (%s, %s, %s)",
+            (TEST_OWNER, hash_key(TEST_API_KEY), key_prefix_display(TEST_API_KEY)),
+        )
         yield c
         c.execute(
-            "TRUNCATE artifacts, trace, queue, model_metrics, cloud_costs"
-            " RESTART IDENTITY CASCADE"
+            "TRUNCATE artifacts, trace, queue, model_metrics, cloud_costs, "
+            "capabilities RESTART IDENTITY CASCADE"
         )

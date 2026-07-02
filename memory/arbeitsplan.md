@@ -154,18 +154,20 @@ I-5.5   Canary + Regression + Eval     gem   I-5.4     R5, T
 ## Schalen  (Spec: SCH)
 
 ```
-ID      Haeppchen                      Kl    dep       Detail
-------  -----------------------------  ----  --------  ----------------
-I-D.0   Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N, `spec_i-d0-devharness`   fertig
-I-D.1   VSCode-Extension               gem   I-2.5     DP, IZ(VSCode)
-I-D.2   Web-GUI (FastAPI im Kern)      gem   I-2.7     DP             fertig
-I-D.3   manual-Adapter (Copy-Paste)    det   I-3.1     DP, R3         fertig
-I-D.4   Packaging Web-GUI              det   I-D.2     DP
-I-S.1   SSH-Agent-CLI + ForceCommand   det   I-2.5     IZ
-I-S.2   Auth-Schicht (fail-safe)       det   I-S.1     IZ
-I-S.3   Control Plane + Break-Glass    det   I-S.2     IZ
-I-S.4   read-only Remote-Dashboard     det   I-5.3     IZ
-I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
+ID        Haeppchen                      Kl    dep       Detail
+--------  -----------------------------  ----  --------  ----------------
+I-D.0     Dev-Harness (N1-Einstieg)      det   I-1.2     DP, N, `spec_i-d0-devharness`   fertig
+I-D.1     VSCode-Extension               gem   I-2.5     DP, IZ(VSCode)
+I-D.2     Web-GUI (FastAPI im Kern)      gem   I-2.7     DP             fertig
+I-D.3     manual-Adapter (Copy-Paste)    det   I-3.1     DP, R3         fertig
+I-D.4     Packaging Web-GUI              det   I-D.2     DP
+I-REST.1  GET /api/result/{id}           det   I-D.2     `spec_rest-api`   fertig
+I-REST.2  Ownership + API-Key-Auth       det   I-REST.1  `spec_rest-api`   fertig
+I-S.1     SSH-Agent-CLI + ForceCommand   det   I-2.5     IZ
+I-S.2     Auth-Schicht (fail-safe)       det   I-S.1     IZ
+I-S.3     Control Plane + Break-Glass    det   I-S.2     IZ
+I-S.4     read-only Remote-Dashboard     det   I-5.3     IZ
+I-S.5     Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 ```
 
 ## Status
@@ -173,6 +175,10 @@ I-S.5   Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 I-3.5 fertig: Kosten-Telemetrie + Tageskappung. Schritt 3 (Cloud-Bruecke) VOLLSTAENDIG.
 I-D.3 fertig: Manual-Adapter (Copy-Paste-Bruecke). N2-Dogfooding ohne VSCode moeglich.
 I-D.2 fertig: Web-Dashboard (FastAPI+SSE+Claim-Workflow). N3-Dogfooding nutzbar.
+I-REST.1 fertig: GET /api/result/{id} + Queue.get_task_info(). Ergebnisse per curl abrufbar.
+I-REST.2 fertig: Ownership + API-Key-Auth. capabilities-Tabelle (I-S.2-kompatibel), Bearer-Auth
+auf allen Endpoints ausser GET / und GET /api/status. SSE entfernt -> Polling. Dashboard
+mit Login-Overlay. Key-Verwaltung: python -m core.auth create <owner>.
 
 I-1.0 bis I-1.12 fertig: Schritt 1 (Substrat) VOLLSTAENDIG. I-1.12 = ruff Lint-/
 Format-Gate (make lint/fmt/check, ganzer Baum, core/models+tests/fixtures aus,
