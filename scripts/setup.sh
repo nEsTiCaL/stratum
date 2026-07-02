@@ -320,5 +320,17 @@ if [ "$MISSING" -eq 0 ]; then
   printf "${g}Alles bereit fuer Ziel '%s'.${x}\n" "$TARGET"
 else
   printf "${y}%d Punkt(e) offen.${x} Behebe sie (Befehle oben) oder starte erneut mit ${d}--install${x}.\n" "$MISSING"
-  exit 1
 fi
+
+# --- System-Status-Check (immer am Ende, Countdown gibt Diensten Zeit) ------
+CHECK_SCRIPT="$(dirname "$0")/check.sh"
+if [ -f "$CHECK_SCRIPT" ]; then
+  echo
+  printf "${d}System-Status in:${x}"
+  for i in 8 7 6 5 4 3 2 1; do printf " ${y}%d${x}" "$i"; sleep 1; done
+  printf "\n"
+  bash "$CHECK_SCRIPT"
+fi
+
+[ "$MISSING" -gt 0 ] && exit 1
+exit 0

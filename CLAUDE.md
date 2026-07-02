@@ -12,7 +12,7 @@ beantwortest oder einen Befehl/Namen aus der Erinnerung nutzt, erst grep/MANIFES
 Den ganzen Speicher nie pauschal lesen.
 
 Schreiben: sobald etwas festzuhalten ist (Erkenntnis, Entscheidung, geloestes
-Problem, offene Frage, geaenderte Annahme), nach memory/rules.md richten.
+Problem, offene Frage, geaenderte Annahme) dokumentiere dies! Richte dich dabei nach memory/rules.md.
 
 ## Host-spezifische Notizen
 
