@@ -41,11 +41,12 @@ from pydantic import BaseModel
 from core.db import apply_migrations
 from core.ingest import ingest_repo
 from core.json_extract import extract_json
-from core.models.result_prob_schema import ResultProb
+from core.llm_parser import parse_llm_response
+from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
-from core.router import TaskType
+from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.template_registry import DagNode, TaskDag
 from core.validator import Validator
 
@@ -203,6 +204,80 @@ def _make_human_prompt(
         parts.append(f"\nHinweis: {extra_prompt}")
     parts.append(f"\n{questions}")
     return "\n".join(parts)
+
+
+# Vertrauensstufe fuer manuell (vom Menschen) verfasste/gepruefte Antworten.
+# Ersetzt den Modell-Tier-Proxy (TIER_CONFIDENCE), der nur fuer LLMs existiert.
+_HUMAN_CONFIDENCE = 0.9
+
+
+def _strip_code_fence(raw: str) -> str:
+    """Entfernt eine umschliessende ```-Fence (```markdown / ```md / ```), falls
+    ein Chatbot die Antwort so verpackt hat. Ohne Fence unveraendert."""
+    s = raw.strip()
+    if not s.startswith("```"):
+        return s
+    s = s.split("\n", 1)[1] if "\n" in s else ""
+    if s.rstrip().endswith("```"):
+        s = s.rstrip()[:-3]
+    return s.strip()
+
+
+def _result_from_submission(
+    response: str, task_type: TaskType, scope: str, producer: str, root: Path
+) -> ResultProb:
+    """Baut ein ResultProb aus einer eingereichten Antwort — format-tolerant.
+
+    Faengt die Muster ab, die beim Copy-Paste aus einem Chatbot auftreten:
+      1. Vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen.
+      2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) -> via parse_llm_response.
+      3. Freier Text / gerendertes Markdown, evtl. in ```-Fence -> als content.text
+         (findings/risks/recommendations werden extrahiert, falls als Label da).
+    Wirft ValueError mit erklaerender Meldung, wenn kein verwertbarer Text bleibt.
+    """
+    artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
+
+    # 1. Vollstaendiges JSON-Objekt (nur wenn alle Pflichtfelder da sind).
+    try:
+        data = extract_json(response)
+    except Exception:
+        data = None
+    if isinstance(data, dict) and {"scope", "artifact_type", "content"} <= data.keys():
+        prov = build_prob_provenance(
+            scope=data["scope"],
+            artifact_type=data["artifact_type"],
+            producer=producer,
+            root=root,
+        )
+        return ResultProb.model_validate(
+            {**data, "provenance": prov.model_dump(mode="json")}
+        )
+
+    # 2./3. Label-Prefix oder freier Text/Markdown.
+    parsed = parse_llm_response(_strip_code_fence(response))
+    if not parsed.text.strip():
+        raise ValueError(
+            "Antwort enthaelt keinen verwertbaren Text. Bitte den vollstaendigen "
+            "Review-Text (Markdown) einfuegen — nicht nur eine Ueberschrift, ein "
+            "leeres Feld oder einen reinen Link/Codeblock."
+        )
+    content: dict[str, Any] = {"text": parsed.text}
+    if parsed.findings:
+        content["findings"] = parsed.findings
+    if parsed.risks:
+        content["risks"] = parsed.risks
+    if parsed.recommendations:
+        content["recommendations"] = parsed.recommendations
+    prov = build_prob_provenance(
+        scope=scope, artifact_type=artifact_type_str, producer=producer, root=root
+    )
+    return ResultProb(
+        artifact_type=ArtifactType(artifact_type_str),
+        scope=scope,
+        content=content,
+        confidence=_HUMAN_CONFIDENCE,
+        provenance=prov,
+    )
 
 
 def _augment_progress(tasks: list[dict], progress_store: dict) -> list[dict]:
@@ -457,7 +532,7 @@ def create_app(
         task_id: int, body: SubmitBody, owner: str = Depends(_require_owner)
     ) -> dict[str, str]:
         """Validiert die Antwort und speichert das Ergebnis (Owner-Check)."""
-        _check_task_owner(task_id, owner)
+        info = _check_task_owner(task_id, owner)
 
         try:
             task_type = TaskType(body.task_type)
@@ -478,21 +553,28 @@ def create_app(
             raise HTTPException(status_code=422, detail=msg)
 
         try:
-            data = extract_json(body.response)
-            prov = build_prob_provenance(
-                scope=data["scope"],
-                artifact_type=data["artifact_type"],
-                producer=body.producer,
-                root=source_root or Path("."),
+            result_obj = _result_from_submission(
+                body.response,
+                task_type,
+                info["scope"],
+                body.producer,
+                source_root or Path("."),
             )
-            result_obj = ResultProb.model_validate(
-                {**data, "provenance": prov.model_dump(mode="json")}
-            )
-            repo.put_artifact(result_obj)
+        except ValueError as exc:
+            # Format nicht verwertbar — verstaendliche Meldung an den Nutzer.
+            queue.fail(task_id)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             queue.fail(task_id)
-            raise HTTPException(status_code=422, detail=f"Parse-Fehler: {exc}") from exc
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Antwort konnte nicht verarbeitet werden "
+                    f"({type(exc).__name__}: {exc}). Bitte Format pruefen."
+                ),
+            ) from exc
 
+        repo.put_artifact(result_obj)
         queue.complete(task_id)
         return {"status": "ok"}
 
