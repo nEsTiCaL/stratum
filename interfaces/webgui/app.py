@@ -125,12 +125,44 @@ _EXPECTED_TOKENS: dict[str, int] = {
 }
 
 
+_SYSTEM_PROMPT_HUMAN = (
+    "Du analysierst Code aus dem Stratum-Projekt — einem mehrschichtigen "
+    "Code-Analyse-Agenten (Python, FastAPI, PostgreSQL/pgvector, Ollama).\n"
+    "Das System verarbeitet Quelldateien deterministisch (Indexer: symbol_index, "
+    "dependency_graph, call_graph) und probabilistisch (LLM-Worker via Ollama). "
+    "Artefakte werden versioniert im Store abgelegt; der Worker liest aus einer "
+    "PostgreSQL-Queue (claim/complete/fail-Zyklus).\n"
+    "Strukturiere deine Antwort mit Markdown-Ueberschriften. Antworte praezise "
+    "und nenne konkrete Zeilennummern oder Funktionsnamen wo moeglich."
+)
+
+_TASK_QUESTIONS_HUMAN: dict[str, str] = {
+    "review": (
+        "Beantworte die folgenden Punkte:\n\n"
+        "**1. Struktur & Verantwortlichkeiten**\n"
+        "- Welche Klassen/Funktionen gibt es und was ist ihre Aufgabe?\n"
+        "- Wie sieht der Haupt-Kontrollfluss aus?\n\n"
+        "**2. Fehlerbehandlung & Robustheit**\n"
+        "- Werden Ausnahmen korrekt behandelt oder gibt es stille Fehler?\n"
+        "- Gibt es Ressourcen-Leaks oder unerwartetes Verhalten bei Exceptions?\n\n"
+        "**3. Konkrete Bugs & Schwachstellen**\n"
+        "- Race Conditions, falsche Annahmen, Edge Cases?\n"
+        "- Sicherheitsluecken oder Performance-Probleme?\n\n"
+        "**4. Design & Verbesserungsvorschlaege**\n"
+        "- Was ist nicht-offensichtlich oder ungewoehnlich geloest?\n"
+        "- Welche eine Aenderung wuerde die Wartbarkeit am meisten erhoehen?"
+    ),
+}
+
+_TASK_QUESTIONS_HUMAN_DEFAULT = (
+    "Beschreibe Zweck, Struktur und wesentliche Implementierungsdetails. "
+    "Nenne konkrete Verbesserungsvorschlaege."
+)
+
+
 def _make_system_prompt(for_human: bool = False) -> str:
     if for_human:
-        return (
-            "Du fuehrst ein manuelles Code-Review durch. "
-            "Antworte in freiem Text — Markdown ist erlaubt."
-        )
+        return _SYSTEM_PROMPT_HUMAN
     return (
         "Du bist ein praeziser Code-Analyse-Assistent. "
         "Antworte ausschliesslich mit dem angeforderten JSON-Objekt — "
@@ -142,14 +174,23 @@ def _make_user_message(
     task_type: str, scope: str, source_code: str, extra_prompt: str,
     for_human: bool = False,
 ) -> str:
+    if for_human:
+        questions = _TASK_QUESTIONS_HUMAN.get(task_type, _TASK_QUESTIONS_HUMAN_DEFAULT)
+        parts = [f"Scope: {scope}"]
+        if source_code:
+            parts.append(f"\n```python\n{source_code}\n```")
+        if extra_prompt:
+            parts.append(f"\nHinweis: {extra_prompt}")
+        parts.append(f"\n{questions}")
+        return "\n".join(parts)
+
     context = _TASK_CONTEXT.get(task_type, "Analysiere den folgenden Code.")
     parts = [context, f"\nScope: {scope}"]
     if source_code:
         parts.append(f"\n```python\n{source_code}\n```")
     if extra_prompt:
         parts.append(f"\nHinweis: {extra_prompt}")
-    if not for_human:
-        parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
+    parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
     return "\n".join(parts)
 
 
