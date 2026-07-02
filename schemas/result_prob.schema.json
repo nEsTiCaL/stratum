@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "result_prob.schema.json",
   "title": "ResultProb",
-  "description": "Ergebnis eines probabilistischen Producers (LLM). confidence ist Pflicht.",
+  "description": "Ergebnis eines probabilistischen Producers (LLM). Das LLM liefert nur Freitext im Label-Format; der Worker baut alle strukturierten Felder deterministisch.",
   "type": "object",
   "required": ["artifact_type", "scope", "content", "confidence", "provenance"],
   "additionalProperties": false,
@@ -18,7 +18,7 @@
         "test_generation",
         "docstring"
       ],
-      "description": "Typ des prob-Artefakts (Teilmenge der Gesamtenum in provenance)"
+      "description": "Typ des prob-Artefakts, vom Worker aus task_type abgeleitet (deterministisch)"
     },
     "scope": {
       "type": "string",
@@ -28,44 +28,13 @@
     "content": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Typ-spezifische Nutzlast (jsonb)"
+      "description": "LLM-Ausgabe geparst: text (Pflicht), findings/risks/recommendations (optional, plain text), model_self_reported (optional)"
     },
     "confidence": {
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
-      "description": "Selbsteinschaetzung des Producers. Pflicht bei prob, verboten bei det."
-    },
-    "findings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": true
-      },
-      "description": "Einzelne Befunde (z.B. Review-Hinweise)"
-    },
-    "risks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity"],
-        "additionalProperties": true,
-        "properties": {
-          "severity": {
-            "type": "string",
-            "enum": ["low", "medium", "high", "critical"]
-          }
-        }
-      },
-      "description": "Risiken je Finding: severity, location, Beschreibung"
-    },
-    "recommendations": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": true
-      },
-      "description": "Verbesserungsvorschlaege"
+      "description": "Vertrauenswert aus dem Modell-Tier (Worker-berechnet, nicht LLM-Selbsteinschaetzung)"
     },
     "provenance": {
       "$ref": "provenance.schema.json"

@@ -6,12 +6,11 @@ det-testbar ohne Postgres / GPU:
 - LlmWorker-Plumbing mit FakeModel (Schema-Konformitaet, complete/fail-Routing)
 - WorkerLoop-Dispatching (det/LLM-Verzweigung, complete/fail-Aufruf)
 
-Nicht hier: reale Ollama-Qualitaet (dev-verifiziert), DB-Integration.
+LLM-Antworten im Label-Prefix-Format (core.llm_parser).
+Confidence kommt aus dem Modell-Tier (TIER_CONFIDENCE), nicht vom LLM.
 """
 
 from __future__ import annotations
-
-import json
 
 import httpx
 import pytest
@@ -31,28 +30,25 @@ from core.worker import DetWorker, LlmWorker, WorkerLoop
 # ---------------------------------------------------------------------------
 
 
-def _prob_response(confidence: float = 0.85) -> str:
-    return json.dumps(
-        {
-            "artifact_type": "code_explanation",
-            "scope": "file:core/foo.py",
-            "content": {"text": "erklaerung"},
-            "confidence": confidence,
-            "findings": [],
-            "risks": [],
-            "recommendations": [],
-            "provenance": {
-                "producer_class": "prob",
-                "producer": "phi4-mini",
-                "producer_version": "0.1",
-                "schema_version": "1",
-                "source_hash": "abc",
-                "input_hash": "def",
-                "timestamp": "2026-06-30T00:00:00+00:00",
-                "artifact_type": "code_explanation",
-                "scope": "file:core/foo.py",
-            },
-        }
+def _prob_response(content: str = "Erklaerung des Codes.") -> str:
+    """LLM-Antwort im Label-Prefix-Format."""
+    return (
+        f"MODEL: phi4-mini\n\n"
+        f"CONTENT:\n{content}\n\n"
+        f"FINDINGS:\nnone\n\n"
+        f"RISKS:\nnone\n\n"
+        f"RECOMMENDATIONS:\nnone\n"
+    )
+
+
+def _prob_response_full() -> str:
+    """LLM-Antwort mit allen Sections befuellt."""
+    return (
+        "MODEL: phi4-mini\n\n"
+        "CONTENT:\nDies ist die Hauptantwort.\n\n"
+        "FINDINGS:\n- Bug auf Zeile 42\n\n"
+        "RISKS:\n- SQL-Injection moeglich\n\n"
+        "RECOMMENDATIONS:\n- Input validieren\n"
     )
 
 
@@ -78,8 +74,6 @@ def _item(
 
 
 class _FakeQueue:
-    """Minimal Queue-Stub, der keine Datenbankverbindung benoetigt."""
-
     def __init__(self, item: QueueItem | None):
         self._item = item
         self.completed: list[int] = []
@@ -96,8 +90,6 @@ class _FakeQueue:
 
 
 class _FakeRepo:
-    """Repository-Stub: speichert put_artifact-Aufrufe, gibt id zurueck."""
-
     def __init__(self):
         self.artifacts: list = []
 
@@ -144,7 +136,6 @@ class TestReplayModel:
 class TestOllamaAdapterListModels:
     def test_returns_model_names_without_tag(self):
         from unittest.mock import patch
-
         from core.ollama_adapter import OllamaAdapter
 
         body = {"models": [{"name": "phi4-mini:latest"}, {"name": "qwen3-8b:q4"}]}
@@ -155,7 +146,6 @@ class TestOllamaAdapterListModels:
 
     def test_returns_empty_on_connection_error(self):
         from unittest.mock import patch
-
         from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
@@ -164,7 +154,6 @@ class TestOllamaAdapterListModels:
 
     def test_returns_empty_on_http_error(self):
         from unittest.mock import patch
-
         from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get") as mock_get:
@@ -214,8 +203,6 @@ class TestOllamaAdapterErrors:
             adapter.complete("prompt")
 
     def test_transport_error_raises_transient(self):
-        """Verbindungsabbruch (peer closed / disconnect) -> TransientModelError
-        (retrybar), nicht RuntimeError."""
         from core.ollama_adapter import OllamaAdapter
 
         class _BoomTransport(httpx.BaseTransport):
@@ -235,53 +222,103 @@ class TestOllamaAdapterErrors:
 
 class TestLlmWorker:
     def _make_worker(self, fake_model: FakeModel) -> LlmWorker:
-        router = Router()
         return LlmWorker(
-            router=router,
+            router=Router(),
             model_factory=lambda name: fake_model,
         )
 
-    def test_prob_result_schema_conformant_and_stored(self):
-        """LlmWorker speichert ein schema-konformes ResultProb."""
-        worker = self._make_worker(FakeModel(responses=[_prob_response(0.9)]))
+    def test_result_stored_on_success(self):
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)
         assert outcome.status == "done"
-        assert outcome.confidence == pytest.approx(0.9)
         assert len(repo.artifacts) == 1
 
-    def test_confidence_present_in_outcome(self):
-        worker = self._make_worker(FakeModel(responses=[_prob_response(0.75)]))
+    def test_artifact_type_derived_from_task_type(self):
+        """artifact_type wird deterministisch aus task_type abgeleitet."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(task_type="explain"), repo)
+        assert repo.artifacts[0].artifact_type.value == "code_explanation"
+
+    def test_artifact_type_summarize(self):
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(task_type="summarize"), repo)
+        assert repo.artifacts[0].artifact_type.value == "code_summary"
+
+    def test_scope_from_queue_item(self):
+        """scope kommt aus dem QueueItem, nicht aus der LLM-Antwort."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(scope="file:core/router.py"), repo)
+        assert repo.artifacts[0].scope == "file:core/router.py"
+
+    def test_confidence_from_model_tier(self):
+        """Confidence aus TIER_CONFIDENCE[local] = 0.70 fuer phi4-mini."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(), repo)
+        assert repo.artifacts[0].confidence == pytest.approx(0.70)
+
+    def test_content_text_from_llm(self):
+        """content['text'] enthaelt die LLM-Antwort."""
+        worker = self._make_worker(
+            FakeModel(responses=[_prob_response("Sehr detaillierte Erklaerung.")])
+        )
+        repo = _FakeRepo()
+        worker.run(_item(), repo)
+        assert "Erklaerung" in repo.artifacts[0].content["text"]
+
+    def test_full_sections_stored_in_content(self):
+        """findings/risks/recommendations landen in content als plain text."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response_full()]))
+        repo = _FakeRepo()
+        worker.run(_item(task_type="review"), repo)
+        content = repo.artifacts[0].content
+        assert "Bug" in content.get("findings", "")
+        assert "SQL" in content.get("risks", "")
+        assert "validieren" in content.get("recommendations", "")
+
+    def test_none_sections_absent_from_content(self):
+        """Sections mit 'none' tauchen nicht in content auf."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(), repo)
+        content = repo.artifacts[0].content
+        assert "findings" not in content
+        assert "risks" not in content
+        assert "recommendations" not in content
+
+    def test_model_self_reported_in_content(self):
+        """MODEL-Label landet in content['model_self_reported']."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(), repo)
+        assert repo.artifacts[0].content.get("model_self_reported") == "phi4-mini"
+
+    def test_plain_text_response_accepted(self):
+        """Antwort ohne Labels (Fallback) wird akzeptiert."""
+        worker = self._make_worker(
+            FakeModel(responses=["Einfache Antwort ohne Labels."])
+        )
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)
-        assert outcome.confidence is not None
+        assert outcome.status == "done"
+        assert len(repo.artifacts) == 1
 
-    def test_fenced_response_is_tolerated_and_stored(self):
-        """phi4-mini verpackt JSON oft in ```json-Fences: muss trotzdem
-        validieren und gespeichert werden (nicht 'failed')."""
-        fenced = f"```json\n{_prob_response(0.9)}\n```"
+    def test_fenced_response_tolerated(self):
+        """```json-Fences um Text herum: werden als normaler Text behandelt."""
+        fenced = f"```\n{_prob_response()}\n```"
         worker = self._make_worker(FakeModel(responses=[fenced]))
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)
         assert outcome.status == "done"
-        assert len(repo.artifacts) == 1
-
-    def test_prose_wrapped_response_is_tolerated(self):
-        """Prosa vor/nach dem JSON darf die Validierung nicht brechen."""
-        wrapped = f"Hier ist das Ergebnis:\n{_prob_response(0.9)}\nFertig."
-        worker = self._make_worker(FakeModel(responses=[wrapped]))
-        repo = _FakeRepo()
-        outcome = worker.run(_item(), repo)
-        assert outcome.status == "done"
-        assert len(repo.artifacts) == 1
 
     def test_unresolved_does_not_store_artifact(self):
-        """Bei unresolved kein put_artifact. Factory gibt None fuer alle
-        anderen Kandidaten -> nur phi4-mini versucht (beide low_confidence)."""
-
         def factory(name: str):
             if name == "phi4-mini":
-                return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
+                return FakeModel(responses=["", ""])  # leer -> prob_schema_fail
             return None
 
         worker = LlmWorker(router=Router(), model_factory=factory)
@@ -291,8 +328,6 @@ class TestLlmWorker:
         assert len(repo.artifacts) == 0
 
     def test_transient_error_retries_same_model(self):
-        """Transportabbruch beim 1. Versuch -> Retry am selben Modell, dann Erfolg."""
-
         class _FlakyModel:
             def __init__(self, response: str):
                 self._response = response
@@ -304,28 +339,21 @@ class TestLlmWorker:
                     raise TransientModelError("peer closed connection")
                 return self._response
 
-        flaky = _FlakyModel(_prob_response(0.9))
+        flaky = _FlakyModel(_prob_response())
         worker = LlmWorker(router=Router(), model_factory=lambda name: flaky)
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)
         assert outcome.status == "done"
-        assert flaky.calls == 2  # 1x transient, 1x Erfolg (selbes Modell)
+        assert flaky.calls == 2
         assert len(repo.artifacts) == 1
 
-    def test_provenance_is_stamped_by_worker(self):
-        """Der Worker ueberschreibt die Modell-Provenance mit autoritativen Werten:
-        echter Modellname statt uebernommenem Prompt-Platzhalter."""
-        wrong = json.loads(_prob_response(0.9))
-        wrong["provenance"]["producer"] = "gpt-4o-mini"  # Platzhalter aus dem Prompt
-        wrong["provenance"]["source_hash"] = "x"
-        worker = self._make_worker(FakeModel(responses=[json.dumps(wrong)]))
+    def test_provenance_producer_is_authoritative(self):
+        """provenance.producer = outcome.final_model, nicht LLM-selbstangabe."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
         repo = _FakeRepo()
-        outcome = worker.run(_item(), repo)
-        assert outcome.status == "done"
-        stored = repo.artifacts[0]
-        assert stored.provenance.producer == "phi4-mini"  # echtes Modell
-        assert stored.provenance.producer_class.value == "prob"
-        assert stored.provenance.source_hash != "x"  # autoritativ ueberschrieben
+        worker.run(_item(model="phi4-mini"), repo)
+        assert repo.artifacts[0].provenance.producer == "phi4-mini"
+        assert repo.artifacts[0].provenance.producer_class.value == "prob"
 
 
 # ---------------------------------------------------------------------------
@@ -343,14 +371,12 @@ class TestWorkerLoop:
     ) -> tuple[WorkerLoop, _FakeQueue]:
         queue = _FakeQueue(item)
         repo = _FakeRepo()
-        router = Router()
         if model_factory is None:
             _m = fake_model
             model_factory = lambda name: _m  # noqa: E731
 
         det_worker = DetWorker(ingest_fn=det_ingest or (lambda *_: "artifact-det"))
-        llm_worker = LlmWorker(router=router, model_factory=model_factory)
-
+        llm_worker = LlmWorker(router=Router(), model_factory=model_factory)
         loop = WorkerLoop(
             queue=queue,
             repo=repo,
@@ -365,7 +391,7 @@ class TestWorkerLoop:
 
     def test_prob_task_calls_complete_on_success(self):
         prob_item = _item(task_type="explain")
-        fake_model = FakeModel(responses=[_prob_response(0.9)])
+        fake_model = FakeModel(responses=[_prob_response()])
         loop, queue = self._make_loop(prob_item, fake_model=fake_model)
         assert loop.step("phi4-mini") is True
         assert queue.completed == [1]
@@ -376,7 +402,7 @@ class TestWorkerLoop:
 
         def factory(name: str):
             if name == "phi4-mini":
-                return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
+                return FakeModel(responses=["", ""])
             return None
 
         loop, queue = self._make_loop(prob_item, model_factory=factory)
@@ -385,12 +411,11 @@ class TestWorkerLoop:
         assert queue.completed == []
 
     def test_on_item_fail_reports_reason(self):
-        """Bei fail wird der Grund (trigger) an on_item_fail gemeldet."""
         prob_item = _item(task_type="explain")
 
         def factory(name: str):
             if name == "phi4-mini":
-                return FakeModel(responses=[_prob_response(0.1), _prob_response(0.1)])
+                return FakeModel(responses=["", ""])
             return None
 
         queue = _FakeQueue(prob_item)
@@ -405,7 +430,7 @@ class TestWorkerLoop:
         loop.step("phi4-mini")
         assert queue.failed == [1]
         assert len(reasons) == 1
-        assert "low_confidence" in reasons[0]
+        assert "prob_schema_fail" in reasons[0]
 
     def test_det_task_calls_complete(self):
         det_item = _item(task_type="index", scope="file:core/router.py")
@@ -422,11 +447,11 @@ class TestWorkerLoop:
 
         queue = _FakeQueue(prob_item)
         repo = _FakeRepo()
-        router = Router()
-        det_worker = DetWorker(ingest_fn=lambda *_: "x")
-        llm_worker = LlmWorker(router=router, model_factory=exploding_factory)
         loop = WorkerLoop(
-            queue=queue, repo=repo, det_worker=det_worker, llm_worker=llm_worker
+            queue=queue,
+            repo=repo,
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(router=Router(), model_factory=exploding_factory),
         )
         with pytest.raises(RuntimeError):
             loop.step("phi4-mini")

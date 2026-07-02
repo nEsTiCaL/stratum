@@ -124,19 +124,15 @@ class TestResultProb:
                 provenance=_PROV_PROB,
             )
 
-    def test_optional_fields_accepted(self):
+    def test_arbitrary_content_accepted(self):
         r = ResultProb(
             artifact_type="review_findings",
             scope="module:src/auth",
-            content={},
+            content={"text": "ok", "findings": "none", "custom_key": 42},
             confidence=0.7,
-            findings=[{"line": 42, "text": "Missing type hint"}],
-            risks=[{"severity": "low", "location": "line:42"}],
-            recommendations=[{"text": "Add type hint"}],
             provenance=_PROV_PROB,
         )
-        assert r.findings is not None
-        assert r.risks is not None
+        assert r.content["custom_key"] == 42
 
 
 class TestScopePattern:

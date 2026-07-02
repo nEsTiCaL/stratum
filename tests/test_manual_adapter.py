@@ -15,23 +15,21 @@ from core.manual_adapter import ManualAdapter
 from core.router import TaskType
 from core.validator import Validator
 
-_RESULT_PROB_JSON = """{
-  "artifact_type": "code_summary",
-  "scope": "file:core/manual_adapter.py",
-  "content": {"summary": "Copy-Paste-Adapter"},
-  "confidence": 0.85,
-  "provenance": {
-    "schema_version": "1",
-    "source_hash": "abc123",
-    "input_hash": "in-001",
-    "producer": "claude-sonnet-4-6",
-    "producer_version": "2026-07",
-    "producer_class": "prob",
-    "timestamp": "2026-07-01T12:00:00+00:00",
-    "artifact_type": "code_summary",
-    "scope": "file:core/manual_adapter.py"
-  }
-}"""
+_RESULT_PROB_LABEL = """\
+MODEL: claude-sonnet-4-6
+
+CONTENT:
+Copy-Paste-Adapter fuer manuelle LLM-Antworten via stdin.
+
+FINDINGS:
+none
+
+RISKS:
+none
+
+RECOMMENDATIONS:
+none
+"""
 
 
 class TestDisplay:
@@ -97,9 +95,8 @@ class TestComplete:
     def test_validation_path_identical_to_api(self):
         """Kern-Akzeptanz: eingefuegte Antwort -> Validator -> ResultProb,
         identisch zum CloudAdapter-Pfad."""
-        inp = StringIO(_RESULT_PROB_JSON + "\n---\n")
+        inp = StringIO(_RESULT_PROB_LABEL + "\n---\n")
         adapter = ManualAdapter(out=StringIO(), inp=inp)
         text = adapter.complete("summarize")
         result = Validator().validate(text, TaskType.summarize, producer_class="prob")
         assert result.passed is True
-        assert result.confidence == pytest.approx(0.85)

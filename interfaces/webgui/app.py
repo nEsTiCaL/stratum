@@ -370,8 +370,6 @@ def create_app(
             "passed": validation.passed,
             "trigger": validation.trigger,
         }
-        if validation.confidence is not None:
-            result["confidence"] = validation.confidence
         if validation.detail:
             result["detail"] = validation.detail
         return result

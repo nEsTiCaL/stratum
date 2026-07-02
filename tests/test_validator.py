@@ -2,6 +2,9 @@
 
 Alle Tests det/TDD: kein Postgres, kein GPU, kein echtes Modell.
 Validator-Logik und Eskalations-Ablauf laufen ueber den Model-Seam (FakeModel).
+
+prob-Validierung prueft nur: CONTENT nicht leer.
+Confidence kommt nicht mehr vom LLM (Worker leitet sie aus Tier ab).
 """
 
 from __future__ import annotations
@@ -12,7 +15,6 @@ import pytest
 
 from core.router import Candidate, CostTier, Provider, TaskType
 from core.validator import (
-    CONFIDENCE_THRESHOLDS,
     ContextExceededError,
     EscalationLoop,
     FakeModel,
@@ -42,36 +44,10 @@ _DET_RESULT = json.dumps(
     }
 )
 
-_PROB_RESULT_OK = json.dumps(
-    {
-        "artifact_type": "code_explanation",
-        "scope": "file:core/foo.py",
-        "content": {"text": "erklaerung"},
-        "confidence": 0.8,
-        "findings": [],
-        "risks": [],
-        "recommendations": [],
-        "provenance": {
-            "producer_class": "prob",
-            "producer": "phi4-mini",
-            "producer_version": "0.1",
-            "schema_version": "1",
-            "source_hash": "abc",
-            "input_hash": "def",
-            "timestamp": "2026-06-30T00:00:00+00:00",
-            "artifact_type": "code_explanation",
-            "scope": "file:core/foo.py",
-        },
-    }
-)
 
-
-def _prob_result(confidence: float, task_type: str = "explain") -> str:
-    artifact = "code_explanation"
-    data = json.loads(_PROB_RESULT_OK)
-    data["confidence"] = confidence
-    data["artifact_type"] = artifact
-    return json.dumps(data)
+def _prob_response(content: str = "Erklaerung des Codes.") -> str:
+    """Minimale LLM-Antwort im Label-Prefix-Format."""
+    return f"MODEL: phi4-mini\n\nCONTENT:\n{content}\n\nFINDINGS:\nnone\n"
 
 
 def _candidate(name: str, *, cloud: bool = False) -> Candidate:
@@ -91,7 +67,6 @@ class TestValidatorDet:
         result = v.validate(_DET_RESULT, TaskType.index, producer_class="det")
         assert result.passed is True
         assert result.trigger == "pass"
-        assert result.confidence is None
 
     def test_invalid_json_det_is_bug(self):
         v = Validator()
@@ -100,7 +75,6 @@ class TestValidatorDet:
         assert result.trigger == "det_schema_fail"
 
     def test_wrong_schema_det_is_bug(self):
-        # Kein artifact_type -> Schema-Fehler
         bad = json.dumps({"scope": "file:x.py"})
         v = Validator()
         result = v.validate(bad, TaskType.index, producer_class="det")
@@ -108,7 +82,6 @@ class TestValidatorDet:
         assert result.trigger == "det_schema_fail"
 
     def test_det_fail_is_no_escalation_candidate(self):
-        # det-Fail traegt escalate=False, damit der Aufrufer weiss: kein Retry
         v = Validator()
         result = v.validate("kaputt", TaskType.symbol_lookup, producer_class="det")
         assert result.passed is False
@@ -116,75 +89,56 @@ class TestValidatorDet:
 
 
 # ---------------------------------------------------------------------------
-# Validator: prob-Pfad
+# Validator: prob-Pfad (Label-Format)
 # ---------------------------------------------------------------------------
 
 
 class TestValidatorProb:
-    def test_valid_prob_above_threshold_passes(self):
+    def test_labeled_format_with_content_passes(self):
         v = Validator()
-        result = v.validate(_prob_result(0.8), TaskType.explain, producer_class="prob")
+        result = v.validate(_prob_response(), TaskType.explain, producer_class="prob")
         assert result.passed is True
-        assert result.confidence == pytest.approx(0.8)
+        assert result.trigger == "pass"
 
-    def test_prob_below_threshold_fails(self):
-        # explain-Schwelle 0.55 -> 0.4 unterschreitet
-        v = Validator()
-        result = v.validate(_prob_result(0.4), TaskType.explain, producer_class="prob")
-        assert result.passed is False
-        assert result.trigger == "low_confidence"
-        assert result.may_escalate is True
-
-    def test_prob_exactly_at_threshold_passes(self):
-        threshold = CONFIDENCE_THRESHOLDS[TaskType.explain]
+    def test_plain_text_without_labels_passes(self):
+        # Fallback: ganzer Text = CONTENT -> gueltig solange nicht leer
         v = Validator()
         result = v.validate(
-            _prob_result(threshold), TaskType.explain, producer_class="prob"
+            "Einfache Antwort ohne Labels.", TaskType.summarize, producer_class="prob"
         )
         assert result.passed is True
 
-    def test_prob_invalid_json_fails_with_escalation(self):
+    def test_empty_response_fails(self):
         v = Validator()
-        result = v.validate("kein-json", TaskType.review, producer_class="prob")
+        result = v.validate("", TaskType.explain, producer_class="prob")
         assert result.passed is False
         assert result.trigger == "prob_schema_fail"
         assert result.may_escalate is True
 
-    def test_prob_envelope_without_provenance_passes(self):
-        # Das Modell liefert nur den Content-Envelope; die Provenance stempelt
-        # der Worker. Fehlende Provenance darf die Validierung NICHT brechen.
-        envelope = json.dumps(
-            {
-                "artifact_type": "code_summary",
-                "scope": "file:core/foo.py",
-                "content": {"zweck": "x"},
-                "confidence": 0.8,
-            }
-        )
+    def test_empty_content_section_fails(self):
+        raw = "MODEL: phi4-mini\n\nCONTENT:\n\nFINDINGS:\nnone\n"
         v = Validator()
-        result = v.validate(envelope, TaskType.summarize, producer_class="prob")
-        assert result.passed is True
-        assert result.confidence == pytest.approx(0.8)
-
-    def test_prob_missing_content_still_fails(self):
-        # Content ist Modell-Sache: fehlt er, muss die Validierung scheitern
-        # (nur die Provenance wird gestubbt, nicht der Envelope).
-        broken = json.dumps(
-            {"artifact_type": "code_summary", "scope": "file:core/foo.py"}
-        )
-        v = Validator()
-        result = v.validate(broken, TaskType.summarize, producer_class="prob")
+        result = v.validate(raw, TaskType.explain, producer_class="prob")
         assert result.passed is False
         assert result.trigger == "prob_schema_fail"
+        assert result.may_escalate is True
 
-    def test_crypto_audit_threshold_is_085(self):
-        assert CONFIDENCE_THRESHOLDS[TaskType.crypto_audit] == pytest.approx(0.85)
+    def test_full_sections_pass(self):
+        raw = (
+            "MODEL: phi4-mini\n\n"
+            "CONTENT:\nHauptantwort hier.\n\n"
+            "FINDINGS:\n- Bug auf Zeile 42\n\n"
+            "RISKS:\n- Injection moeglich\n\n"
+            "RECOMMENDATIONS:\n- Validierung hinzufuegen\n"
+        )
+        v = Validator()
+        result = v.validate(raw, TaskType.review, producer_class="prob")
+        assert result.passed is True
 
-    def test_document_threshold_is_055(self):
-        assert CONFIDENCE_THRESHOLDS[TaskType.document] == pytest.approx(0.55)
-
-    def test_default_threshold_is_065(self):
-        assert CONFIDENCE_THRESHOLDS[TaskType.review] == pytest.approx(0.65)
+    def test_prob_fail_may_escalate(self):
+        v = Validator()
+        result = v.validate("", TaskType.review, producer_class="prob")
+        assert result.may_escalate is True
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +186,6 @@ class TestFakeModel:
 
 class TestEscalationLoopDet:
     def test_det_schema_fail_is_unresolved_no_retry(self):
-        """det-Fehler -> unresolved, kein Retry, attempts=1."""
         calls: list[str] = []
 
         def factory(name: str):
@@ -240,12 +193,11 @@ class TestEscalationLoopDet:
             return FakeModel(responses=["kaputt"])
 
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("tree-sitter")]
         outcome = loop.run(
             task_type=TaskType.index,
             producer_class="det",
             prompt="p",
-            candidates=candidates,
+            candidates=[_candidate("tree-sitter")],
             model_factory=factory,
         )
         assert outcome.status == "unresolved"
@@ -257,37 +209,34 @@ class TestEscalationLoopDet:
 class TestEscalationLoopProb:
     def test_first_response_passes(self):
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi4-mini")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
             prompt="p",
-            candidates=candidates,
-            model_factory=lambda _: FakeModel(responses=[_prob_result(0.9)]),
+            candidates=[_candidate("phi4-mini")],
+            model_factory=lambda _: FakeModel(responses=[_prob_response()]),
         )
         assert outcome.status == "done"
         assert outcome.final_model == "phi4-mini"
         assert outcome.attempts == 1
 
-    def test_low_confidence_retries_once_then_escalates(self):
-        """low_confidence -> 1 Retry am selben Modell -> naechster Kandidat."""
+    def test_empty_response_retries_then_escalates(self):
+        """Leere Antwort (prob_schema_fail) -> 1 Retry am selben Modell
+        -> naechster Kandidat."""
         call_log: list[str] = []
 
         def factory(name: str):
             call_log.append(name)
             if name == "phi4-mini":
-                # beide Versuche schlagen fehl
-                return FakeModel(responses=[_prob_result(0.3), _prob_result(0.3)])
-            # naechster Kandidat liefert gutes Ergebnis
-            return FakeModel(responses=[_prob_result(0.9)])
+                return FakeModel(responses=["", ""])  # beide leer
+            return FakeModel(responses=[_prob_response()])
 
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi4-mini"), _candidate("qwen3-8b")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
             prompt="p",
-            candidates=candidates,
+            candidates=[_candidate("phi4-mini"), _candidate("qwen3-8b")],
             model_factory=factory,
         )
         assert outcome.status == "done"
@@ -296,15 +245,12 @@ class TestEscalationLoopProb:
 
     def test_exhausted_candidates_is_unresolved(self):
         loop = EscalationLoop(Validator())
-        candidates = [_candidate("phi4-mini")]
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
             prompt="p",
-            candidates=candidates,
-            model_factory=lambda _: FakeModel(
-                responses=[_prob_result(0.1), _prob_result(0.1)]
-            ),
+            candidates=[_candidate("phi4-mini")],
+            model_factory=lambda _: FakeModel(responses=["", ""]),
         )
         assert outcome.status == "unresolved"
         assert outcome.attempts == 2
@@ -316,7 +262,7 @@ class TestEscalationLoopProb:
         def factory(name: str):
             if name == "phi4-mini":
                 return FakeModel(responses=[], raise_context_exceeded=True)
-            return FakeModel(responses=[_prob_result(0.9)])
+            return FakeModel(responses=[_prob_response()])
 
         outcome = loop.run(
             task_type=TaskType.review,
@@ -327,19 +273,17 @@ class TestEscalationLoopProb:
         )
         assert outcome.status == "done"
         assert outcome.final_model == "qwen3-8b"
-        assert outcome.trigger == "pass"
 
     def test_cloud_candidate_skipped_pre_s3(self):
-        """Cloud-Kandidat (factory=None) wird uebersprungen."""
         loop = EscalationLoop(Validator())
         candidates = [
             _candidate("phi4-mini"),
-            _candidate("sonnet", cloud=True),  # cloud, nicht verfuegbar
+            _candidate("sonnet", cloud=True),
         ]
 
         def factory(name: str):
             if name == "phi4-mini":
-                return FakeModel(responses=[_prob_result(0.1), _prob_result(0.1)])
+                return FakeModel(responses=["", ""])
             return None  # cloud: nicht verfuegbar
 
         outcome = loop.run(
@@ -352,19 +296,17 @@ class TestEscalationLoopProb:
         assert outcome.status == "unresolved"
 
     def test_outcome_trace_fields_present(self):
-        """EscalationOutcome traegt alle Trace-Felder."""
         loop = EscalationLoop(Validator())
         outcome = loop.run(
             task_type=TaskType.explain,
             producer_class="prob",
             prompt="p",
             candidates=[_candidate("phi4-mini")],
-            model_factory=lambda _: FakeModel(responses=[_prob_result(0.9)]),
+            model_factory=lambda _: FakeModel(responses=[_prob_response()]),
         )
         assert outcome.status == "done"
         assert outcome.validation_result == "pass"
         assert outcome.trigger == "pass"
         assert isinstance(outcome.attempts, int)
         assert outcome.final_model is not None
-        assert outcome.confidence is not None
         assert outcome.response is not None

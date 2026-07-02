@@ -2,8 +2,12 @@
 
 DetWorker:  ruft ingest_fn (Default: ingest_file) auf und schreibt ResultDet.
 LlmWorker:  baut Prompt aus QueueItem.payload, laeuft EscalationLoop,
-            schreibt ResultProb bei success via repo.put_artifact.
+            baut ResultProb vollstaendig aus Kontext + geparster LLM-Antwort.
 WorkerLoop: claim -> dispatch (det|llm) -> complete|fail.
+
+LLM-Vertrag: Label-Prefix-Format (core.llm_parser). Das Modell liefert nur
+Freitext; alle strukturierten Felder (artifact_type, scope, confidence,
+provenance) werden deterministisch vom Worker gesetzt.
 """
 
 from __future__ import annotations
@@ -12,13 +16,20 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from core.json_extract import extract_json
-from core.models.result_prob_schema import ResultProb
+from core.llm_parser import parse_llm_response
+from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
 from core.repository import Repository
-from core.router import TASK_REQUIREMENTS, Router, TaskType
-from core.validator import EscalationLoop, Validator
+from core.router import (
+    MODEL_CAPABILITIES,
+    TASK_REQUIREMENTS,
+    TASK_TYPE_TO_ARTIFACT_TYPE,
+    TIER_CONFIDENCE,
+    Router,
+    TaskType,
+)
+from core.validator import EscalationLoop, EscalationOutcome, Validator
 
 
 @dataclass
@@ -59,7 +70,7 @@ class LlmWorker:
     def __post_init__(self) -> None:
         self._loop = EscalationLoop(Validator())
 
-    def run(self, item: QueueItem, repo: Repository):
+    def run(self, item: QueueItem, repo: Repository) -> EscalationOutcome:
         from core.secret_scan import Sensitivity
 
         task_type = TaskType(item.task_type)
@@ -82,21 +93,46 @@ class LlmWorker:
             candidates=candidates,
             model_factory=self.model_factory,
         )
+
         if outcome.status == "done" and outcome.response is not None:
-            # Modell liefert nur den Content-Envelope; die Provenance stempelt der
-            # Worker autoritativ (kleine Modelle uebernehmen sonst die Platzhalter
-            # aus dem Prompt-Beispiel oder lassen Pflichtfelder weg).
-            data = extract_json(outcome.response)
+            parsed = parse_llm_response(outcome.response)
+
+            artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
+            artifact_type = ArtifactType(artifact_type_str)
+
+            # Confidence aus Modell-Tier — LLM liefert sie nicht zuverlaessig.
+            model_name = outcome.final_model or "unknown"
+            cap = MODEL_CAPABILITIES.get(model_name)
+            confidence = (
+                TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
+            )
+
             prov = build_prob_provenance(
-                scope=data["scope"],
-                artifact_type=data["artifact_type"],
-                producer=outcome.final_model or "unknown",
+                scope=item.scope,
+                artifact_type=artifact_type_str,
+                producer=model_name,
                 root=self.root,
             )
-            result_obj = ResultProb.model_validate(
-                {**data, "provenance": prov.model_dump(mode="json")}
+
+            content: dict = {"text": parsed.text}
+            if parsed.model_self_reported:
+                content["model_self_reported"] = parsed.model_self_reported
+            if parsed.findings:
+                content["findings"] = parsed.findings
+            if parsed.risks:
+                content["risks"] = parsed.risks
+            if parsed.recommendations:
+                content["recommendations"] = parsed.recommendations
+
+            result_obj = ResultProb(
+                artifact_type=artifact_type,
+                scope=item.scope,
+                content=content,
+                confidence=confidence,
+                provenance=prov,
             )
             repo.put_artifact(result_obj)
+
         return outcome
 
 

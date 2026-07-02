@@ -140,40 +140,34 @@ class TestModelFactory:
         assert factory("phi4-mini") is None  # lokal, kein Cloud-Spec
 
 
-_RESULT_PROB_JSON = """
-{
-  "artifact_type": "code_summary",
-  "scope": "file:src/auth.py",
-  "content": {"summary": "handles login"},
-  "confidence": 0.9,
-  "provenance": {
-    "schema_version": "1",
-    "source_hash": "commit-abc",
-    "input_hash": "in-001",
-    "producer": "claude-opus-4-8",
-    "producer_version": "2026-07",
-    "producer_class": "prob",
-    "timestamp": "2026-07-01T12:00:00+00:00",
-    "artifact_type": "code_summary",
-    "scope": "file:src/auth.py"
-  }
-}
+_RESULT_PROB_LABEL = """\
+MODEL: claude-opus-4-8
+
+CONTENT:
+Die Authentifizierungsschicht verwaltet Login-Flows und Session-Tokens.
+
+FINDINGS:
+none
+
+RISKS:
+none
+
+RECOMMENDATIONS:
+none
 """
 
 
 class TestResponseToResultProb:
     def test_recorded_response_validates_as_result_prob(self):
-        # Antwort -> Result-Objekt (Schema aus S1): der vom Adapter gelieferte
-        # Text ist eine gueltige ResultProb-JSON, die der Validator (I-2.4)
-        # als prob-Erfolg akzeptiert.
+        # Antwort -> Validator: Cloud-Adapter liefert Label-Prefix-Format,
+        # Validator prueft nur ob CONTENT nicht leer ist.
         from core.router import TaskType
 
         sender = ReplayCloudSender(
-            {"summarize auth": RawCloudResponse(_RESULT_PROB_JSON, 500, 120)}
+            {"summarize auth": RawCloudResponse(_RESULT_PROB_LABEL, 500, 120)}
         )
         adapter = CloudAdapter(spec=resolve_spec("opus"), sender=sender)
         text = adapter.complete("summarize auth")
 
         result = Validator().validate(text, TaskType.summarize, producer_class="prob")
         assert result.passed is True
-        assert result.confidence == pytest.approx(0.9)

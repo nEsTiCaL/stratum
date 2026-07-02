@@ -1,9 +1,9 @@
 """Validator + Eskalation (I-2.4).
 
 Validiert eine Model-Antwort gegen das passende Result-Schema
-(producer_class-Verzweigung: det -> ResultDet ohne confidence, prob ->
-ResultProb mit confidence-Schwelle) und treibt die Eskalation entlang der
-Router-Kandidatenliste (core.router.Router.candidates).
+(producer_class-Verzweigung: det -> ResultDet JSON, prob -> Label-Prefix-Format
+via core.llm_parser). Confidence wird nicht mehr vom LLM erwartet; der Worker
+leitet sie aus dem Modell-Tier ab (core.router.TIER_CONFIDENCE).
 
 Model-Seam: schmales Protocol Model.complete(prompt)->response. Reale
 Implementierung (Ollama-Adapter) folgt in I-2.5; hier nur FakeModel fuer
@@ -17,46 +17,9 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
-from core.json_extract import extract_json
+from core.llm_parser import parse_llm_response
 from core.models.result_det_schema import ResultDet
-from core.models.result_prob_schema import ResultProb
 from core.router import Candidate, TaskType
-
-# Confidence-Schwellen je task_type (Startwerte SK6). Default 0.65, ausser
-# den hier explizit gelisteten Ausnahmen. Voll befuellt fuer alle TaskTypes,
-# damit CONFIDENCE_THRESHOLDS[task_type] direkt nutzbar ist.
-_THRESHOLD_OVERRIDES: dict[TaskType, float] = {
-    TaskType.crypto_audit: 0.85,
-    TaskType.document: 0.55,
-    TaskType.explain: 0.55,
-}
-_DEFAULT_THRESHOLD = 0.65
-
-CONFIDENCE_THRESHOLDS: dict[TaskType, float] = {
-    task_type: _THRESHOLD_OVERRIDES.get(task_type, _DEFAULT_THRESHOLD)
-    for task_type in TaskType
-}
-
-
-def _threshold_for(task_type: TaskType) -> float:
-    return CONFIDENCE_THRESHOLDS[task_type]
-
-
-# Provenance ist Worker-Sache (core.provenance_stamp): das Modell liefert nur den
-# Content-Envelope. Beim Validieren ersetzt dieser valide Stub die (fehlende oder
-# vom Modell verpfuschte) Provenance, damit die Validierung nur artifact_type,
-# scope, content und confidence prueft.
-_STUB_PROVENANCE = {
-    "schema_version": "1",
-    "source_hash": "pending",
-    "input_hash": "pending",
-    "producer": "pending",
-    "producer_version": "pending",
-    "producer_class": "prob",
-    "timestamp": "1970-01-01T00:00:00+00:00",
-    "artifact_type": "code_summary",
-    "scope": "file:pending",
-}
 
 
 class ContextExceededError(Exception):
@@ -115,10 +78,9 @@ class ValidationResult:
 
     passed: bool
     trigger: str  # "pass" | "det_schema_fail" | "prob_schema_fail" |
-    #                "low_confidence" | "context_exceeded"
-    confidence: float | None = None
+    #                "context_exceeded" | "transient_error"
     may_escalate: bool = False  # False bei det-Fail (Bug, kein Retry/Eskalation)
-    detail: str | None = None  # erster Pydantic-Fehler fuer Debug-Meldungen
+    detail: str | None = None  # erster Fehler fuer Debug-Meldungen
 
 
 class Validator:
@@ -139,13 +101,12 @@ class Validator:
 
         if producer_class == "det":
             return self._validate_det(response)
-        return self._validate_prob(response, task_type)
+        return self._validate_prob(response)
 
     def _validate_det(self, response: str) -> ValidationResult:
         try:
             ResultDet.model_validate_json(response)
         except ValidationError as exc:
-            # det-Schema-Fehler = Bug, NIE Eskalation (tdd-methodik/_core.md).
             first = exc.errors(include_url=False)[0]
             detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
             return ValidationResult(
@@ -156,42 +117,29 @@ class Validator:
             )
         return ValidationResult(passed=True, trigger="pass")
 
-    def _validate_prob(self, response: str, task_type: TaskType) -> ValidationResult:
-        # prob-Ausgabe kommt von einem Sprachmodell: Markdown-Fences oder Prosa
-        # um das JSON tolerieren (extract_json), sonst scheitert die Validierung
-        # an der Verpackung statt am Inhalt. Provenance ist nicht Modell-Sache
-        # (der Worker stempelt sie) -> beim Validieren durch einen Stub ersetzen.
+    def _validate_prob(self, response: str) -> ValidationResult:
+        # prob-Antwort kommt als Label-Prefix-Format (core.llm_parser).
+        # Einzige Pflicht: CONTENT ist nicht leer. Confidence, findings etc.
+        # baut der Worker deterministisch — der Validator prueft sie nicht.
         try:
-            data = extract_json(response)
-            if isinstance(data, dict):
-                data = {**data, "provenance": _STUB_PROVENANCE}
-            result = ResultProb.model_validate(data)
-        except ValidationError as exc:
-            first = exc.errors(include_url=False)[0]
-            detail = f"{first['loc']}: {first['msg']}" if exc.errors() else str(exc)
+            parsed = parse_llm_response(response)
+        except Exception as exc:
             return ValidationResult(
                 passed=False,
                 trigger="prob_schema_fail",
                 may_escalate=True,
-                detail=detail,
+                detail=f"parse error: {exc}",
             )
-        except ValueError as exc:
-            # kein/kaputtes JSON in der Antwort
+
+        if not parsed.text:
             return ValidationResult(
                 passed=False,
                 trigger="prob_schema_fail",
                 may_escalate=True,
-                detail=f"kein gueltiges JSON: {exc}",
+                detail="CONTENT leer oder fehlt",
             )
-        confidence = result.confidence
-        if confidence < _threshold_for(task_type):
-            return ValidationResult(
-                passed=False,
-                trigger="low_confidence",
-                confidence=confidence,
-                may_escalate=True,
-            )
-        return ValidationResult(passed=True, trigger="pass", confidence=confidence)
+
+        return ValidationResult(passed=True, trigger="pass")
 
 
 @dataclass(frozen=True)
@@ -203,7 +151,6 @@ class EscalationOutcome:
     trigger: str
     attempts: int
     final_model: str | None
-    confidence: float | None
     response: str | None
 
 
@@ -250,15 +197,13 @@ class EscalationLoop:
                     last_model = candidate.model
                     break  # naechster Kandidat
                 except TransientModelError:
-                    # Transportabbruch: Retry am SELBEN Modell (continue), erst
-                    # nach Aufbrauchen der Versuche zum naechsten Kandidaten.
                     attempts += 1
                     last_result = ValidationResult(
                         passed=False, trigger="transient_error", may_escalate=True
                     )
                     last_response = None
                     last_model = candidate.model
-                    continue
+                    continue  # Retry am selben Modell
 
                 attempts += 1
                 result = self._validator.validate(
@@ -275,23 +220,18 @@ class EscalationLoop:
                         trigger=result.trigger,
                         attempts=attempts,
                         final_model=last_model,
-                        confidence=result.confidence,
                         response=last_response,
                     )
 
                 if not result.may_escalate:
-                    # det-Fail = Bug: weder Retry noch Eskalation.
                     return EscalationOutcome(
                         status="unresolved",
                         validation_result="fail",
                         trigger=result.trigger,
                         attempts=attempts,
                         final_model=last_model,
-                        confidence=result.confidence,
                         response=last_response,
                     )
-                # may_escalate=True: bei prob noch ein Retry am selben Modell
-                # (max_tries=2), danach zum naechsten Kandidaten.
 
         assert last_result is not None
         return EscalationOutcome(
@@ -300,6 +240,5 @@ class EscalationLoop:
             trigger=last_result.trigger,
             attempts=attempts,
             final_model=last_model,
-            confidence=last_result.confidence,
             response=last_response,
         )

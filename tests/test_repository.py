@@ -43,11 +43,8 @@ def _prob(scope="file:src/auth.py", input_hash="in-009", confidence=0.85) -> Res
     return ResultProb(
         artifact_type="review_findings",
         scope=scope,
-        content={"summary": "ok"},
+        content={"text": "ok", "findings": "Missing type hint on line 42"},
         confidence=confidence,
-        findings=[{"line": 42, "text": "Missing type hint"}],
-        risks=[{"severity": "low", "location": "line:42"}],
-        recommendations=[{"text": "Add type hint"}],
         provenance=_prov(
             scope=scope,
             input_hash=input_hash,
@@ -78,8 +75,7 @@ class TestRoundtrip:
         got = repo.get_current("file:src/auth.py", "review_findings")
         assert isinstance(got, ResultProb)
         assert got.confidence == pytest.approx(0.7)
-        assert got.findings == [{"line": 42, "text": "Missing type hint"}]
-        assert got.risks[0].severity.value == "low"
+        assert "text" in got.content
 
     def test_get_current_absent_returns_none(self, conn):
         repo = Repository(conn)
