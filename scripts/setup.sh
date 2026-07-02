@@ -10,7 +10,8 @@
 # Aufruf:     ./scripts/setup.sh [--install] [--layer baseline|s1|s2]
 #
 # Sudo-Hinweis: baseline benoetigt sudo (apt-get install); s1 benoetigt sudo fuer
-# usermod -aG docker. In WSL2/Debian ist der Standardbenutzer sudoer (kein Problem).
+# Docker Engine-Installation und usermod -aG docker.
+# In WSL2/Debian ist der Standardbenutzer sudoer (kein Problem).
 
 set -uo pipefail
 
@@ -64,18 +65,9 @@ if [ -f "$ENV_FILE" ]; then
 else
   if $DO_INSTALL; then
     cp "$REPO_ROOT/.env.example" "$ENV_FILE"
-    # Windows-Host-IP fuer OLLAMA_HOST aus der WSL2-Default-Route ermitteln.
-    # Hinweis: WSL2 Mirrored Networking (localhost direkt) erfordert Windows 11.
-    # Auf Windows 10 immer Bridge-IP verwenden.
-    host_ip="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
-    if [ -n "${host_ip:-}" ]; then
-      sed -i "s#^OLLAMA_HOST=.*#OLLAMA_HOST=http://${host_ip}:11434#" "$ENV_FILE"
-      ok ".env erzeugt, OLLAMA_HOST=http://${host_ip}:11434 (Windows-Host)"
-    else
-      ok ".env erzeugt (OLLAMA_HOST bitte pruefen)"
-    fi
+    ok ".env erzeugt (OLLAMA_HOST=localhost:11434 fuer WSL-Ollama voreingestellt; Secrets ggf. ergaenzen)"
   else
-    miss ".env fehlt" "cp .env.example .env  (danach OLLAMA_HOST/Secrets pruefen)"
+    miss ".env fehlt" "cp .env.example .env  (danach Secrets pruefen)"
   fi
 fi
 
@@ -105,15 +97,32 @@ fi
 
 # --- S1: Substrat -----------------------------------------------------------
 if want s1; then
-  sec "S1 Substrat (Postgres, Python-Deps)"
-  if have docker; then ok "docker ($(docker --version | awk '{print $3}' | tr -d ,))"
-  else miss "docker/CLI nicht erreichbar" "Docker Desktop (Windows) starten, WSL2-Integration aktivieren"; fi
+  sec "S1 Substrat (systemd, Docker Engine, Postgres)"
+
+  # Systemd-Pruefung: Docker und Ollama laufen als systemd-Dienste in WSL.
+  _init="$(ps -p 1 -o comm= 2>/dev/null || echo '')"
+  if [ "$_init" = "systemd" ]; then
+    ok "systemd aktiv (PID 1)"
+  else
+    miss "systemd nicht aktiv (PID 1: ${_init:-unbekannt})" \
+      "In /etc/wsl.conf setzen: [boot]\\nsystemd=true\\nDann WSL neu starten: wsl --shutdown (aus PowerShell)"
+    warn "Ohne systemd koennen Docker und Ollama nicht als Dienste laufen."
+  fi
+
+  # Docker Engine (WSL-nativ, kein Docker Desktop noetig).
+  # Das Convenience-Script get.docker.com unterstuetzt Debian und installiert
+  # docker-ce, docker-ce-cli, containerd.io und docker-compose-plugin.
+  if have docker; then ok "docker ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,))"
+  else
+    miss "docker/CLI fehlt" "curl -fsSL https://get.docker.com | sudo sh"
+    if confirm; then
+      curl -fsSL https://get.docker.com | sudo sh
+      sudo systemctl enable --now docker
+    fi
+  fi
 
   # Docker-Gruppe pruefen: ohne aktive Mitgliedschaft schlaegt docker info mit
   # "permission denied on /var/run/docker.sock" fehl.
-  # Zwei Faelle unterscheiden:
-  #   a) Benutzer ist kein Mitglied -> hinzufuegen, dann Shell-Neustart erzwingen
-  #   b) Mitglied, aber Gruppe noch nicht aktiv (nach usermod ohne Re-Login)
   _in_group=false
   getent group docker 2>/dev/null | grep -qw "$USER" && _in_group=true
   if id -nG 2>/dev/null | grep -qw docker; then
@@ -141,10 +150,13 @@ if want s1; then
   fi
 
   if docker compose version >/dev/null 2>&1; then ok "docker compose v2"
-  else miss "docker compose v2 fehlt" "Docker Desktop aktualisieren"; fi
+  else miss "docker compose v2 fehlt" "sudo apt-get install -y docker-compose-plugin"; fi
 
   if docker info >/dev/null 2>&1; then ok "Docker-Daemon laeuft"
-  else miss "Docker-Daemon nicht erreichbar" "Docker Desktop starten oder WSL2-Integration in Docker Desktop fuer Debian aktivieren"; fi
+  else
+    miss "Docker-Daemon nicht erreichbar" "sudo systemctl start docker"
+    confirm && sudo systemctl start docker
+  fi
 
   if have docker && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^stratum-db$'; then
     ok "Postgres-Container laeuft (stratum-db)"
@@ -161,9 +173,49 @@ fi
 
 # --- S2: Orchestrator (Ollama-Modelle) --------------------------------------
 if want s2; then
-  sec "S2 Orchestrator (Ollama + Modelle)"
+  sec "S2 Orchestrator (Ollama in WSL + Modelle)"
   OLLAMA_URL="${OLLAMA_HOST:-http://localhost:11434}"
   [ -f "$ENV_FILE" ] && OLLAMA_URL="$(grep -E '^OLLAMA_HOST=' "$ENV_FILE" | cut -d= -f2- || echo "$OLLAMA_URL")"
+
+  # Ollama installieren (WSL-nativ, wird als systemd-Dienst eingerichtet).
+  if have ollama; then
+    ok "ollama CLI ($(ollama --version 2>/dev/null | head -1 || echo 'Version unbekannt'))"
+  else
+    miss "ollama fehlt" "curl -fsSL https://ollama.com/install.sh | sh"
+    if confirm; then
+      curl -fsSL https://ollama.com/install.sh | sh
+    fi
+  fi
+
+  # OLLAMA_HOST=0.0.0.0 sicherstellen: noetig damit Docker-Container via
+  # host.docker.internal:11434 auf Ollama zugreifen koennen.
+  # Standard-Ollama bindet nur auf 127.0.0.1; mit 0.0.0.0 auch von Containern erreichbar.
+  _ollama_bind=""
+  [ -f /etc/systemd/system/ollama.service.d/host.conf ] && \
+    _ollama_bind="$(grep -s OLLAMA_HOST /etc/systemd/system/ollama.service.d/host.conf || true)"
+  if printf '%s' "$_ollama_bind" | grep -q '0\.0\.0\.0'; then
+    ok "Ollama bindet auf 0.0.0.0:11434 (Container-Zugriff konfiguriert)"
+  else
+    miss "Ollama OLLAMA_HOST=0.0.0.0 nicht konfiguriert" \
+      "sudo mkdir -p /etc/systemd/system/ollama.service.d && printf '[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0:11434\"\n' | sudo tee /etc/systemd/system/ollama.service.d/host.conf && sudo systemctl daemon-reload && sudo systemctl restart ollama"
+    if confirm; then
+      sudo mkdir -p /etc/systemd/system/ollama.service.d
+      printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' | \
+        sudo tee /etc/systemd/system/ollama.service.d/host.conf >/dev/null
+      sudo systemctl daemon-reload
+    fi
+  fi
+
+  # Ollama-Dienst starten/aktivieren.
+  if systemctl is-active --quiet ollama 2>/dev/null; then
+    ok "Ollama-Dienst laeuft (systemd)"
+  else
+    miss "Ollama-Dienst nicht aktiv" "sudo systemctl enable --now ollama"
+    if confirm; then
+      sudo systemctl enable --now ollama
+      sleep 2
+    fi
+  fi
 
   # VRAM ermitteln: nvidia-smi direkt (WSL2 mit CUDA-Treiber) oder via
   # Windows-Interop (nvidia-smi.exe immer verfuegbar wenn Treiber installiert).
@@ -190,8 +242,6 @@ if want s2; then
     OLLAMA_MODELS=( "phi4-mini" )
     warn "VRAM ${VRAM_MiB} MiB: nur phi4-mini sicher; 7B-Modelle koennen zu gross sein"
   else
-    # Kein nvidia-smi / keine GPU -> CPU-only-Profil (memory/modell-cpu-profil.md).
-    # Lokal nur phi4-mini (leichte NL + Klassifikation); Coden/Reasoning -> Cloud.
     OLLAMA_MODELS=( "phi4-mini" )
     warn "Keine NVIDIA-GPU erkannt -> CPU-only-Profil: nur phi4-mini lokal (Coden/Reasoning via Cloud)."
   fi
@@ -203,17 +253,14 @@ if want s2; then
       if printf '%s' "$have_tags" | grep -q "\"${m%%:*}"; then ok "Modell $m"
       else
         miss "Modell $m fehlt" "ollama pull $m   (mehrere GB)"
-        # ollama-CLI laeuft auf Windows, nicht in WSL2 -> Pull ueber HTTP-API.
         if confirm; then
           printf "          Pulling %s (kann mehrere Minuten dauern)...\n" "$m"
-          # Status-Updates streamen; Fortschritt fuer laufende Downloads anzeigen.
           pull_ok=false
           last_status=""
           progress_line=false
           while IFS= read -r line; do
             status="$(printf '%s' "$line" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')"
             if [ -n "$status" ]; then
-              # Laufender Download: completed/total extrahieren und Prozent zeigen.
               if printf '%s' "$line" | grep -q '"total":[0-9]'; then
                 total="$(printf '%s' "$line" | grep -o '"total":[0-9]*' | sed 's/"total"://')"
                 completed="$(printf '%s' "$line" | grep -o '"completed":[0-9]*' | sed 's/"completed"://')"
@@ -223,7 +270,6 @@ if want s2; then
                   progress_line=true
                 fi
               else
-                # Neue Nicht-Download-Statuszeile: vorherige Fortschrittszeile abschliessen.
                 $progress_line && printf "\n"
                 progress_line=false
                 if [ "$status" != "$last_status" ]; then
@@ -233,7 +279,6 @@ if want s2; then
               fi
             fi
             printf '%s' "$line" | grep -q '"status":"success"' && pull_ok=true
-            # API-Fehler anzeigen (z.B. unbekannter Modellname)
             api_err="$(printf '%s' "$line" | grep -o '"error":"[^"]*"' | sed 's/"error":"//;s/"//')"
             [ -n "$api_err" ] && printf "          [!] %s\n" "$api_err"
           done < <(curl -fsS --no-buffer -X POST "${OLLAMA_URL}/api/pull" \
@@ -246,10 +291,8 @@ if want s2; then
       fi
     done
   else
-    miss "Ollama nicht erreichbar ($OLLAMA_URL)" "Ollama auf dem Windows-Host starten (Startmenue -> Ollama); OLLAMA_HOST in .env pruefen"
-    warn "Falls Ollama laeuft aber nicht erreichbar ist: Windows-Firewall pruefen."
-    warn "Als Admin in PowerShell: netsh advfirewall firewall delete rule name=\"ollama.exe\" dir=in"
-    warn "Dann:  netsh advfirewall firewall add rule name=\"Ollama WSL2\" dir=in action=allow protocol=TCP localport=11434"
+    miss "Ollama nicht erreichbar ($OLLAMA_URL)" \
+      "sudo systemctl start ollama  (Logs: journalctl -u ollama -n 20)"
   fi
 fi
 

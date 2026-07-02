@@ -21,9 +21,10 @@ laengerer Pause, oder wenn eine N1-Query unerwartet leer/fehlerhaft zurueckkommt
    wsl -d Debian -- bash -c "docker ps --filter name=stratum-db --format '{{.Status}}'"
    leer -> wsl -d Debian -- bash -c "cd ~/stratum && docker compose up -d"
 
-3. Ollama vom Windows-Host aus WSL erreichbar?
-   wsl -d Debian -- bash -c "cd ~/stratum && curl -s -m 3 \$(grep OLLAMA_HOST .env | cut -d= -f2)/api/tags | head -c 200"
-   Fehlschlag -> `env_portabilitaet` Punkt 10/11 (Firewall/GPU-Backend)
+3. Ollama (WSL-Dienst) erreichbar?
+   wsl -d Debian -- bash -c "curl -s -m 3 localhost:11434/api/tags | head -c 200"
+   Fehlschlag -> sudo systemctl status ollama (in WSL); journalctl -u ollama -n 20
+   0.0.0.0-Bindung pruefen: cat /etc/systemd/system/ollama.service.d/host.conf
 
 4. DB-Migration + Index frisch: kanonische Befehle in `ops_n1-queries` (Preflight)
 ```

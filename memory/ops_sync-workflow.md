@@ -129,13 +129,12 @@ Passiert es doch: `git commit --amend -F <datei>` VOR dem Push korrigiert es.
 
 ## Docker fuer DB-Tests
 
-DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon; Docker Desktop
-mountet den Socket nach /var/run/docker.sock in Debian.
+DB-Tests (testcontainers) brauchen einen laufenden Docker-Daemon.
+Docker Engine laeuft als systemd-Dienst in WSL2 (kein Docker Desktop).
 
 Lehre (2026-06-30): Symptom "testcontainers findet keinen Docker-Daemon"
-(FileNotFoundError auf dem Socket) hatte die EINFACHE Ursache: Docker Desktop
-lief schlicht nicht (kein Autostart). Konsequenz: laufende Dienste
-(Postgres-Container, Ollama ab S2) sind ein Preflight-Punkt (`env_core`) -> vor
-dem Bauen pruefen. Bei Infrastruktur-Fehlern zuerst die billigste Ursache pruefen
-(Laeuft der Dienst?), bevor man Integration/Konfiguration/Pfade debuggt. Offen:
-Docker-Desktop-Autostart einrichten.
+(FileNotFoundError auf dem Socket) hatte die EINFACHE Ursache: der Dienst lief
+schlicht nicht. Konsequenz: laufende Dienste (Postgres-Container, Ollama ab S2)
+sind ein Preflight-Punkt (`env_core`) -> vor dem Bauen pruefen. Bei Infrastruktur-
+Fehlern zuerst die billigste Ursache pruefen (Laeuft der Dienst?), bevor man
+Integration/Konfiguration/Pfade debuggt. Autostart via systemd enable --now docker.
