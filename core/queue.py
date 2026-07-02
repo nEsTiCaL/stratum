@@ -202,7 +202,7 @@ class Queue:
         Im Gegensatz zu list_tasks() auch fuer done-Tasks abfragbar.
         """
         row = self._conn.execute(
-            "SELECT id, task_type, scope, status, owner FROM queue WHERE id = %s",
+            "SELECT id, task_type, scope, status, owner, model FROM queue WHERE id = %s",
             (item_id,),
         ).fetchone()
         if row is None:
@@ -213,6 +213,7 @@ class Queue:
             "scope": row[2],
             "status": row[3],
             "owner": row[4],
+            "model": row[5],
         }
 
     def list_tasks(

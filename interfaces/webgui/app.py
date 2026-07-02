@@ -125,7 +125,12 @@ _EXPECTED_TOKENS: dict[str, int] = {
 }
 
 
-def _make_system_prompt() -> str:
+def _make_system_prompt(for_human: bool = False) -> str:
+    if for_human:
+        return (
+            "Du fuehrst ein manuelles Code-Review durch. "
+            "Antworte in freiem Text — Markdown ist erlaubt."
+        )
     return (
         "Du bist ein praeziser Code-Analyse-Assistent. "
         "Antworte ausschliesslich mit dem angeforderten JSON-Objekt — "
@@ -134,7 +139,8 @@ def _make_system_prompt() -> str:
 
 
 def _make_user_message(
-    task_type: str, scope: str, source_code: str, extra_prompt: str
+    task_type: str, scope: str, source_code: str, extra_prompt: str,
+    for_human: bool = False,
 ) -> str:
     context = _TASK_CONTEXT.get(task_type, "Analysiere den folgenden Code.")
     parts = [context, f"\nScope: {scope}"]
@@ -142,7 +148,8 @@ def _make_user_message(
         parts.append(f"\n```python\n{source_code}\n```")
     if extra_prompt:
         parts.append(f"\nHinweis: {extra_prompt}")
-    parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
+    if not for_human:
+        parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
     return "\n".join(parts)
 
 
@@ -317,16 +324,18 @@ def create_app(
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
 
+        for_human = item.model == "human"
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "system_prompt": _make_system_prompt(),
+            "system_prompt": _make_system_prompt(for_human=for_human),
             "user_message": _make_user_message(
                 item.task_type,
                 item.scope,
                 source_code,
                 item.payload.get("prompt", ""),
+                for_human=for_human,
             ),
         }
 
@@ -343,12 +352,15 @@ def create_app(
             src = source_root / scope[5:]
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
+        for_human = info.get("model") == "human"
         return {
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "system_prompt": _make_system_prompt(),
-            "user_message": _make_user_message(task_type, scope, source_code, ""),
+            "system_prompt": _make_system_prompt(for_human=for_human),
+            "user_message": _make_user_message(
+                task_type, scope, source_code, "", for_human=for_human
+            ),
         }
 
     @app.post("/api/validate")
