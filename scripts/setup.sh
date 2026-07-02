@@ -158,11 +158,18 @@ if want s1; then
     confirm && sudo systemctl start docker
   fi
 
-  if have docker && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^stratum-db$'; then
-    ok "Postgres-Container laeuft (stratum-db)"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^stratum-db$'; then
+    ok "stratum-db laeuft"
   else
-    miss "Postgres-Container laeuft nicht" "docker compose up -d db"
+    miss "stratum-db nicht gestartet" "docker compose up -d db"
     confirm && (cd "$REPO_ROOT" && docker compose up -d db)
+  fi
+
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^stratum-server$'; then
+    ok "stratum-server laeuft"
+  else
+    miss "stratum-server nicht gestartet" "docker compose up -d --build server"
+    confirm && (cd "$REPO_ROOT" && docker compose up -d --build server)
   fi
 
   # Python-Abhaengigkeiten via uv
