@@ -106,19 +106,47 @@ Fehler:
 - 404 wenn task_id unbekannt
 - 404 wenn kein Artefakt gespeichert (Task noch pending/running/failed)
 
-Response 200 (Beispiel summarize):
+Response 200 (Beispiel review):
 ```json
 {
-  "artifact_type": "code_summary",
+  "artifact_type": "review_findings",
   "scope": "file:core/queue.py",
-  "content": {"summary": "..."},
+  "content": {"text": "...", "findings": "...", "risks": "...", "recommendations": "..."},
   "confidence": 0.85,
-  "findings": null,
-  "risks": null,
-  "recommendations": null,
   "provenance": { "producer": "phi4-mini", ... }
 }
 ```
+
+Schema-Hinweis (Divergenz DB vs. Modell): `ResultProb` hat KEINE Top-Level-Felder
+`findings`/`risks`/`recommendations` mehr (extra='forbid'); sie liegen in `content`.
+Die `artifacts`-Tabelle behaelt die gleichnamigen Spalten aus Kompat-Gruenden, aber
+`repository._row_to_result` reicht sie NICHT ins Modell (sonst 500 beim Lesen jeder
+prob-Antwort). `put_artifact` schreibt dort NULL. Aufraeumen (Spalten droppen) = spaeter.
+
+## Human-Tasks (model=human)
+
+Ein Task mit `model: "human"` wird vom Worker ignoriert (kein Ollama-Lauf) und
+manuell ueber das Dashboard bearbeitet: claimen -> Prompt kopieren -> in einen
+beliebigen Chatbot -> Antwort zurueck einreichen. Der Prompt ist bewusst GENERISCH
+(kein Projektname), damit er fuer beliebigen Zielcode taugt.
+
+Prompt-Auslieferung (`/api/claim/{id}`, `/api/prompt/{id}`) ist modusabhaengig:
+- `model == "human"` -> EIN Feld `prompt` (Rolle + Kontext + Quellcode + Aufgabe +
+  Format komplett zusammengefuehrt; direkt kopierbar). Format-Vorgabe: Antwort als
+  Markdown mit vier festen Ueberschriften (## 1. Struktur & Verantwortlichkeiten /
+  2. Fehlerbehandlung & Robustheit / 3. Bugs & Schwachstellen / 4. Design &
+  Verbesserungsvorschlaege), Beispiel im Prompt eingebettet.
+- sonst -> getrennt `system_prompt` + `user_message` (LLM erwartet JSON-Schema).
+
+Einreichen (`/api/submit/{id}`) ist FORMAT-TOLERANT (Copy-Paste aus Chatbots liefert
+selten sauberes JSON). `_result_from_submission` probiert in dieser Reihenfolge:
+1. vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen;
+2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) via `parse_llm_response`;
+3. freier Text / gerendertes Markdown, auch in ```-Fence -> komplett als
+   `content.text`. Leere/nur-Ueberschrift-Antwort -> klare 422-Meldung.
+Damit spiegelt der Submit-Pfad den `LlmWorker` (Text parsen -> ResultProb aus
+task_type bauen), statt wie zuvor stur `extract_json` zu erzwingen. Menschlich
+verfasste Antworten bekommen `confidence = 0.9` (Modell-Tier-Proxy existiert nicht).
 
 ## Aufruf-Beispiele (curl)
 

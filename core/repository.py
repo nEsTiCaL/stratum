@@ -319,14 +319,15 @@ def _row_to_result(row: tuple) -> Result:
     )
 
     if producer_class == ProducerClass.prob.value:
+        # findings/risks/recommendations sind nicht mehr Top-Level (liegen in
+        # content); die DB-Spalten bleiben aus Kompat-Gruenden, werden aber nicht
+        # mehr ins Modell gereicht (ResultProb: extra='forbid').
+        del findings, risks, recommendations
         return ResultProb(
             artifact_type=artifact_type,
             scope=scope,
             content=content,
             confidence=confidence,
-            findings=findings,
-            risks=risks,
-            recommendations=recommendations,
             provenance=provenance,
         )
     return ResultDet(
