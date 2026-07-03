@@ -48,6 +48,33 @@
                 cursor: pointer; }
   .btn-logout:hover { color: #f66; border-color: #3a1a1a; }
 
+  /* ── monitor (I-5.3, read-only) ── */
+  #monitor { display: none; margin-bottom: 1.75rem; }
+  #monitor.active { display: block; }
+  .cap-card { border: 1px solid #1e1e1e; border-radius: 5px; background: #111;
+              padding: .7rem .9rem; margin-bottom: .75rem; }
+  .cap-head { display: flex; justify-content: space-between; align-items: baseline;
+              font-size: .72rem; color: #667; margin-bottom: .45rem; }
+  .cap-head .cap-models { color: #88a; }
+  .cap-bar-bg { height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
+  .cap-bar-fg { height: 8px; background: linear-gradient(90deg,#2a5a8a,#4488cc);
+                border-radius: 4px; transition: width .5s; }
+  .mon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+              gap: .6rem; }
+  .mon-stat { border: 1px solid #1e1e1e; border-radius: 5px; background: #111;
+              padding: .6rem .8rem; }
+  .mon-num { font-size: 1.35rem; color: #dde; line-height: 1.1; }
+  .mon-num.warn { color: #f84; }
+  .mon-num.small { font-size: .95rem; }
+  .mon-cap { font-size: .66rem; color: #556; letter-spacing: .06em;
+             text-transform: uppercase; margin-top: .3rem; }
+  .hist-strip { display: flex; align-items: flex-end; gap: 3px; height: 42px;
+                margin-top: .3rem; }
+  .hist-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+              align-items: center; gap: 2px; min-width: 6px; }
+  .hist-bar { width: 100%; background: #2a5a8a; border-radius: 2px 2px 0 0; min-height: 2px; }
+  .hist-day { font-size: .55rem; color: #445; }
+
   /* ── table ── */
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
@@ -184,6 +211,36 @@
   </div>
 </div>
 
+<!-- ── Monitor (read-only, I-5.3) ── -->
+<div id="monitor">
+  <div class="cap-card" id="cap-card" style="display:none">
+    <div class="cap-head">
+      <span id="cap-title">Kapazität</span>
+      <span class="cap-models" id="cap-models"></span>
+    </div>
+    <div class="cap-bar-bg"><div class="cap-bar-fg" id="cap-bar" style="width:0%"></div></div>
+  </div>
+
+  <div class="mon-grid">
+    <div class="mon-stat"><div class="mon-num" id="stat-running">0</div>
+      <div class="mon-cap">laufend</div></div>
+    <div class="mon-stat"><div class="mon-num" id="stat-pending">0</div>
+      <div class="mon-cap">wartend</div></div>
+    <div class="mon-stat"><div class="mon-num" id="stat-failed">0</div>
+      <div class="mon-cap">fehlgeschlagen</div></div>
+    <div class="mon-stat"><div class="mon-num small" id="stat-batch">—</div>
+      <div class="mon-cap">nächste Charge</div></div>
+    <div class="mon-stat"><div class="mon-num" id="stat-cost">—</div>
+      <div class="mon-cap">Kosten heute</div></div>
+    <div class="mon-stat"><div class="mon-num" id="stat-esc">—</div>
+      <div class="mon-cap">Eskalationsrate</div></div>
+    <div class="mon-stat"><div class="mon-num" id="stat-stale">0</div>
+      <div class="mon-cap">stale-Artefakte</div></div>
+    <div class="mon-stat"><div class="hist-strip" id="hist-strip"></div>
+      <div class="mon-cap">Kosten 7 Tage</div></div>
+  </div>
+</div>
+
 <div class="table-wrap">
   <table id="task-table">
     <thead>
@@ -260,6 +317,7 @@
   let _claimedType  = null;
   let _promptVisible = true;
   let _pollTimer    = null;
+  let _slowTimer    = null;
 
   // ── Hilfsfunktionen ────────────────────────────────────────────────────────
 
@@ -335,12 +393,19 @@
   // ── Polling ────────────────────────────────────────────────────────────────
 
   function startPolling() {
+    document.getElementById('monitor').classList.add('active');
     fetchTasks();
-    _pollTimer = setInterval(fetchTasks, 2000);
+    fetchLive();
+    fetchMetrics();
+    // Live-Status im Sekundentakt (leicht), Aggregate periodisch (teurer, R5).
+    _pollTimer = setInterval(() => { fetchTasks(); fetchLive(); }, 2000);
+    _slowTimer = setInterval(fetchMetrics, 15000);
   }
 
   function stopPolling() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    if (_slowTimer) { clearInterval(_slowTimer); _slowTimer = null; }
+    document.getElementById('monitor').classList.remove('active');
   }
 
   async function fetchTasks() {
@@ -348,6 +413,72 @@
     if (r.status === 401) { doLogout(); return; }
     if (!r.ok) return;
     renderTasks(await r.json());
+  }
+
+  // ── Live-Status + Aggregate (read-only, I-5.3) ──────────────────────────────
+
+  async function fetchLive() {
+    const r = await apiFetch('/api/live');
+    if (!r.ok) return;
+    renderLive(await r.json());
+  }
+
+  async function fetchMetrics() {
+    const [m, h] = await Promise.all([apiFetch('/api/metrics'), apiFetch('/api/history')]);
+    if (m.ok) renderMetrics(await m.json());
+    if (h.ok) renderHistory(await h.json());
+  }
+
+  function renderLive(s) {
+    const q = s.queue || {};
+    document.getElementById('stat-running').textContent = q.running ?? 0;
+    document.getElementById('stat-pending').textContent = q.pending ?? 0;
+    const failed = document.getElementById('stat-failed');
+    failed.textContent = q.failed ?? 0;
+    failed.classList.toggle('warn', (q.failed ?? 0) > 0);
+    document.getElementById('stat-batch').textContent =
+      s.next_batch ? `${s.next_batch.model} ·${s.next_batch.pending}` : '—';
+
+    const card = document.getElementById('cap-card');
+    if (s.capacity) {
+      const c = s.capacity;
+      const used = c.resident_cost_mb || 0;
+      const budget = c.budget_mb || 1;
+      const pct = Math.min(100, Math.round(100 * used / budget));
+      card.style.display = '';
+      document.getElementById('cap-title').textContent =
+        `${c.is_cpu ? 'RAM' : 'VRAM'}  ${(used/1000).toFixed(1)}/${(budget/1000).toFixed(1)} GB`;
+      document.getElementById('cap-models').textContent =
+        (c.resident_set || []).join(' · ');
+      document.getElementById('cap-bar').style.width = pct + '%';
+    } else {
+      card.style.display = 'none';
+    }
+  }
+
+  function renderMetrics(m) {
+    document.getElementById('stat-cost').textContent =
+      '$' + (m.cost_today_usd ?? 0).toFixed(2);
+    const esc = document.getElementById('stat-esc');
+    esc.textContent = m.escalation_rate == null
+      ? '—' : Math.round(m.escalation_rate * 100) + '%';
+    esc.classList.toggle('warn', (m.escalation_rate ?? 0) >= 0.5);
+    const stale = document.getElementById('stat-stale');
+    stale.textContent = m.stale_count ?? 0;
+    stale.classList.toggle('warn', (m.stale_count ?? 0) > 0);
+  }
+
+  function renderHistory(rows) {
+    const strip = document.getElementById('hist-strip');
+    if (!rows.length) { strip.innerHTML = ''; return; }
+    const max = Math.max(...rows.map(r => r.cost_usd), 0.01);
+    strip.innerHTML = rows.map(r => {
+      const h = Math.max(2, Math.round(38 * r.cost_usd / max));
+      const day = r.day.slice(5);  // MM-DD
+      return `<div class="hist-col" title="${r.day}: $${r.cost_usd.toFixed(2)}, ${r.escalations}/${r.tasks} eskaliert">
+        <div class="hist-bar" style="height:${h}px"></div>
+        <div class="hist-day">${day}</div></div>`;
+    }).join('');
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────

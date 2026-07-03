@@ -136,6 +136,30 @@ class TestLiveStatus:
         }
 
 
+class TestDashboardHtml:
+    def test_index_serves_monitor_panels(self, client):
+        # I-5.3: die ausgelieferte Seite traegt die read-only Monitor-Struktur
+        # und die Poll-Verdrahtung fuer die neuen Endpoints.
+        html = client.get("/").text
+        for marker in (
+            'id="monitor"',
+            "stat-running",
+            "stat-pending",
+            "stat-failed",
+            "stat-cost",
+            "stat-esc",
+            "stat-stale",
+            "cap-bar",
+            "hist-strip",
+            "fetchLive",
+            "fetchMetrics",
+            "/api/live",
+            "/api/metrics",
+            "/api/history",
+        ):
+            assert marker in html, f"Marker fehlt im Dashboard-HTML: {marker}"
+
+
 class TestAggregateEndpoints:
     def test_metrics_requires_auth(self, client):
         assert client.get("/api/metrics").status_code == 401

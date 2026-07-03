@@ -101,9 +101,7 @@ class LlmWorker:
             # Confidence aus Modell-Tier — LLM liefert sie nicht zuverlaessig.
             model_name = outcome.final_model or "unknown"
             cap = MODEL_CAPABILITIES.get(model_name)
-            confidence = (
-                TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
-            )
+            confidence = TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
 
             prov = build_prob_provenance(
                 scope=item.scope,
@@ -145,6 +143,30 @@ class WorkerLoop:
         if self.on_item_fail is not None:
             self.on_item_fail(item, reason)
 
+    def _trace_result(
+        self,
+        item: QueueItem,
+        *,
+        validation_result: str,
+        trigger: str | None = None,
+        final_model: str | None = None,
+        attempts: int = 0,
+    ) -> None:
+        """Schreibt die R2-Trace-Zeile je Knoten (I-5.1b): stage='task_result',
+        session_id = dag_id. Speist die Aggregate (I-5.2: Eskalationsrate) und
+        das Kalibrierungs-Fenster (I-5.4)."""
+        self.repo.write_trace(
+            item.dag_id,
+            "task_result",
+            detail={
+                "task_type": item.task_type,
+                "validation_result": validation_result,
+                "trigger": trigger,
+                "final_model": final_model,
+                "attempts": attempts,
+            },
+        )
+
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
         item = self.queue.claim(model)
@@ -158,6 +180,10 @@ class WorkerLoop:
             if is_det:
                 self.det_worker.run(item, self.repo)
                 self.queue.complete(item.id)
+                # det laeuft einmal, eskaliert nie -> pass.
+                self._trace_result(
+                    item, validation_result="pass", final_model=item.model, attempts=1
+                )
             else:
                 outcome = self.llm_worker.run(item, self.repo)
                 if outcome.status == "done":
@@ -168,7 +194,17 @@ class WorkerLoop:
                         f"{outcome.validation_result}/{outcome.trigger} "
                         f"(model={outcome.final_model}, attempts={outcome.attempts})",
                     )
+                self._trace_result(
+                    item,
+                    validation_result=outcome.validation_result,
+                    trigger=outcome.trigger,
+                    final_model=outcome.final_model,
+                    attempts=outcome.attempts,
+                )
         except Exception as exc:
             self._fail(item, f"exception: {type(exc).__name__}: {exc}")
+            self._trace_result(
+                item, validation_result="fail", trigger="exception", attempts=0
+            )
             raise
         return True

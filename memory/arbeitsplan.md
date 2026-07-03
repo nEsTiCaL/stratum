@@ -153,9 +153,9 @@ I-4.5..4.8 = Konsolidierung aus dem Funktionsreview der Datengrundlage
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
 I-5.1   Live-Status (gepollt, kein SSE) det  I-2.3     R5             fertig
-I-5.1b  Worker task_result-Trace        det  I-2.5     S5(Luecke)
+I-5.1b  Worker task_result-Trace        det  I-2.5     S5(Luecke)     fertig
 I-5.2   REST-Aggregate (read-only)     det   I-1.3     R5             fertig
-I-5.3   Web-Dashboard Frontend         gem   I-5.1/5.2 R5
+I-5.3   Web-Dashboard Frontend         gem   I-5.1/5.2 R5             fertig
 I-5.4   Kalibrierung (Auswertung)      det   I-1.3     R5
 I-5.5   Canary + Regression + Eval     gem   I-5.4     R5, T
 ```
@@ -187,10 +187,9 @@ log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
 aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
 Stand 2026-07-03: Schritt 4 VOLLSTAENDIG inkl. Konsolidierung (I-4.1..4.8).
-Schritt 5 begonnen: I-5.1 (Live-Status gepollt) + I-5.2 (REST-Aggregate
-/metrics//history//trace) fertig. Aus I-5.2 die Luecke I-5.1b angelegt
-(Worker schreibt keine task_result-Trace -> escalation_rate noch 0).
-Naechstes: I-5.1b (klein) dann I-5.3 (Frontend) oder I-5.4 (Kalibrierung).
+Schritt 5: I-5.1 (Live gepollt) + I-5.1b (Worker task_result-Trace) + I-5.2
+(REST-Aggregate) + I-5.3 (Monitor-Frontend) fertig. Offen: I-5.4 (Kalibrierung),
+I-5.5 (Canary + Regression + Eval). Naechstes: I-5.4.
 Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).

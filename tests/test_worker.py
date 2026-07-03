@@ -98,10 +98,15 @@ class _FakeQueue:
 class _FakeRepo:
     def __init__(self):
         self.artifacts: list = []
+        self.traces: list = []
 
     def put_artifact(self, result) -> str:
         self.artifacts.append(result)
         return f"artifact-{len(self.artifacts)}"
+
+    def write_trace(self, session_id, stage, *, artifact_id=None, detail=None) -> int:
+        self.traces.append({"session_id": session_id, "stage": stage, "detail": detail})
+        return len(self.traces)
 
 
 class _MockTransport(httpx.BaseTransport):
@@ -142,6 +147,7 @@ class TestReplayModel:
 class TestOllamaAdapterListModels:
     def test_returns_model_names_without_tag(self):
         from unittest.mock import patch
+
         from core.ollama_adapter import OllamaAdapter
 
         body = {"models": [{"name": "phi4-mini:latest"}, {"name": "qwen3-8b:q4"}]}
@@ -152,6 +158,7 @@ class TestOllamaAdapterListModels:
 
     def test_returns_empty_on_connection_error(self):
         from unittest.mock import patch
+
         from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
@@ -160,6 +167,7 @@ class TestOllamaAdapterListModels:
 
     def test_returns_empty_on_http_error(self):
         from unittest.mock import patch
+
         from core.ollama_adapter import OllamaAdapter
 
         with patch("httpx.get") as mock_get:
@@ -455,3 +463,70 @@ class TestWorkerLoop:
         with pytest.raises(RuntimeError):
             loop.step("phi4-mini")
         assert queue.failed == [1]
+
+
+# ---------------------------------------------------------------------------
+# WorkerLoop: task_result-Trace (I-5.1b)
+# ---------------------------------------------------------------------------
+
+
+class TestTaskResultTrace:
+    def _traces(self, loop: WorkerLoop) -> list[dict]:
+        return [t for t in loop.repo.traces if t["stage"] == "task_result"]
+
+    def test_det_task_traces_pass(self):
+        loop = _loop_for(_item(task_type="index", scope="file:core/router.py"))
+        loop.step("tree-sitter")
+        tr = self._traces(loop)
+        assert len(tr) == 1
+        assert tr[0]["session_id"] == "dag-1"  # session_id = dag_id
+        assert tr[0]["detail"]["validation_result"] == "pass"
+        assert tr[0]["detail"]["task_type"] == "index"
+
+    def test_llm_done_traces_pass(self):
+        loop = _loop_for(
+            _item(task_type="explain"),
+            fake_model=FakeModel(responses=[_prob_response()]),
+        )
+        loop.step("phi4-mini")
+        tr = self._traces(loop)
+        assert len(tr) == 1
+        assert tr[0]["detail"]["validation_result"] == "pass"
+
+    def test_llm_unresolved_traces_result(self):
+        def factory(name: str):
+            if name == "phi4-mini":
+                return FakeModel(responses=["", ""])
+            return None
+
+        loop = _loop_for(_item(task_type="explain"), model_factory=factory)
+        loop.step("phi4-mini")
+        tr = self._traces(loop)
+        assert len(tr) == 1
+        assert tr[0]["detail"]["validation_result"] in ("fail", "escalated")
+
+    def test_exception_traces_fail(self):
+        def exploding_factory(name):
+            raise RuntimeError("adapter kaputt")
+
+        loop = _loop_for(_item(task_type="explain"), model_factory=exploding_factory)
+        with pytest.raises(RuntimeError):
+            loop.step("phi4-mini")
+        tr = self._traces(loop)
+        assert len(tr) == 1
+        assert tr[0]["detail"]["validation_result"] == "fail"
+        assert tr[0]["detail"]["trigger"] == "exception"
+
+
+def _loop_for(
+    item: QueueItem, fake_model: FakeModel | None = None, model_factory=None
+) -> WorkerLoop:
+    if model_factory is None:
+        _m = fake_model
+        model_factory = lambda name: _m  # noqa: E731
+    return WorkerLoop(
+        queue=_FakeQueue(item),
+        repo=_FakeRepo(),
+        det_worker=DetWorker(ingest_fn=lambda *_: "artifact-det"),
+        llm_worker=LlmWorker(router=Router(), model_factory=model_factory),
+    )

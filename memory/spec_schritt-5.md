@@ -83,6 +83,16 @@ Akzeptanz (det): API-Vertrag getestet; Frontend visuell entwickler-verifiziert
 Klasse  : gemischt (API det, Darstellung dev-verifiziert)
 ```
 
+Umsetzung (fertig 2026-07-03): Monitor-Sektion in static/index.html (read-only)
+-- Kapazitaets-Balken (capacity aus /api/live), Live-Zaehler (running/pending/
+failed/next_batch), Aggregate (Kosten heute/Eskalationsrate/stale aus
+/api/metrics), 7-Tage-Kosten-Strip (/api/history). Poll: live im 2s-Takt mit
+den Tasks, metrics/history alle 15s (periodisch, R5). warn-Faerbung bei
+failed>0/stale>0/escalation>=50%. det-Smoke-Test (GET / traegt Monitor-IDs +
+Poll-Verdrahtung) in test_webgui. Darstellung visuell dev-verifiziert (Preview-
+Harness mit Canned-Daten: cap-bar 64%, warn-Farbe #f84). Trace-Drilldown-UI
+(/api/trace) noch nicht verdrahtet -- Endpoint getestet, UI optional/spaeter.
+
 ## I-5.4  Kalibrierung (Auswertung, Mensch editiert)
 
 ```

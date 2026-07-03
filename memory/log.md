@@ -5,6 +5,8 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Aeltere Schritte + Langform: memory-archiv/ (ausserhalb memory/, nur bei
 explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-03] decision | I-5.3 fertig: read-only Monitor-Sektion in static/index.html (Kapazitaet/Live-Zaehler/Kosten/Eskalation/stale/7-Tage-Strip) gegen /api/live//metrics//history, poll 2s/15s; det-Smoke-Test + Preview-Harness visuell verifiziert (cap-bar 64%, warn #f84); 622 Tests
+## [2026-07-03] decision | I-5.1b fertig: WorkerLoop.step schreibt stage=task_result (session_id=dag_id) mit validation_result/trigger/final_model/attempts fuer det+llm+exception -> Eskalationsrate/history (I-5.2) jetzt live; 42 Tests
 ## [2026-07-03] decision | I-5.2 fertig: Repository.metrics (cost_today/escalation_rate/stale_count) + history(days) Tages-Rollup; GET /api/metrics//history//trace/{session} read-only. Luecke I-5.1b angelegt: Worker schreibt keine task_result-Trace -> escalation noch 0 -> spec_schritt-5
 ## [2026-07-03] decision | I-5.1 fertig: Live-Status GEPOLLT statt SSE (P1-Linie, konsistent I-REST.2; Stream erst P2) -- Queue.live_snapshot (queue/running/next_batch) + GET /api/live + capacity-Seam in create_app; spec_schritt-5 I-5.1/5.3/Vor angepasst; 603 Tests
 ## [2026-07-03] decision | I-4.8 fertig: Migration 0008 CREATE EXTENSION vector (S4-Voraussetzung nachgezogen, nur Extension, Embeddings-Schema erst mit RAG); test_migrations (Extension+vector-Typ); Schritt 4 inkl. Konsolidierung VOLLSTAENDIG -> spec_schritt-4
