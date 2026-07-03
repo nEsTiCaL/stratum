@@ -5,6 +5,7 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Aeltere Schritte + Langform: memory-archiv/ (ausserhalb memory/, nur bei
 explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-03] decision | I-4.2 fertig: Repository.dependencies (vorwaerts src->dst) + impact (rueckwaerts dst->src), rekursive CTE mit nativer CYCLE-Klausel -> spec_schritt-4
 ## [2026-07-03] lint | log auf P2-Format komprimiert, Archive -> memory-archiv/ (grep-frei); Details portiert -> feedback_edit-duplikate, spec_schritt-4
 ## [2026-07-03] decision | rules erweitert: P2 Log=140-Zeichen-Schlagzeile, F5 Bezeichner-Treue, P7 Status-Quelle, P8 CLAUDE.md-Check; log rotiert (P4)
 ## [2026-07-03] lint | Memory-Review: SSE-Drift behoben (CLAUDE.md/spec_rest-api), phi4-mini kanonisch (F5), Profil D verifiziert (host.md), stale Status

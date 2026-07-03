@@ -258,6 +258,55 @@ class Repository:
                 for row in cur.fetchall()
             ]
 
+    def dependencies(self, scope: str) -> list[str]:
+        """Transitive Abhaengigkeitshuelle vorwaerts (src->dst): was scope nutzt.
+
+        Rekursive CTE ueber nicht-superseded Kanten, native CYCLE-Klausel
+        bricht Zyklen sauber ab (SQL-Standard, terminiert immer). Liefert die
+        erreichten Ziel-scopes deterministisch sortiert. Enthaelt scope selbst
+        nur, wenn ein Zyklus dorthin zurueckfuehrt.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH RECURSIVE deps(src, dst) AS (
+                    SELECT src, dst FROM graph_edges
+                     WHERE src = %s AND superseded = false
+                  UNION ALL
+                    SELECT e.src, e.dst FROM graph_edges e
+                      JOIN deps d ON e.src = d.dst
+                     WHERE e.superseded = false
+                ) CYCLE dst SET is_cycle USING path
+                SELECT DISTINCT dst FROM deps ORDER BY dst
+                """,
+                (scope,),
+            )
+            return [row[0] for row in cur.fetchall()]
+
+    def impact(self, scope: str) -> list[str]:
+        """Transitive Impact-Huelle rueckwaerts (dst->src): wer scope nutzt.
+
+        Grundlage der differenzierten Invalidierung (I-4.4): wer haengt
+        transitiv von scope ab. Rekursive CTE mit CYCLE-Klausel, deterministisch
+        sortiert. Enthaelt scope selbst nur bei einem Zyklus.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH RECURSIVE impact(src, dst) AS (
+                    SELECT src, dst FROM graph_edges
+                     WHERE dst = %s AND superseded = false
+                  UNION ALL
+                    SELECT e.src, e.dst FROM graph_edges e
+                      JOIN impact i ON e.dst = i.src
+                     WHERE e.superseded = false
+                ) CYCLE src SET is_cycle USING path
+                SELECT DISTINCT src FROM impact ORDER BY src
+                """,
+                (scope,),
+            )
+            return [row[0] for row in cur.fetchall()]
+
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
 

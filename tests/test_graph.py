@@ -269,6 +269,132 @@ class TestRepositoryEdges:
 # ---------------------------------------------------------------------------
 
 
+class TestTransitiveCTE:
+    """I-4.2: rekursive CTE vorwaerts (dependencies) / rueckwaerts (impact)
+    mit nativer CYCLE-Klausel. Gegen echtes Postgres (der Punkt der Schicht).
+
+    Kantenrichtung: src -> dst bedeutet "src haengt von dst ab".
+      dependencies(X) = transitive Huelle vorwaerts (was X nutzt).
+      impact(X)       = transitive Huelle rueckwaerts (wer X nutzt).
+    """
+
+    def _build(self, repo: Repository, edges: list[tuple[str, str]]) -> None:
+        """Baut einen Graphen aus (src, dst)-Paaren. Gruppiert nach src, weil
+        put_edges pro scope superseded (eine Zeile = ein src)."""
+        by_src: dict[str, list[GraphEdge]] = {}
+        for src, dst in edges:
+            by_src.setdefault(src, []).append(
+                GraphEdge(
+                    src=src,
+                    dst=dst,
+                    edge_type="import",
+                    confidence=None,
+                    source_hash=HASH,
+                )
+            )
+        for src, group in by_src.items():
+            repo.put_edges(src, group)
+
+    def test_dependencies_transitive_forward(self, conn):
+        repo = Repository(conn)
+        self._build(repo, [("file:a.py", "file:b.py"), ("file:b.py", "file:c.py")])
+        # a -> b -> c: a haengt transitiv von b und c ab.
+        assert repo.dependencies("file:a.py") == ["file:b.py", "file:c.py"]
+
+    def test_impact_transitive_backward(self, conn):
+        repo = Repository(conn)
+        self._build(repo, [("file:a.py", "file:b.py"), ("file:b.py", "file:c.py")])
+        # a -> b -> c: von c haengen transitiv b und a ab.
+        assert repo.impact("file:c.py") == ["file:a.py", "file:b.py"]
+
+    def test_dependencies_only_transitive_reach(self, conn):
+        repo = Repository(conn)
+        self._build(
+            repo,
+            [
+                ("file:a.py", "file:b.py"),
+                ("file:b.py", "file:c.py"),
+                ("file:b.py", "file:d.py"),
+            ],
+        )
+        # a erreicht b, dann c und d (Verzweigung ueber b).
+        assert repo.dependencies("file:a.py") == [
+            "file:b.py",
+            "file:c.py",
+            "file:d.py",
+        ]
+
+    def test_leaf_has_no_dependencies(self, conn):
+        repo = Repository(conn)
+        self._build(repo, [("file:a.py", "file:b.py")])
+        assert repo.dependencies("file:b.py") == []
+
+    def test_source_has_no_impact(self, conn):
+        repo = Repository(conn)
+        self._build(repo, [("file:a.py", "file:b.py")])
+        # Auf a zeigt keine Kante -> niemand haengt von a ab.
+        assert repo.impact("file:a.py") == []
+
+    def test_cycle_terminates_forward(self, conn):
+        repo = Repository(conn)
+        # Zyklus a -> b -> c -> a. Muss terminieren, ganze Huelle liefern.
+        self._build(
+            repo,
+            [
+                ("file:a.py", "file:b.py"),
+                ("file:b.py", "file:c.py"),
+                ("file:c.py", "file:a.py"),
+            ],
+        )
+        assert repo.dependencies("file:a.py") == [
+            "file:a.py",
+            "file:b.py",
+            "file:c.py",
+        ]
+
+    def test_cycle_terminates_backward(self, conn):
+        repo = Repository(conn)
+        self._build(
+            repo,
+            [
+                ("file:a.py", "file:b.py"),
+                ("file:b.py", "file:c.py"),
+                ("file:c.py", "file:a.py"),
+            ],
+        )
+        assert repo.impact("file:b.py") == [
+            "file:a.py",
+            "file:b.py",
+            "file:c.py",
+        ]
+
+    def test_superseded_edges_not_traversed(self, conn):
+        repo = Repository(conn)
+        self._build(repo, [("file:a.py", "file:b.py"), ("file:b.py", "file:c.py")])
+        # b zeigt jetzt auf d statt c -> alte b->c-Kante superseded.
+        repo.put_edges(
+            "file:b.py",
+            [
+                GraphEdge(
+                    src="file:b.py",
+                    dst="file:d.py",
+                    edge_type="import",
+                    confidence=None,
+                    source_hash="h2",
+                )
+            ],
+        )
+        assert repo.dependencies("file:a.py") == ["file:b.py", "file:d.py"]
+
+    def test_dependencies_empty_graph(self, conn):
+        repo = Repository(conn)
+        assert repo.dependencies("file:nonexistent.py") == []
+
+    def test_impact_empty_graph(self, conn):
+        repo = Repository(conn)
+        assert repo.impact("file:nonexistent.py") == []
+
+
 class TestIngestEdgeIntegration:
     def test_ingest_creates_import_and_contains_edges(self, conn):
         from core.ingest import ingest_content
