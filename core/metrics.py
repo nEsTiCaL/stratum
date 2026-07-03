@@ -19,6 +19,7 @@ class InferenceSample:
     tok_per_s: float
     eval_count: int
     measured_at: datetime | None = None
+    task_type: str | None = None
 
 
 class MetricsStore:
@@ -27,9 +28,9 @@ class MetricsStore:
 
     def record(self, sample: InferenceSample) -> None:
         self._conn.execute(
-            "INSERT INTO model_metrics (model, tok_per_s, eval_count)"
-            " VALUES (%s, %s, %s)",
-            (sample.model, sample.tok_per_s, sample.eval_count),
+            "INSERT INTO model_metrics (model, tok_per_s, eval_count, task_type)"
+            " VALUES (%s, %s, %s, %s)",
+            (sample.model, sample.tok_per_s, sample.eval_count, sample.task_type),
         )
 
     def avg_tok_per_s(self, model: str, *, last_n: int = 10) -> float | None:

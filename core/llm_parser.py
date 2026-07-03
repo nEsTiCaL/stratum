@@ -34,9 +34,17 @@ from dataclasses import dataclass
 
 _KNOWN_LABELS = ("MODEL", "CONTENT", "FINDINGS", "RISKS", "RECOMMENDATIONS")
 
-_NONE_VALUES = frozenset({
-    "none", "no findings", "no risks", "no recommendations", "-", "n/a", "",
-})
+_NONE_VALUES = frozenset(
+    {
+        "none",
+        "no findings",
+        "no risks",
+        "no recommendations",
+        "-",
+        "n/a",
+        "",
+    }
+)
 
 _LABEL_RE = re.compile(
     r"(?m)^(" + "|".join(_KNOWN_LABELS) + r")[ \t]*:[ \t]*(.*)",
@@ -78,7 +86,7 @@ def parse_llm_response(raw: str) -> ParsedLlmResponse:
         label = m.group(1).upper()
         inline = m.group(2).strip()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
-        body = raw[m.end():end].strip()
+        body = raw[m.end() : end].strip()
         sections[label] = (inline + "\n" + body).strip() if inline else body
 
     return ParsedLlmResponse(

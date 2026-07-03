@@ -25,6 +25,7 @@ import psycopg
 import uvicorn
 
 from core.db import apply_migrations
+from core.metrics import InferenceSample, MetricsStore
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
@@ -125,10 +126,16 @@ def _make_worker_loop(
         if task_id is not None and task_id in _progress:
             _progress[task_id]["tokens"] += 1
 
-    def _on_metrics(model: str, tok_s: float, _count: int) -> None:
+    metrics_store = MetricsStore(worker_conn)
+
+    def _on_metrics(model: str, tok_s: float, count: int) -> None:
+        task_type = None
         task_id = getattr(_task_local, "task_id", None)
         if task_id is not None and task_id in _progress:
             _progress[task_id]["tok_s"] = tok_s
+            task_type = _progress[task_id].get("task_type")
+        # persistiert die Messung mit task_type -> per-Task-Statistik (I-5.4-Vorlauf)
+        metrics_store.record(InferenceSample(model, tok_s, count, task_type=task_type))
 
     def model_factory(model_name: str) -> OllamaAdapter | None:
         cap = MODEL_CAPABILITIES.get(model_name)

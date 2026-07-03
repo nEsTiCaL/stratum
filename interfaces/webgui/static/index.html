@@ -3,9 +3,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: monospace; background: #0f0f0f; color: #e0e0e0;
+  body { font-family: monospace; background: #0d0d0d; color: #eef0f4;
          padding: 1.5rem; min-height: 100vh; }
-  h1 { font-size: 1.1rem; letter-spacing: .1em; color: #aaa; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.1rem; letter-spacing: .1em; color: #cdd2dc; margin-bottom: 1.5rem; }
   h1 span { color: #fff; }
 
   /* ── login overlay ── */
@@ -41,8 +41,8 @@
   /* ── top bar ── */
   .topbar { display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 1.5rem; }
-  .owner-badge { font-size: .72rem; color: #555; }
-  .owner-badge span { color: #88a; }
+  .owner-badge { font-size: .72rem; color: #99a; }
+  .owner-badge span { color: #aac2ff; }
   .btn-logout { font-size: .7rem; padding: .2rem .55rem; border-radius: 3px;
                 background: #1a1a1a; color: #555; border: 1px solid #222;
                 cursor: pointer; }
@@ -51,37 +51,48 @@
   /* ── monitor (I-5.3, read-only) ── */
   #monitor { display: none; margin-bottom: 1.75rem; }
   #monitor.active { display: block; }
-  .cap-card { border: 1px solid #1e1e1e; border-radius: 5px; background: #111;
+  .cap-card { border: 1px solid #333; border-radius: 5px; background: #16161a;
               padding: .7rem .9rem; margin-bottom: .75rem; }
   .cap-head { display: flex; justify-content: space-between; align-items: baseline;
-              font-size: .72rem; color: #667; margin-bottom: .45rem; }
-  .cap-head .cap-models { color: #88a; }
-  .cap-bar-bg { height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
-  .cap-bar-fg { height: 8px; background: linear-gradient(90deg,#2a5a8a,#4488cc);
+              font-size: .74rem; color: #b6bccc; margin-bottom: .45rem; }
+  .cap-head .cap-models { color: #9db4ff; }
+  .cap-bar-bg { height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden; }
+  .cap-bar-fg { height: 8px; background: linear-gradient(90deg,#3a72b0,#5aa0e8);
                 border-radius: 4px; transition: width .5s; }
   .mon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
               gap: .6rem; }
-  .mon-stat { border: 1px solid #1e1e1e; border-radius: 5px; background: #111;
+  .mon-stat { border: 1px solid #333; border-radius: 5px; background: #16161a;
               padding: .6rem .8rem; }
-  .mon-num { font-size: 1.35rem; color: #dde; line-height: 1.1; }
-  .mon-num.warn { color: #f84; }
+  .mon-num { font-size: 1.35rem; color: #f0f2f8; line-height: 1.1; }
+  .mon-num.warn { color: #ff9a52; }
   .mon-num.small { font-size: .95rem; }
-  .mon-cap { font-size: .66rem; color: #556; letter-spacing: .06em;
+  .mon-cap { font-size: .66rem; color: #aab0c0; letter-spacing: .06em;
              text-transform: uppercase; margin-top: .3rem; }
   .hist-strip { display: flex; align-items: flex-end; gap: 3px; height: 42px;
                 margin-top: .3rem; }
   .hist-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
               align-items: center; gap: 2px; min-width: 6px; }
-  .hist-bar { width: 100%; background: #2a5a8a; border-radius: 2px 2px 0 0; min-height: 2px; }
-  .hist-day { font-size: .55rem; color: #445; }
+  .hist-bar { width: 100%; background: #5aa0e8; border-radius: 2px 2px 0 0; min-height: 2px; }
+  .hist-day { font-size: .55rem; color: #99a; }
+
+  /* ── task-stats-Tabelle (I-5.4-Vorlauf) ── */
+  #stats-wrap { margin-top: 1rem; }
+  #stats-wrap.hidden { display: none; }
+  .stats-title { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+                 color: #aab0c0; margin-bottom: .4rem; }
+  table.stats-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  table.stats-table th { color: #9aa0b0; border-bottom: 1px solid #333; padding: .35rem .6rem; }
+  table.stats-table td { padding: .35rem .6rem; border-bottom: 1px solid #242424; color: #dde3ee; }
+  table.stats-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.stats-table td.warn { color: #ff9a52; }
 
   /* ── table ── */
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  th { text-align: left; color: #555; border-bottom: 1px solid #222;
+  th { text-align: left; color: #9aa0b0; border-bottom: 1px solid #333;
        padding: .4rem .6rem; font-weight: normal; }
-  td { padding: .45rem .6rem; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
-  tr:hover td { background: #161616; }
+  td { padding: .45rem .6rem; border-bottom: 1px solid #242424; vertical-align: middle; }
+  tr:hover td { background: #191919; }
 
   .badge { display: inline-block; padding: .15rem .4rem; border-radius: 3px;
            font-size: .72rem; font-weight: bold; }
@@ -89,7 +100,7 @@
   .badge-running { background: #1a1a2a; color: #66f; }
   .badge-human   { background: #2a1a1a; color: #f66; }
   .badge-failed  { background: #2a1a0a; color: #f84; }
-  #empty-msg { color: #333; font-size: .85rem; padding: 1rem 0; }
+  #empty-msg { color: #778; font-size: .85rem; padding: 1rem 0; }
 
   button { cursor: pointer; border: none; border-radius: 3px; padding: .3rem .7rem;
            font-family: monospace; font-size: .8rem; }
@@ -102,13 +113,13 @@
   .progress-wrap { display: flex; flex-direction: column; gap: .25rem; }
   .progress-bar-bg { height: 3px; background: #1a1a1a; border-radius: 2px; width: 80px; }
   .progress-bar-fg { height: 3px; background: #4466aa; border-radius: 2px; transition: width .5s; }
-  .progress-stats { font-size: .68rem; color: #556; white-space: nowrap; }
+  .progress-stats { font-size: .68rem; color: #99a; white-space: nowrap; }
 
   /* ── claim panel ── */
   #claim-panel { display: none; margin-top: 2rem; }
   .panel-title { font-size: 1rem; color: #ccc; margin-bottom: .3rem; }
-  .panel-meta  { font-size: .72rem; color: #555; margin-bottom: 1.5rem; }
-  .panel-meta strong { color: #777; }
+  .panel-meta  { font-size: .72rem; color: #99a; margin-bottom: 1.5rem; }
+  .panel-meta strong { color: #bcc; }
 
   .copy-block { margin-bottom: 1.25rem; border: 1px solid #1e1e1e; border-radius: 5px; }
   .copy-block-header {
@@ -238,6 +249,36 @@
       <div class="mon-cap">stale-Artefakte</div></div>
     <div class="mon-stat"><div class="hist-strip" id="hist-strip"></div>
       <div class="mon-cap">Kosten 7 Tage</div></div>
+  </div>
+
+  <div id="stats-wrap" class="hidden">
+    <div class="stats-title">Statistik je Task-Typ (Generierung)</div>
+    <table class="stats-table">
+      <thead><tr>
+        <th>Task-Typ</th><th class="num">Ø Tokens</th><th class="num">Ø Zeit</th>
+        <th class="num">Ø tok/s</th><th class="num">n</th>
+      </tr></thead>
+      <tbody id="stats-body"></tbody>
+    </table>
+  </div>
+
+  <div id="cal-wrap" class="hidden">
+    <div class="stats-title">Kalibrierung je Task-Typ (Eskalation/Abbruch/Swap)</div>
+    <table class="stats-table">
+      <thead><tr>
+        <th>Task-Typ</th><th class="num">Eskalation</th><th class="num">Abbruch</th>
+        <th class="num">Swap</th><th class="num">Ø Vers.</th><th class="num">n</th>
+      </tr></thead>
+      <tbody id="cal-tt-body"></tbody>
+    </table>
+    <div class="stats-title" style="margin-top:.8rem">confidence-Kalibrierung (behauptet vs. Erfolg)</div>
+    <table class="stats-table">
+      <thead><tr>
+        <th>Modell</th><th class="num">conf</th><th class="num">Erfolg</th>
+        <th class="num">Δ</th><th class="num">n</th>
+      </tr></thead>
+      <tbody id="cal-conf-body"></tbody>
+    </table>
   </div>
 </div>
 
@@ -394,12 +435,13 @@
 
   function startPolling() {
     document.getElementById('monitor').classList.add('active');
+    const slowPoll = () => { fetchMetrics(); fetchStats(); fetchCalibration(); };
     fetchTasks();
     fetchLive();
-    fetchMetrics();
+    slowPoll();
     // Live-Status im Sekundentakt (leicht), Aggregate periodisch (teurer, R5).
     _pollTimer = setInterval(() => { fetchTasks(); fetchLive(); }, 2000);
-    _slowTimer = setInterval(fetchMetrics, 15000);
+    _slowTimer = setInterval(slowPoll, 15000);
   }
 
   function stopPolling() {
@@ -466,6 +508,51 @@
     const stale = document.getElementById('stat-stale');
     stale.textContent = m.stale_count ?? 0;
     stale.classList.toggle('warn', (m.stale_count ?? 0) > 0);
+  }
+
+  async function fetchStats() {
+    const r = await apiFetch('/api/task-stats');
+    if (r.ok) renderStats(await r.json());
+  }
+
+  function renderStats(rows) {
+    const wrap = document.getElementById('stats-wrap');
+    if (!rows.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    document.getElementById('stats-body').innerHTML = rows.map(r => `<tr>
+      <td>${esc(r.task_type)}</td>
+      <td class="num">${Math.round(r.avg_tokens)}</td>
+      <td class="num">${r.avg_time_s.toFixed(1)}s</td>
+      <td class="num">${r.avg_tok_s.toFixed(1)}</td>
+      <td class="num">${r.n}</td></tr>`).join('');
+  }
+
+  async function fetchCalibration() {
+    const r = await apiFetch('/api/calibration');
+    if (r.ok) renderCalibration(await r.json());
+  }
+
+  const pct = x => Math.round(x * 100) + '%';
+
+  function renderCalibration(c) {
+    const tt = c.by_task_type || [], conf = c.confidence || [];
+    const wrap = document.getElementById('cal-wrap');
+    if (!tt.length && !conf.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    document.getElementById('cal-tt-body').innerHTML = tt.map(r => `<tr>
+      <td>${esc(r.task_type)}</td>
+      <td class="num${r.escalation_rate >= 0.5 ? ' warn' : ''}">${pct(r.escalation_rate)}</td>
+      <td class="num${r.fail_rate >= 0.2 ? ' warn' : ''}">${pct(r.fail_rate)}</td>
+      <td class="num">${pct(r.swap_rate)}</td>
+      <td class="num">${r.avg_attempts.toFixed(1)}</td>
+      <td class="num">${r.n}</td></tr>`).join('');
+    // overconfidence > 0.15 = behauptet deutlich mehr als geliefert -> warnen.
+    document.getElementById('cal-conf-body').innerHTML = conf.map(r => `<tr>
+      <td>${esc(r.final_model)}</td>
+      <td class="num">${r.confidence.toFixed(2)}</td>
+      <td class="num">${pct(r.success_rate)}</td>
+      <td class="num${r.overconfidence > 0.15 ? ' warn' : ''}">${r.overconfidence >= 0 ? '+' : ''}${r.overconfidence.toFixed(2)}</td>
+      <td class="num">${r.n}</td></tr>`).join('');
   }
 
   function renderHistory(rows) {

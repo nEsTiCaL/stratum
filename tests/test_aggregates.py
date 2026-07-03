@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.metrics import InferenceSample, MetricsStore
 from core.models.provenance_schema import Provenance
 from core.models.result_det_schema import ResultDet
 from core.repository import Repository
@@ -100,3 +101,112 @@ class TestHistory:
 
     def test_empty(self, conn):
         assert Repository(conn).history(days=7) == []
+
+
+class TestTaskTypeStats:
+    def test_empty(self, conn):
+        assert Repository(conn).task_type_stats() == []
+
+    def test_aggregates_per_task_type(self, conn):
+        ms = MetricsStore(conn)
+        ms.record(InferenceSample("phi4-mini", 10.0, 100, task_type="summarize"))
+        ms.record(InferenceSample("phi4-mini", 20.0, 200, task_type="summarize"))
+        ms.record(InferenceSample("phi4-mini", 50.0, 50, task_type="explain"))
+
+        stats = Repository(conn).task_type_stats()
+        assert [s["task_type"] for s in stats] == ["explain", "summarize"]
+        summ = stats[1]
+        assert summ["avg_tokens"] == pytest.approx(150.0)  # (100+200)/2
+        assert summ["avg_tok_s"] == pytest.approx(15.0)  # (10+20)/2
+        assert summ["avg_time_s"] == pytest.approx(10.0)  # avg(100/10, 200/20)
+        assert summ["n"] == 2
+
+    def test_ignores_null_task_type(self, conn):
+        MetricsStore(conn).record(InferenceSample("phi4-mini", 10.0, 100))
+        assert Repository(conn).task_type_stats() == []
+
+
+class TestCalibration:
+    """I-5.4: Kalibrierungs-Auswertung aus der task_result-Trace (read-only).
+
+    Eskalations-/Abbruch-/Swap-Kennzahlen je task_type + confidence-Kalibrierung
+    (behauptete confidence je final_model vs. tatsaechlicher Validierungserfolg).
+    """
+
+    def _result(
+        self,
+        repo: Repository,
+        *,
+        task_type: str | None = None,
+        validation_result: str = "pass",
+        attempts: int = 1,
+        final_model: str | None = None,
+    ) -> None:
+        repo.write_trace(
+            "dag",
+            "task_result",
+            detail={
+                "task_type": task_type,
+                "validation_result": validation_result,
+                "attempts": attempts,
+                "final_model": final_model,
+            },
+        )
+
+    def test_empty(self, conn):
+        assert Repository(conn).calibration() == {
+            "by_task_type": [],
+            "confidence": [],
+        }
+
+    def test_by_task_type_rates(self, conn):
+        repo = Repository(conn)
+        # summarize: 4 Tasks -> 2 pass / 1 escalated / 1 fail, attempts 1,1,2,3
+        self._result(repo, task_type="summarize", validation_result="pass", attempts=1)
+        self._result(repo, task_type="summarize", validation_result="pass", attempts=1)
+        self._result(
+            repo, task_type="summarize", validation_result="escalated", attempts=2
+        )
+        self._result(repo, task_type="summarize", validation_result="fail", attempts=3)
+        self._result(repo, task_type="explain", validation_result="pass", attempts=1)
+
+        rows = repo.calibration()["by_task_type"]
+        assert [r["task_type"] for r in rows] == ["explain", "summarize"]  # sortiert
+        summ = rows[1]
+        assert summ["n"] == 4
+        assert summ["escalation_rate"] == pytest.approx(1 / 4)
+        assert summ["fail_rate"] == pytest.approx(1 / 4)  # R1-Abbruchrate
+        assert summ["swap_rate"] == pytest.approx(2 / 4)  # attempts>1: 2 und 3
+        assert summ["avg_attempts"] == pytest.approx((1 + 1 + 2 + 3) / 4)
+
+    def test_confidence_calibration(self, conn):
+        repo = Repository(conn)
+        # phi4-mini (local -> Proxy 0.70): 2 pass von 3 -> success 2/3, ueberkonfident
+        self._result(repo, final_model="phi4-mini", validation_result="pass")
+        self._result(repo, final_model="phi4-mini", validation_result="pass")
+        self._result(repo, final_model="phi4-mini", validation_result="fail")
+        # opus (paid_top -> Proxy 0.93): 1 pass -> success 1.0
+        self._result(repo, final_model="opus", validation_result="pass")
+
+        conf = repo.calibration()["confidence"]
+        assert [c["final_model"] for c in conf] == ["opus", "phi4-mini"]
+        phi = conf[1]
+        assert phi["confidence"] == pytest.approx(0.70)
+        assert phi["n"] == 3
+        assert phi["success_rate"] == pytest.approx(2 / 3)
+        # overconfidence > 0 -> Modell behauptet mehr, als es liefert.
+        assert phi["overconfidence"] == pytest.approx(0.70 - 2 / 3)
+
+    def test_unknown_model_falls_back_to_local_confidence(self, conn):
+        repo = Repository(conn)
+        self._result(repo, final_model="mystery-model", validation_result="pass")
+        conf = repo.calibration()["confidence"]
+        assert conf[0]["confidence"] == pytest.approx(0.70)  # Fallback wie im Worker
+
+    def test_ignores_rows_without_task_type_or_model(self, conn):
+        repo = Repository(conn)
+        self._result(repo, validation_result="pass")  # weder task_type noch model
+        repo.write_trace("dag", "ingestion")  # kein task_result
+        cal = repo.calibration()
+        assert cal["by_task_type"] == []
+        assert cal["confidence"] == []

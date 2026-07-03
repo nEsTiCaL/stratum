@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from io import StringIO
 
-import pytest
-
 from core.manual_adapter import ManualAdapter
 from core.router import TaskType
 from core.validator import Validator

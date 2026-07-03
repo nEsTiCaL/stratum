@@ -151,11 +151,20 @@ class TestDashboardHtml:
             "stat-stale",
             "cap-bar",
             "hist-strip",
+            "stats-wrap",
+            "stats-body",
             "fetchLive",
             "fetchMetrics",
+            "fetchStats",
+            "fetchCalibration",
+            "cal-wrap",
+            "cal-tt-body",
+            "cal-conf-body",
             "/api/live",
             "/api/metrics",
             "/api/history",
+            "/api/task-stats",
+            "/api/calibration",
         ):
             assert marker in html, f"Marker fehlt im Dashboard-HTML: {marker}"
 
@@ -168,6 +177,51 @@ class TestAggregateEndpoints:
         body = client.get("/api/metrics", headers=AUTH).json()
         assert set(body) == {"cost_today_usd", "escalation_rate", "stale_count"}
         assert body["escalation_rate"] is None  # keine task_result-Zeilen
+
+    def test_task_stats_requires_auth(self, client):
+        assert client.get("/api/task-stats").status_code == 401
+
+    def test_task_stats_shape(self, client, conn):
+        from core.metrics import InferenceSample, MetricsStore
+
+        MetricsStore(conn).record(
+            InferenceSample("phi4-mini", 12.0, 120, task_type="summarize")
+        )
+        body = client.get("/api/task-stats", headers=AUTH).json()
+        assert len(body) == 1
+        assert body[0]["task_type"] == "summarize"
+        assert set(body[0]) == {
+            "task_type",
+            "avg_tokens",
+            "avg_time_s",
+            "avg_tok_s",
+            "n",
+        }
+
+    def test_calibration_requires_auth(self, client):
+        assert client.get("/api/calibration").status_code == 401
+
+    def test_calibration_shape(self, client, conn):
+        repo = Repository(conn)
+        repo.write_trace(
+            "dag",
+            "task_result",
+            detail={
+                "task_type": "review",
+                "validation_result": "escalated",
+                "attempts": 2,
+                "final_model": "sonnet",
+            },
+        )
+        body = client.get("/api/calibration", headers=AUTH).json()
+        assert set(body) == {"by_task_type", "confidence"}
+        tt = body["by_task_type"][0]
+        assert tt["task_type"] == "review"
+        assert tt["escalation_rate"] == 1.0
+        assert tt["swap_rate"] == 1.0  # attempts=2 > 1
+        conf = body["confidence"][0]
+        assert conf["final_model"] == "sonnet"
+        assert conf["confidence"] == 0.88  # paid_mid-Proxy
 
     def test_history_requires_auth(self, client):
         assert client.get("/api/history").status_code == 401

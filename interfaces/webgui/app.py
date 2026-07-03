@@ -14,6 +14,8 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/live               -> Live-Status-Snapshot (Queue/Tasks/Batch, gepollt)
   GET  /api/metrics            -> Aggregate: Kosten heute, Eskalationsrate, stale
   GET  /api/history            -> Tages-Rollup Kosten/Eskalationen (?days=N)
+  GET  /api/task-stats         -> Ø Tokens/Zeit/tok-s je task_type
+  GET  /api/calibration        -> Eskalation/Swap je task_type + confidence-Kalibr.
   GET  /api/trace/{session}    -> Trace einer Session (Drill-down)
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
@@ -276,6 +278,19 @@ def create_app(
     ) -> list[dict[str, Any]]:
         """Tages-Rollup Kosten/Eskalationen der letzten `days` Tage (I-5.2)."""
         return repo.history(days=days)
+
+    @app.get("/api/task-stats")
+    async def task_stats(owner: str = Depends(_require_owner)) -> list[dict[str, Any]]:
+        """Kurzstatistik je task_type (I-5.4-Vorlauf): Ø Tokens/Zeit/tok-s aus
+        model_metrics. Read-only."""
+        return repo.task_type_stats()
+
+    @app.get("/api/calibration")
+    async def calibration(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Kalibrierungs-Auswertung (I-5.4): Eskalation/Abbruch/Swap je task_type
+        + confidence-Kalibrierung je final_model. Read-only; Schwellen wendet der
+        Mensch an."""
+        return repo.calibration()
 
     @app.get("/api/trace/{session_id}")
     async def trace(

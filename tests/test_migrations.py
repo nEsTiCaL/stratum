@@ -19,3 +19,14 @@ class TestPgvector:
         with conn.cursor() as cur:
             cur.execute("SELECT '[1,0]'::vector <-> '[0,0]'::vector")
             assert cur.fetchone()[0] == 1.0
+
+
+class TestMetricsTaskType:
+    def test_model_metrics_has_task_type_column(self, conn):
+        # I-5.4-Vorlauf: Migration 0009 fuegt task_type an model_metrics.
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'model_metrics' AND column_name = 'task_type'"
+            )
+            assert cur.fetchone() is not None

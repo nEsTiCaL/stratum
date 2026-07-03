@@ -105,10 +105,7 @@ class TestMultiline:
         assert "Zeile 3" in p.text
 
     def test_multiline_findings(self):
-        raw = (
-            "CONTENT:\nHauptantwort\n"
-            "FINDINGS:\n- Fund 1\n- Fund 2\n- Fund 3\n"
-        )
+        raw = "CONTENT:\nHauptantwort\nFINDINGS:\n- Fund 1\n- Fund 2\n- Fund 3\n"
         p = parse_llm_response(raw)
         assert p.findings is not None
         assert "Fund 1" in p.findings

@@ -20,6 +20,7 @@ from core.graph import GraphEdge
 from core.models.provenance_schema import ProducerClass, Provenance
 from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
+from core.router import MODEL_CAPABILITIES, TIER_CONFIDENCE
 from core.symdiff import ChangeKind, change_kind
 
 Result = ResultDet | ResultProb
@@ -545,6 +546,95 @@ class Repository:
                 b["tasks"] = tasks
 
         return [buckets[day] for day in sorted(buckets)]
+
+    def task_type_stats(self) -> list[dict[str, Any]]:
+        """Kurzstatistik je task_type aus model_metrics (I-5.4-Vorlauf).
+
+        Ø generierte Tokens, Ø Zeit (aus eval_count/tok_s abgeleitet), Ø tok/s
+        und Anzahl Messungen. Nur Zeilen mit task_type und tok_per_s>0;
+        deterministisch nach task_type sortiert.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT task_type, AVG(eval_count)::float, "
+                "AVG(eval_count::float / tok_per_s)::float, "
+                "AVG(tok_per_s)::float, COUNT(*) FROM model_metrics "
+                "WHERE task_type IS NOT NULL AND tok_per_s > 0 "
+                "GROUP BY task_type ORDER BY task_type"
+            )
+            return [
+                {
+                    "task_type": r[0],
+                    "avg_tokens": r[1],
+                    "avg_time_s": r[2],
+                    "avg_tok_s": r[3],
+                    "n": r[4],
+                }
+                for r in cur.fetchall()
+            ]
+
+    def calibration(self) -> dict[str, Any]:
+        """Kalibrierungs-Auswertung aus der task_result-Trace (I-5.4, read-only).
+
+        Zwei Sichten, beide rein aus der Trace ableitbar (kein neues Schema):
+
+        - by_task_type: je task_type Eskalationsrate (groesster Routing-Hebel),
+          fail_rate (R1-Abbruchrate), swap_rate (Anteil attempts>1) und
+          avg_attempts. Grundlage fuer Start-Modell je task_type anheben/senken.
+        - confidence: je final_model die behauptete confidence (Tier-Proxy wie im
+          Worker, TIER_CONFIDENCE) gegen den tatsaechlichen Validierungserfolg
+          (pass-Rate). overconfidence = confidence - success_rate (>0 = zu
+          konfident -> Eskalations-Schwelle anheben).
+
+        Auswertung ist deterministisch; die Schwellen-/Matrix-Anpassung wendet der
+        Mensch an (nie vollautomatisch, R5). Sortierung stabil (task_type/model).
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT detail->>'task_type', count(*), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'escalated'), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'fail'), "
+                "count(*) FILTER (WHERE (detail->>'attempts')::int > 1), "
+                "AVG((detail->>'attempts')::float) "
+                "FROM trace WHERE stage = 'task_result' "
+                "AND detail->>'task_type' IS NOT NULL "
+                "GROUP BY detail->>'task_type' ORDER BY detail->>'task_type'"
+            )
+            by_task_type = [
+                {
+                    "task_type": tt,
+                    "n": n,
+                    "escalation_rate": esc / n,
+                    "fail_rate": fail / n,
+                    "swap_rate": swaps / n,
+                    "avg_attempts": avg_attempts,
+                }
+                for tt, n, esc, fail, swaps, avg_attempts in cur.fetchall()
+            ]
+
+            cur.execute(
+                "SELECT detail->>'final_model', count(*), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'pass') "
+                "FROM trace WHERE stage = 'task_result' "
+                "AND detail->>'final_model' IS NOT NULL "
+                "GROUP BY detail->>'final_model' ORDER BY detail->>'final_model'"
+            )
+            confidence = []
+            for model, n, ok in cur.fetchall():
+                cap = MODEL_CAPABILITIES.get(model)
+                conf = TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
+                success_rate = ok / n
+                confidence.append(
+                    {
+                        "final_model": model,
+                        "confidence": conf,
+                        "n": n,
+                        "success_rate": success_rate,
+                        "overconfidence": conf - success_rate,
+                    }
+                )
+
+        return {"by_task_type": by_task_type, "confidence": confidence}
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.

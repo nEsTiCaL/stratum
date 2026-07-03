@@ -370,25 +370,25 @@ _INSTALL_TIERS: list[tuple[str, int, dict[Role, str | None]]] = [
 # Deterministisches Mapping task_type -> artifact_type (prob-Pfad).
 # Grundlage fuer den Worker: kein LLM-Feld noetig.
 TASK_TYPE_TO_ARTIFACT_TYPE: dict[TaskType, str] = {
-    TaskType.summarize:        "code_summary",
-    TaskType.explain:          "code_explanation",
-    TaskType.document:         "docstring",
-    TaskType.review:           "review_findings",
-    TaskType.test_gen:         "test_generation",
+    TaskType.summarize: "code_summary",
+    TaskType.explain: "code_explanation",
+    TaskType.document: "docstring",
+    TaskType.review: "review_findings",
+    TaskType.test_gen: "test_generation",
     TaskType.refactor_suggest: "refactor_plan",
-    TaskType.debug:            "debug_analysis",
-    TaskType.architecture:     "review_findings",
-    TaskType.cross_module:     "review_findings",
-    TaskType.crypto_audit:     "review_findings",
+    TaskType.debug: "debug_analysis",
+    TaskType.architecture: "review_findings",
+    TaskType.cross_module: "review_findings",
+    TaskType.crypto_audit: "review_findings",
 }
 
 # Confidence-Proxy aus dem Modell-Tier (ersetzt LLM-Selbsteinschaetzung).
 TIER_CONFIDENCE: dict[CostTier, float] = {
-    CostTier.local:      0.70,
-    CostTier.free:       0.78,
+    CostTier.local: 0.70,
+    CostTier.free: 0.78,
     CostTier.paid_cheap: 0.82,
-    CostTier.paid_mid:   0.88,
-    CostTier.paid_top:   0.93,
+    CostTier.paid_mid: 0.88,
+    CostTier.paid_top: 0.93,
 }
 
 
