@@ -127,7 +127,7 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   symbol_index. (const-Erkennung ist Profil, nicht Kern -> const_strategy.)
 - ingest.py: Sprach-Dispatch (Endung -> Sprache -> Builder-Set; Python = 3 Builder).
 
-## Offen / folgt
+## Sprach-Umsetzungen (alle fertig, Schritt 1 vollstaendig)
 
 - I-1.9 JavaScript/TS FERTIG: queries/javascript|typescript/*.scm + Profile
   (visibility_strategy=export); Sichtbarkeit korrekt via generischer
@@ -157,4 +157,4 @@ Details, Capture-Vokabular, Profil-Achsen und Umsetzungsentscheidungen:
   bewusst); Datei-extends als Klassen-Signatur (.scm). 160 Tests gruen. OFFEN S4:
   Datei-als-Klasse im Symbol-Modell (Top-Level-Member -> method der class_name-
   Klasse, mit cross-file class_name-Tabelle). Details: `idx_gdscript`.
-- Schritt 1 fast fertig: nur noch I-1.12 (ruff Lint-/Format-Gate) offen.
+- I-1.12 Lint-/Format-Gate FERTIG (`spec_lint-gate`) -> Schritt 1 VOLLSTAENDIG.

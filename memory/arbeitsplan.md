@@ -172,29 +172,15 @@ I-S.5     Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 
 ## Status
 
-I-4.1 fertig: graph_edges-Tabelle (Migration 0006) + Befuellung aus Artefakten
-(import/call/contains). core/graph.py: GraphEdge + edges_from_* Funktionen.
-Repository: put_edges/get_edges. ingest_content eingehaengt. 20 Tests gruen.
+Die Tabellen oben sind die einzige Fortschritts-Wahrheit (rules P7); Details je
+Abschluss stehen im jeweiligen Spec-/Domaenen-Chunk und in log.md (bzw.
+log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
+aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
-I-3.5 fertig: Kosten-Telemetrie + Tageskappung. Schritt 3 (Cloud-Bruecke) VOLLSTAENDIG.
-I-D.3 fertig: Manual-Adapter (Copy-Paste-Bruecke). N2-Dogfooding ohne VSCode moeglich.
-I-D.2 fertig: Web-Dashboard (FastAPI+SSE+Claim-Workflow). N3-Dogfooding nutzbar.
-I-REST.1 fertig: GET /api/result/{id} + Queue.get_task_info(). Ergebnisse per curl abrufbar.
-I-REST.2 fertig: Ownership + API-Key-Auth. capabilities-Tabelle (I-S.2-kompatibel), Bearer-Auth
-auf allen Endpoints ausser GET / und GET /api/status. SSE entfernt -> Polling. Dashboard
-mit Login-Overlay. Key-Verwaltung: python -m core.auth create <owner>.
-
-I-1.0 bis I-1.12 fertig: Schritt 1 (Substrat) VOLLSTAENDIG. I-1.12 = ruff Lint-/
-Format-Gate (make lint/fmt/check, ganzer Baum, core/models+tests/fixtures aus,
-Format erzwungen, line-length 88, CI make-only); Details `spec_lint-gate`.
-Sprachagnostik belegt ueber 5 Sprachen (Py/JS/TS/C#/
-GDScript) profilgesteuert; calls.py war bis I-1.11 git-diff leer, ab I-1.11b
-generisch erweitert (GDScript self-Calls, 2 Profil-Achsen) - kein language-inlining,
-Agnostik intakt. GDScript ab I-1.11b First-Class (3 Builder). Befunde im
-Indexer-`idx_core` und `idx_gdscript`.
-Beim Abschluss eines Haeppchens Status hier
-aktualisieren (offen -> in arbeit -> fertig) und log.md ergaenzen. Dieser
-Plan ist die einzige Fortschritts-Wahrheit; nicht an mehreren Stellen pflegen.
+Stand 2026-07-03: Schritt 1-3 VOLLSTAENDIG, Schritt 4 begonnen (I-4.1 fertig).
+Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
+(API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
+(`ops_n1-queries`, `ops_prob-dogfooding`).
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

@@ -9,19 +9,18 @@ Schreiben: Erkenntnisse/Entscheidungen sofort festhalten -> memory/rules.md.
 
 Vor Quelldateien lesen oder Code schreiben: Harness zuerst befragen.
 
-**A — Strukturabfragen (devcli, WSL):** symbol_lookup / index / dependency_map.
-Claude formuliert Befehl, Nutzer fuehrt aus, Claude reviewt iterativ.
-Details + Preflight: memory/ops_n1-queries.md.
+**A -- Strukturabfragen (REST via curl, direkt ausfuehren):** /api/dev/symbol /
+index / deps / calls. Details + Preflight: memory/ops_n1-queries.md.
 
-**B — LLM-Tasks (curl, direkt ausfuehren):** summarize / explain / review / document etc.
+**B -- LLM-Tasks (curl, direkt ausfuehren):** summarize / explain / review / document etc.
 API-Key aus .local/host.md. Server: http://localhost:8000. Endpoints: memory/spec_rest-api.md.
 
 ```bash
 curl -s -X POST http://localhost:8000/api/task \
   -H "Authorization: Bearer <KEY>" -H "Content-Type: application/json" \
   -d '{"task_type":"<typ>","scope":"file:<pfad>"}' # -> {"id":42}
-curl -sN -H "Authorization: Bearer <KEY>" http://localhost:8000/api/task/42/events
-curl -s  -H "Authorization: Bearer <KEY>" http://localhost:8000/api/result/42
+curl -s -H "Authorization: Bearer <KEY>" http://localhost:8000/api/tasks     # Polling bis done (.progress)
+curl -s -H "Authorization: Bearer <KEY>" http://localhost:8000/api/result/42
 ```
 
 Ergebnis reviewen und iterieren. Web-Dashboard fuer manuelles Copy-Paste: Nutzer fragen.

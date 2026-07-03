@@ -1,9 +1,7 @@
----
-name: feedback_ps51-pitfalls
-description: PowerShell 5.1 Fallstricke: UTF-8-Encoding ohne BOM und @{u}-Hashtable-Parsing
-metadata:
-  type: feedback
----
+# PowerShell-5.1-Fallstricke
+
+Verifizierte Stolperfallen beim Schreiben von .ps1-Skripten (z.B. .local/sync.ps1)
+auf diesem Projekt-Setup (Windows PowerShell 5.1).
 
 ## Regel 1: Keine Non-ASCII-Zeichen in .ps1-Dateien
 

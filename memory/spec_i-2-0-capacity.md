@@ -30,12 +30,13 @@ model_config ist ueberall gleich (Modell-Kosten aendern sich nicht je Maschine)
 capacity.toml ist die EINZIGE pro-Deployment-Datei (gitignoriert; example
 committed). load_policy liest sie; fehlt sie -> Auto-Detect-Default aus Fakten.
 
-Kanonische Modellschluessel (vereinheitlicht, I-2.1-Matrix zieht nach):
-phi-4-mini, qwen2.5-coder, qwen3-8b, r1-distill, qwen3-8b-q8.
+Kanonische Modellschluessel (vereinheitlicht, exakt wie MODEL_CONFIG in
+core/capacity.py und der Ollama-Name -- phi OHNE Bindestrich nach "phi"):
+phi4-mini, qwen2.5-coder, qwen3-8b, r1-distill, qwen3-8b-q8.
 
 ```
 Modell          vram_mb  num_ctx  keep_alive  exclusive
-phi-4-mini      3000     8192     -1          false
+phi4-mini      3000     8192     -1          false
 qwen2.5-coder   5000     8192     -1          false
 qwen3-8b        6000     8192     5m          false
 r1-distill      6000     12288    5m          false
@@ -90,9 +91,9 @@ Trennung ist die ehrliche Kapazitaetsaussage; Swap entscheidet spaeter die Queue
 
 ```
 total_vram = 0 -> Profil D: budget = total_ram (oder 9000), resident
-                 [phi-4-mini], allowed [phi-4-mini], max_parallel 1
-sonst (GPU)   -> budget = floor(0.8 * total_vram); resident [phi-4-mini,
-                 qwen2.5-coder] falls beide in budget, sonst [phi-4-mini];
+                 [phi4-mini], allowed [phi4-mini], max_parallel 1
+sonst (GPU)   -> budget = floor(0.8 * total_vram); resident [phi4-mini,
+                 qwen2.5-coder] falls beide in budget, sonst [phi4-mini];
                  allowed = alle model_config-Keys, die einzeln in budget passen;
                  max_parallel abgeleitet (s.o.)
 ```
@@ -116,6 +117,6 @@ dev-verifiziert.
 - 12 Tests (tests/test_capacity.py, reine Logik, kein Postgres), 187 gesamt
   gruen; make check (lint+format+test) gruen.
 - Dev-verifiziert auf dieser CPU-Maschine: measure_hardware -> total_vram_mb=0,
-  total_ram_mb=7845 -> resolve(None) = Profil D (is_cpu, resident phi-4-mini,
+  total_ram_mb=7845 -> resolve(None) = Profil D (is_cpu, resident phi4-mini,
   max_parallel 1). GPU-Parse hier unverifiziert (kein nvidia-smi).
 - capacity.toml.example committed (Profil B), capacity.toml gitignored.

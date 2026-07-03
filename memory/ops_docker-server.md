@@ -36,7 +36,7 @@ Symptom: db+server zyklen im ~20-40s-Takt, db-Log wechselt "received fast shutdo
 request" <-> "database system is ready", server nicht erreichbar (curl 000). NICHT
 die App, NICHT compose, NICHT --no-deps.
 
-Ursache: viele kurze `wsl -d Debian -- …`-Aufrufe (z.B. Diagnose-Barrage) oeffnen/
+Ursache: viele kurze `wsl -d Debian -- ...`-Aufrufe (z.B. Diagnose-Barrage) oeffnen/
 schliessen je eine Login-Session. Der docker-Daemon ist socket-aktiviert
 (TriggeredBy docker.socket) und kommt bei jeder neuen Session frisch hoch -> die
 `restart: unless-stopped`-Container starten neu. Kennzeichen: `RestartCount=0`

@@ -9,7 +9,7 @@ roadmap-schritt-2.md, startkonfiguration.md.
 ```
 Vor (neu) je Inkrement:
   I-2.0  capacity.toml, nvidia-smi verfuegbar
-  I-2.5  Ollama-Daemon erreichbar + Modelle gezogen (phi-4-mini,
+  I-2.5  Ollama-Daemon erreichbar + Modelle gezogen (phi4-mini,
          qwen2.5-coder; on-demand qwen3-8b, r1-distill, q8), OLLAMA_HOST,
          ollama/httpx-Client
   (I-2.6/2.7 erben die Modelle aus I-2.5)

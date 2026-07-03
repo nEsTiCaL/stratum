@@ -105,8 +105,10 @@ ssh stratum@server review --scope file:src/main.py < src/main.py
 ```
 
 Das Go-Binary ist ein Protokoll-Uebersetzer: es nimmt SSH-stdin/stdout
-und spricht intern gegen die REST-API (POST /api/task, GET /api/task/{id}/events).
-Die REST-API selbst kennt kein SSH. Schnittstellen-Details: spec_rest-api.md.
+und spricht intern gegen die REST-API (POST /api/task; Fortschritt derzeit
+Polling auf GET /api/tasks -- der SSE-Stream wurde mit I-REST.2 entfernt,
+Stream-Endpoint fuer P2 neu entscheiden). Die REST-API selbst kennt kein SSH.
+Schnittstellen-Details: spec_rest-api.md.
 
 ## I-S.2  Auth-Schicht (fail-safe)
 

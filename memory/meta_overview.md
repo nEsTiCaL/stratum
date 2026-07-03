@@ -29,10 +29,11 @@ vor Server (Phase 2), verteilte Buendelung (Phase 3) geparkt. Details in
 
 ## Status
 
-In Entwicklung. Sicherheits-Gates laufen in der Testphase als kontrollierte
-Stubs und werden vor dem Produktivbetrieb scharf gestellt. Schritt 1 (Substrat)
-vollstaendig, Schritt 2 (Orchestrator-Kern) vollstaendig. Indexer-Domaene:
-`idx_core`. Fortschritts-Wahrheit: `arbeitsplan`.
+In Entwicklung. Sicherheits-Gates: Redaction/Secret-Scan seit I-3.4 scharf;
+auth per API-Key (I-REST.2). Schritte 1-3 (Substrat, Orchestrator-Kern,
+Cloud-Bruecke) vollstaendig, Schritt 4 begonnen (I-4.1). Web-Dashboard +
+REST-API nutzbar (I-D.2/D.3, I-REST.1/2). Indexer-Domaene: `idx_core`.
+Fortschritts-Wahrheit: `arbeitsplan`.
 
 Ausfuehrungsplan steht: die fuenf Architektur-Schritte plus Schalen sind in
 kleine, vertikale, einzeln abnehmbare Inkremente zerlegt. Teststrategie folgt

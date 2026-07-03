@@ -29,7 +29,7 @@ N6 Mehrnutzer       Phase 2 (Server)  SSH-CLI, Auth, remote; erst wenn andere
                                       Ab N6: Worker als eigener Docker-Service
                                       (Skalierung, Fault-Isolation). Bis N5
                                       laeuft der Worker im Server-Container
-                                      (Background-Thread) — ausreichend fuer
+                                      (Background-Thread) -- ausreichend fuer
                                       Single-User, kein separater Dienst noetig.
 ```
 

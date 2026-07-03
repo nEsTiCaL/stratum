@@ -19,6 +19,7 @@ spec    Inkrement-Definitionen + Entwurfsentscheidungen je Inkrement
 idx     Indexer / tree-sitter-Domaene
 modell  Modell- und Hardware-Kapazitaetsprofile
 meta    Gedaechtnis- und Projektuebersicht
+feedback verifizierte Arbeitsweise-Lehren (Tool-/Shell-Fallstricke)
 ```
 
 ## Strukturdateien
@@ -28,7 +29,8 @@ memory_start.md Einstieg jeder Session (Routing zu grep / Manifest / arbeitsplan
 MANIFEST.md    diese Datei
 rules.md       Gedaechtnis-Regeln (Zugriff/Schreiben/Format/Pflege)
 arbeitsplan.md BAU-DISPATCH: Haeppchen -> Quellen + Fortschritts-Status
-log.md         Chronik, append-only (nur bei Historienfrage lesen)
+log.md         Chronik der laufenden Phase, append-only (nur bei Historienfrage)
+log-archiv-schritt-N.md  rotierte Log-Zeilen abgeschlossener Schritte (P4), N=1..3
 ```
 
 ## Chunks
@@ -52,7 +54,7 @@ ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B via sync.ps1, Entschei
 ops_sync-script.md       | Inhalt .local/sync.ps1 (Commit+Push+WSL-Sync), Aufrufform            | sync.ps1, powershell, WIN_REPO_PFAD
 ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nutzen-Begruendung | smoketest, ollama-erreichbar,
                          |   fuers aktive N1-Dogfooding, Fund WSL-Klon-Drift + Pfad-Umzug        |   wsl-drift, pfad-umzug
-ops_prob-dogfooding.md   | Prob-Loop: eigenen Code per Worker(LLM)/Human reviewen — curl        | prob-dogfooding, task-loop, routing,
+ops_prob-dogfooding.md   | Prob-Loop: eigenen Code per Worker(LLM)/Human reviewen -- curl        | prob-dogfooding, task-loop, routing,
                          |   create/poll/result; Routing-Gotcha Profil D (summarize/explain     |   profil-d, review-cloud, model-human,
                          |   lokal, review->Cloud/human, EscalationLoop-AssertionError)          |   escalationloop-assertion
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
@@ -68,7 +70,7 @@ feedback_ps51-pitfalls.md | PS5.1-Fallstricke: UTF-8 ohne BOM (non-ASCII bricht 
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel
 modell_vram-matrix.md    | VRAM-Bedarf je Modell, Verfuegbarkeit nach VRAM-Groesse             | phi4-mini, qwen, deepseek, 8/12/16gb
-modell_cpu-profil.md     | CPU-only-Profil D: nur phi-4-mini lokal, Coden/Reasoning via Cloud   | ram-bandbreite, tok/s, wslconfig
+modell_cpu-profil.md     | CPU-only-Profil D: nur phi4-mini lokal, Coden/Reasoning via Cloud   | ram-bandbreite, tok/s, wslconfig
 plan_core.md             | Planungs-Kern: Abnahme-Leitlinie, Inkrement-Schema, Phasen,         | det|prob, bau-reihenfolge, secret-scan-gate,
                          |   Bau-Reihenfolge, Test-Infra, harte Reihenfolge-Regeln             |   test-infra
 plan_nutzstufen.md       | Nutzstufen N0-N6 (Dogfooding-Meilensteine)                          | n1-navigation, n2-wendepunkt, n3-cloud
@@ -80,8 +82,8 @@ spec_schritt-3.md        | Inkremente Schritt 3 (Cloud-Bruecke) I-3.1..3.5, Kons
 spec_schritt-4.md        | Inkremente Schritt 4 (Graph-Tiefe) I-4.1..4.4                       | graph_edges, cte, symbol-diff, invalidierung
 spec_schritt-5.md        | Inkremente Schritt 5 (Betrieb) I-5.1..5.5                           | sse, rest, dashboard, kalibrierung, canary
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
-spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task,                    | sse, task-create, result-abruf, ssh-pipe,
-                         |   GET /api/task/{id}/events, GET /api/result/{id}),                   |   session-cache, scope, curl-beispiele,
+spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task, GET /api/tasks     | polling, task-create, result-abruf, ssh-pipe,
+                         |   Polling, GET /api/result/{id}; SSE entfernt I-REST.2),              |   session-cache, scope, curl-beispiele,
                          |   Phase-2-Go-CLI-Mapping, Scope-Typen (I-REST.1), Prob-Tasks:         |   human-task, submit-toleranz, resultprob-divergenz,
                          |   EIN Markdown-Format human+LLM (core/review_format), Ueberschriften- |   review-format, ueberschriften-split,
                          |   Split -> content.text/findings/recommendations                     |   markdown-prompt, build-content

@@ -1,10 +1,9 @@
 # I-1.9 JavaScript/TypeScript: Stand, Findings, Plan
 
-Arbeitsstand-Notiz fuer den Kaltstart. I-1.9 ist IN ARBEIT, pausiert NACH der
-Grammatik-Sondierung und VOR der Implementierung. Hier stehen die getroffenen
-Entscheidungen, die sondierten Grammatik-Strukturen (nicht neu sondieren) und der
-konkrete Bauplan inkl. der genauen Kern-Edits. Grundlage: `idx_sprachagnostik`,
-`spec_schritt-1` (I-1.9).
+I-1.9 ist FERTIG (Status unten). Hier stehen die getroffenen Entscheidungen,
+die sondierten Grammatik-Strukturen (nicht neu sondieren) und der Bauplan inkl.
+der genauen Kern-Edits -- Referenz fuer weitere Sprachen. Grundlage:
+`idx_sprachagnostik`, `spec_schritt-1` (I-1.9).
 
 ## Stand: ERLEDIGT (I-1.9 fertig, 2026-06-30)
 

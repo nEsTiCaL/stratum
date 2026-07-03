@@ -10,7 +10,7 @@ NICHT lauffaehig. Auch das System-Windows-Python (z.B. 3.14) hat keine
 Projekt-Pakete installiert. Einziger Aufrufweg: explizit Distro `Debian`,
 Repo-Pfad im WSL: `~/stratum`.
 
-### Form A — aktivierte venv (bevorzugt)
+### Form A -- aktivierte venv (bevorzugt)
 
 ```
 wsl -d Debian -- bash -c "cd ~/stratum && source .venv/bin/activate && python <REST>"
@@ -26,14 +26,14 @@ Konkrete Beispiele:
 # Tests (schnell, alle)
 wsl -d Debian -- bash -c "cd ~/stratum && source .venv/bin/activate && python -m pytest -q"
 
-# Lint — geaenderte Dateien
+# Lint -- geaenderte Dateien
 wsl -d Debian -- bash -c "cd ~/stratum && source .venv/bin/activate && ruff check core/foo.py tests/test_foo.py"
 
-# Lint — ganzer Baum
+# Lint -- ganzer Baum
 wsl -d Debian -- bash -c "cd ~/stratum && source .venv/bin/activate && ruff check ."
 ```
 
-### Form B — direkter venv-Python (Schnell-Aufruf ohne Aktivierung)
+### Form B -- direkter venv-Python (Schnell-Aufruf ohne Aktivierung)
 
 ```
 wsl -d Debian -- bash -c "cd ~/stratum && PYTHONPATH=. .venv/bin/python <REST>"

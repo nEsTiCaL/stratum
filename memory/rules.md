@@ -67,6 +67,9 @@ F3  UTF-8, echte Umlaute erlaubt; keine Emojis, keine Em-/En-Dashes.
     Frontmatter-Vokabular gibt es nicht mehr; Fliesstext deutsch.
 F4  Verworfenes nicht als Karteileiche behalten: entweder still korrigieren
     (Faktenfehler) oder Chunk loeschen und einen Grund ins log schreiben.
+F5  Bezeichner (Modellschluessel, Endpoints, Konfig-Keys, Klassennamen) exakt
+    in Code-Schreibweise uebernehmen, nie umformatieren. Schreibvarianten
+    brechen die grep-Fakt-Suche (Z1). Vorfall: phi-4-mini vs phi4-mini.
 ```
 
 ## P - Pflege
@@ -74,7 +77,11 @@ F4  Verworfenes nicht als Karteileiche behalten: entweder still korrigieren
 ```
 P1  Jeder neue/geaenderte/geloeschte Chunk -> Manifest-Zeile mitziehen
     (anlegen/aendern/entfernen). Manifest und Bestand duerfen nie divergieren.
-P2  Jeder Schreibanlass -> genau eine Zeile an log.md: "## [datum] typ | Titel".
+P2  Jeder Schreibanlass -> genau eine Zeile an log.md, Twitter-Mass:
+    "## [datum] typ | Schlagzeile -> `chunk`", max 140 Zeichen nach dem "|".
+    Die Zeile ist Schlagzeile + Verweis, KEIN Speicher: jedes Detail, das die
+    140 sprengt, gehoert in den Ziel-Chunk (dorthin schreiben, dann verweisen).
+    Selbsttest: passt die Erkenntnis nicht in die Zeile, fehlt ein Chunk.
     Typen: ingest, decision, finding, question, assumption, lint.
 P3  log.md nur bei Frage nach Historie/Zeitpunkt lesen, nicht default beim Start.
 P4  log.md rotiert: nach Abschluss eines Architektur-Schritts die zugehoerigen
@@ -87,6 +94,12 @@ P5  Lint (nur auf Aufforderung): grep-basiert pruefen auf wortgleiche
 P6  Wachstum: waechst eine Tag-Familie ueber ~15-20 Chunks oder wird das
     Manifest unuebersichtlich, bekommt der Tag ein eigenes Unter-Manifest;
     das Haupt-Manifest verweist dann nur noch darauf.
+P7  Fortschritts-Status steht NUR in der arbeitsplan-Tabelle. Andere Chunks
+    verweisen darauf oder datieren ihre Statusangabe ("Stand JJJJ-MM-TT");
+    undatierte Status-Echos veralten unbemerkt (Vorfall: meta_overview).
+P8  API-/Workflow-Aenderung -> CLAUDE.md-Beispiele mitpruefen. CLAUDE.md
+    dupliziert bewusst Befehle fuer den Kaltstart und driftet sonst
+    (Vorfall: entfernter SSE-Endpoint stand noch in CLAUDE.md).
 ```
 
 ## Schichtung

@@ -33,5 +33,5 @@ Der Router muss VRAM-verfuegbar abfragen (nvidia-smi) und bei
 < 12 GB automatisch auf sequenziellen Betrieb umschalten.
 qwen3:8b-q8 darf nur angeboten werden wenn VRAM >= 8 GB frei.
 
-Sonderfall ohne GPU (total_vram = 0): CPU-only-Profil, nur phi-4-mini
+Sonderfall ohne GPU (total_vram = 0): CPU-only-Profil, nur phi4-mini
 lokal, Coden/Reasoning via Cloud. Siehe `modell_cpu-profil`.

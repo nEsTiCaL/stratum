@@ -60,7 +60,7 @@ startkonfiguration 7) bewusst -> Multi-Provider.
 
 ## Lokale Feinstufung (Capacity filtert pro Maschine)
 
-9 lokale Modelle statt 5: phi-4-mini, qwen2.5-coder(7b), qwen3-8b,
+9 lokale Modelle statt 5: phi4-mini, qwen2.5-coder(7b), qwen3-8b,
 qwen2.5-coder-14b, qwen3-14b, r1-distill(8b), qwen2.5-coder-32b, qwen3-32b,
 qwen3-8b-q8(exclusive). Die 14B/32B greifen nur auf Maschinen mit genug VRAM
 (capacity allowed_models). MODEL_CONFIG (core/capacity.py) um die 4 neuen
@@ -87,7 +87,7 @@ Der Algorithmus ist als Trichter fassbar:
 1 KATALOG        alle bekannten Modelle + Capability-Scores   (projektweit, Daten)
 2 ELIGIBLE(task) score[Achse] >= min                          (pro Task)
 3 AVAILABLE(host) INSTALLIERT-lokal UND konfigurierte-Cloud    (pro Deployment)
-4 ORDERED(req)   eligible ∩ available, Gate+Prefs, sortiert    (pro Anfrage)
+4 ORDERED(req)   eligible & available, Gate+Prefs, sortiert    (pro Anfrage)
 ```
 
 Schicht 3 war der fehlende Knoten. Entscheidungen (mit Nutzer):

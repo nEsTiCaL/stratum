@@ -5,14 +5,14 @@ Befunde aus Session 2026-07-02. Server: `http://localhost:8000`. Credentials: `.
 ## Erreichbarkeit
 
 Sowohl Windows (PowerShell) als auch WSL2 erreichen `localhost:8000` direkt.
-WSL2 forwarded Host-Ports automatisch — kein `host.docker.internal` oder IP noetig.
+WSL2 forwarded Host-Ports automatisch -- kein `host.docker.internal` oder IP noetig.
 
 ```
 Health-Check (kein Auth):   GET  /api/status  -> {"status":"ok"}
 Auth-Check:                 GET  /api/whoami  -> {"owner":"<name>"}
 ```
 
-## Aus WSL (bevorzugt — kein Quoting-Problem)
+## Aus WSL (bevorzugt -- kein Quoting-Problem)
 
 ```bash
 KEY="<API_KEY>"   # aus .local/host.md
