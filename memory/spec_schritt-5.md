@@ -43,6 +43,37 @@ Akzeptanz (det): bekannte Trace-/artifact-Zeilen -> erwartete Aggregate;
 Klasse  : det
 ```
 
+Umsetzung (fertig 2026-07-03): Repository.metrics() (cost_today aus cloud_costs,
+escalation_rate + stale_count) + Repository.history(days) (Tages-Rollup
+Kosten/Eskalationen, Merge cloud_costs+trace). Endpoints GET /api/metrics,
+/api/history?days=N, /api/trace/{session} in interfaces/webgui/app.py
+(Bearer-Auth, read-only). Eskalation liest Trace-Konvention stage="task_result",
+detail.validation_result in {pass,escalated,fail}.
+
+LUECKE (Folge-Haeppchen I-5.1b): der Worker (core/worker.py) schreibt diese
+task_result-Trace-Zeile NICHT (nur on_item_fail-Logging) -> escalation_rate/
+history.escalations bleiben 0 bis zur Verdrahtung. cost_today (cost_store) und
+stale_count (I-4.4) sind bereits live. R2/spec_schritt-2 sah "Trace je Knoten
+(validation_result, trigger, attempts, final_model)" vor; nur an den Trace nie
+verdrahtet. session_id-Konvention (dag_id?) dort zu entscheiden.
+
+### I-5.1b  Worker schreibt task_result-Trace (Luecke aus I-5.2)
+
+```
+Befund  : core/worker.py verdrahtet die R2-vorgesehene "Trace je Knoten"
+          (validation_result, trigger, attempts, final_model) NICHT an den
+          Trace -- nur on_item_fail-Logging. Damit sind escalation_rate und
+          history.escalations (I-5.2) dauerhaft 0.
+Modul   : WorkerLoop.step schreibt nach complete/fail eine Trace-Zeile
+          stage="task_result" (session_id = item.dag_id) mit task_type,
+          validation_result (det: "pass"; llm: outcome.validation_result),
+          trigger, final_model, attempts.
+Akzeptanz (det): det-Task -> task_result/pass; llm done -> pass; llm erschoepft
+          -> escalated|fail mit trigger; Aggregate (I-5.2) rechnen dann live.
+          FakeModel/bestehender Worker-Testrahmen, kein echtes Modell.
+Klasse  : det
+```
+
 ## I-5.3  Web-Dashboard Frontend (read-only)
 
 ```

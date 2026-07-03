@@ -471,6 +471,81 @@ class Repository:
             cur.execute(sql, params)
             return [(row[0], row[1]) for row in cur.fetchall()]
 
+    def metrics(self) -> dict[str, Any]:
+        """Dashboard-Aggregate (I-5.2, read-only): Kosten heute,
+        Eskalationsrate, Anzahl stale-Artefakte.
+
+        Quellen: cloud_costs (heutiger Tag), trace (stage='task_result',
+        detail.validation_result), artifacts (stale). Periodisch abfragen,
+        nicht im Sekundentakt (R5). escalation_rate ist None, solange keine
+        task_result-Zeilen vorliegen (der Worker schreibt sie noch nicht ->
+        Folge-Haeppchen; cost_today/stale_count sind bereits live).
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM cloud_costs "
+                "WHERE recorded_on = CURRENT_DATE"
+            )
+            cost_today = float(cur.fetchone()[0])
+
+            cur.execute(
+                "SELECT count(*) FILTER "
+                "(WHERE detail->>'validation_result' = 'escalated'), count(*) "
+                "FROM trace WHERE stage = 'task_result'"
+            )
+            escalated, total = cur.fetchone()
+            escalation_rate = escalated / total if total else None
+
+            cur.execute(
+                "SELECT count(*) FROM artifacts "
+                "WHERE superseded = false AND stale = true"
+            )
+            stale_count = cur.fetchone()[0]
+
+        return {
+            "cost_today_usd": cost_today,
+            "escalation_rate": escalation_rate,
+            "stale_count": stale_count,
+        }
+
+    def history(self, *, days: int = 7) -> list[dict[str, Any]]:
+        """Tages-Rollup Kosten + Eskalationen der letzten `days` Tage (I-5.2).
+
+        Vereint cloud_costs (Kosten je recorded_on) und trace-task_result
+        (Eskalationen/Tasks je Kalendertag) zu einem Eintrag pro Tag, aufsteigend
+        sortiert. Tage ohne Daten in einer Quelle bekommen dort 0.
+        """
+        buckets: dict[str, dict[str, Any]] = {}
+
+        def _bucket(day: str) -> dict[str, Any]:
+            return buckets.setdefault(
+                day, {"day": day, "cost_usd": 0.0, "escalations": 0, "tasks": 0}
+            )
+
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT recorded_on::text, SUM(cost_usd) FROM cloud_costs "
+                "WHERE recorded_on > CURRENT_DATE - %s GROUP BY recorded_on",
+                (days,),
+            )
+            for day, cost in cur.fetchall():
+                _bucket(day)["cost_usd"] = float(cost)
+
+            cur.execute(
+                "SELECT (timestamp::date)::text, "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'escalated'), "
+                "count(*) FROM trace WHERE stage = 'task_result' "
+                "AND timestamp > now() - make_interval(days => %s) "
+                "GROUP BY timestamp::date",
+                (days,),
+            )
+            for day, escalations, tasks in cur.fetchall():
+                b = _bucket(day)
+                b["escalations"] = escalations
+                b["tasks"] = tasks
+
+        return [buckets[day] for day in sorted(buckets)]
+
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
 

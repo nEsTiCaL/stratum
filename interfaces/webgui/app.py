@@ -12,6 +12,9 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   POST /api/task               -> Task einreihen, gibt {"id": N}
   GET  /api/tasks              -> Owner-gefilterte Task-Liste (Polling-Basis)
   GET  /api/live               -> Live-Status-Snapshot (Queue/Tasks/Batch, gepollt)
+  GET  /api/metrics            -> Aggregate: Kosten heute, Eskalationsrate, stale
+  GET  /api/history            -> Tages-Rollup Kosten/Eskalationen (?days=N)
+  GET  /api/trace/{session}    -> Trace einer Session (Drill-down)
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
   GET  /api/prompt/{id}        -> Prompt lesen (Owner-Check)
@@ -260,6 +263,35 @@ def create_app(
         snap = queue.live_snapshot()
         snap["capacity"] = _capacity_dict(capacity) if capacity is not None else None
         return snap
+
+    @app.get("/api/metrics")
+    async def metrics(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Periodische Aggregate (I-5.2): Kosten heute, Eskalationsrate,
+        stale-Anzahl. Read-only, aus cloud_costs/trace/artifacts."""
+        return repo.metrics()
+
+    @app.get("/api/history")
+    async def history(
+        days: int = 7, owner: str = Depends(_require_owner)
+    ) -> list[dict[str, Any]]:
+        """Tages-Rollup Kosten/Eskalationen der letzten `days` Tage (I-5.2)."""
+        return repo.history(days=days)
+
+    @app.get("/api/trace/{session_id}")
+    async def trace(
+        session_id: str, owner: str = Depends(_require_owner)
+    ) -> list[dict[str, Any]]:
+        """Trace einer Session, chronologisch (I-5.2, Drill-down)."""
+        return [
+            {
+                "id": t.id,
+                "stage": t.stage,
+                "artifact_id": t.artifact_id,
+                "detail": t.detail,
+                "timestamp": t.timestamp.isoformat(),
+            }
+            for t in repo.get_trace(session_id)
+        ]
 
     @app.get("/api/result/{task_id}")
     async def get_task_result(

@@ -136,6 +136,36 @@ class TestLiveStatus:
         }
 
 
+class TestAggregateEndpoints:
+    def test_metrics_requires_auth(self, client):
+        assert client.get("/api/metrics").status_code == 401
+
+    def test_metrics_shape(self, client):
+        body = client.get("/api/metrics", headers=AUTH).json()
+        assert set(body) == {"cost_today_usd", "escalation_rate", "stale_count"}
+        assert body["escalation_rate"] is None  # keine task_result-Zeilen
+
+    def test_history_requires_auth(self, client):
+        assert client.get("/api/history").status_code == 401
+
+    def test_history_empty(self, client):
+        assert client.get("/api/history", headers=AUTH).json() == []
+
+    def test_trace_requires_auth(self, client):
+        assert client.get("/api/trace/s1").status_code == 401
+
+    def test_trace_returns_session_lines(self, client, conn):
+        repo = Repository(conn)
+        repo.write_trace("sess-x", "ingestion", detail={"scope": "file:a.py"})
+        repo.write_trace("sess-x", "task_result", detail={"validation_result": "pass"})
+        repo.write_trace("other", "ingestion")
+
+        body = client.get("/api/trace/sess-x", headers=AUTH).json()
+        assert [t["stage"] for t in body] == ["ingestion", "task_result"]
+        assert body[0]["detail"] == {"scope": "file:a.py"}
+        assert "timestamp" in body[0]
+
+
 class TestAuthEndpoint:
     def test_whoami_returns_owner(self, client):
         r = client.get("/api/whoami", headers=AUTH)
