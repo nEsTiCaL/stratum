@@ -76,8 +76,15 @@ def ingest_content(
     source_hash: str,
     scan: SecretScan | None = None,
     session_id: str = "ingest",
+    invalidate: bool = False,
 ) -> IngestResult:
-    """Indexiert Dateiinhalt und legt alle Artefakte ab (alte superseded)."""
+    """Indexiert Dateiinhalt und legt alle Artefakte ab (alte superseded).
+
+    invalidate=True haengt die differenzierte Invalidierung an (I-4.4): nach
+    dem Re-Ingest wird die Aenderungsart bestimmt und abhaengige Artefakte
+    lazy stale markiert. Nur fuer den inkrementellen Trigger (Watch/Hook)
+    gedacht; der Bulk-Lauf ingest_repo laesst es aus (nichts ist dort stale).
+    """
     scope = file_scope(path)
     src = content.encode("utf-8") if isinstance(content, str) else content
     language = language_for_path(path)
@@ -109,6 +116,9 @@ def ingest_content(
     )
     repo.put_edges(scope, edges)
 
+    if invalidate:
+        repo.invalidate_after_reingest(scope)
+
     scan = scan or NoopSecretScan()
     scan_result = scan.scan(src, scope)
     repo.write_trace(
@@ -135,9 +145,11 @@ def ingest_file(
     source_hash: str | None = None,
     scan: SecretScan | None = None,
     session_id: str = "ingest",
+    invalidate: bool = False,
 ) -> IngestResult:
     """Liest eine Datei aus dem Working Tree und ingestiert sie. Gemeinsamer
-    Einstieg fuer Watch und git-Hook (identische Ingestion)."""
+    Einstieg fuer Watch und git-Hook (identische Ingestion). invalidate=True
+    reicht die differenzierte Invalidierung durch (I-4.4, inkrementell)."""
     root = Path(repo_root)
     abs_path = root / rel_path
     content = abs_path.read_bytes()
@@ -149,6 +161,7 @@ def ingest_file(
         source_hash=source_hash or resolve_source_hash(root),
         scan=scan,
         session_id=session_id,
+        invalidate=invalidate,
     )
 
 

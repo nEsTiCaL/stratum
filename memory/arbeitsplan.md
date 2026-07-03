@@ -136,7 +136,7 @@ ID      Haeppchen                      Kl    dep       Detail
 I-4.1   graph_edges + Befuellung       det   I-1.5/1.6 R4             fertig
 I-4.2   rekursive CTE + CYCLE          det   I-4.1     R4             fertig
 I-4.3   Symbol-Diff -> Aenderungsart   det   I-1.4     R4             fertig
-I-4.4   diff. Invalidierung + stale    det   I-4.2/4.3 R4
+I-4.4   diff. Invalidierung + stale    det   I-4.2/4.3 R4             fertig
 ```
 
 ## Schritt 5: Betrieb  (Spec: S5)
@@ -177,7 +177,8 @@ Abschluss stehen im jeweiligen Spec-/Domaenen-Chunk und in log.md (bzw.
 log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
 aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
-Stand 2026-07-03: Schritt 1-3 VOLLSTAENDIG, Schritt 4 in Arbeit (I-4.1/4.2/4.3 fertig, nur I-4.4 offen).
+Stand 2026-07-03: Schritt 1-4 VOLLSTAENDIG. Naechstes: Schritt 5 (Betrieb),
+Einstieg I-5.1 (Live-Status + SSE-Stream) oder I-5.2 (REST-Aggregate).
 Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).

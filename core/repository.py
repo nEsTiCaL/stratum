@@ -8,6 +8,7 @@ Loeschen: ein neues Artefakt verdraengt das bisherige aktuelle desselben
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -120,14 +121,24 @@ class Repository:
                 assert row is not None  # RETURNING liefert immer eine Zeile
                 return row[0]
 
-    def get_current(self, scope: str, artifact_type: str) -> Result | None:
-        """Aktuelles (nicht superseded) Artefakt fuer (scope, artifact_type)."""
+    def get_current(
+        self, scope: str, artifact_type: str, *, trustworthy: bool = False
+    ) -> Result | None:
+        """Aktuelles (nicht superseded) Artefakt fuer (scope, artifact_type).
+
+        trustworthy=True verlangt zusaetzlich stale=false (I-4.4): das Artefakt
+        ist noch die aktuellste Version UND seine Grundlage hat sich nicht
+        geaendert. Ohne das Flag wird auch ein stale-markiertes aktuelles
+        Artefakt geliefert (es ist weiterhin die neueste bekannte Version).
+        """
+        sql = (
+            f"SELECT {_SELECT_COLUMNS} FROM artifacts "
+            "WHERE scope = %s AND artifact_type = %s AND superseded = false"
+        )
+        if trustworthy:
+            sql += " AND stale = false"
         with self._conn.cursor() as cur:
-            cur.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM artifacts "
-                "WHERE scope = %s AND artifact_type = %s AND superseded = false",
-                (scope, str(artifact_type)),
-            )
+            cur.execute(sql, (scope, str(artifact_type)))
             row = cur.fetchone()
         return _row_to_result(row) if row is not None else None
 
@@ -335,6 +346,53 @@ class Repository:
         return change_kind(
             previous[0].get("symbols", []), current[0].get("symbols", [])
         )
+
+    def mark_stale(
+        self, scopes: Sequence[str], *, producer_class: ProducerClass | None = None
+    ) -> int:
+        """Markiert aktuelle (nicht superseded) Artefakte der scopes als stale.
+
+        Optional auf eine producer_class beschraenkt (z.B. nur prob). Liefert
+        die Anzahl frisch markierter Zeilen. Lazy (I-4.4): setzt nur das Flag,
+        stoesst KEINE Neuberechnung an.
+        """
+        scope_list = list(scopes)
+        if not scope_list:
+            return 0
+        sql = (
+            "UPDATE artifacts SET stale = true "
+            "WHERE scope = ANY(%s) AND superseded = false AND stale = false"
+        )
+        params: list[object] = [scope_list]
+        if producer_class is not None:
+            sql += " AND producer_class = %s"
+            params.append(producer_class.value)
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(sql, params)
+                return cur.rowcount
+
+    def invalidate_after_reingest(self, scope: str) -> ChangeKind | None:
+        """Differenzierte Invalidierung nach Re-Ingest eines file-scopes (I-4.4).
+
+        Bestimmt die Aenderungsart (I-4.3) und markiert abhaengige Artefakte
+        lazy stale:
+          - eigene prob-Artefakte immer stale (Inhalt geaendert; die eigenen
+            det-Artefakte sind gerade frisch re-ingestiert)
+          - API-Change: transitive Rueckwaerts-Huelle (impact, I-4.2) voll stale
+          - Impl-Change: nur die eigenen prob-Artefakte (det der Abhaengigen
+            bleiben gueltig)
+        Liefert die Aenderungsart, None beim Erst-Ingest (kein Vorgaenger ->
+        nichts zu invalidieren). Neuberechnung erfolgt bedarfsgetrieben ueber
+        die Queue, nicht hier.
+        """
+        kind = self.symbol_change_kind(scope)
+        if kind is None:
+            return None
+        self.mark_stale([scope], producer_class=ProducerClass.prob)
+        if kind == ChangeKind.api:
+            self.mark_stale(self.impact(scope))
+        return kind
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.

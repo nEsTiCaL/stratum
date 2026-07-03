@@ -69,7 +69,7 @@ def watch(
     handler = IngestEventHandler(
         repo_root,
         lambda rel: ingest_file(
-            repo, repo_root, rel, source_hash=source_hash, scan=scan
+            repo, repo_root, rel, source_hash=source_hash, scan=scan, invalidate=True
         ),
         suffixes=suffixes,
     )

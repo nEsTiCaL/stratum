@@ -5,6 +5,7 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Aeltere Schritte + Langform: memory-archiv/ (ausserhalb memory/, nur bei
 explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-03] decision | Schritt 4 VOLLSTAENDIG: I-4.4 fertig -- Migration 0007 stale-Flag, Repository.mark_stale/invalidate_after_reingest (API->impact-Huelle voll, Impl->nur eigene prob), get_current(trustworthy), Watch-Hook invalidate=True, lazy -> spec_schritt-4
 ## [2026-07-03] decision | I-4.3 fertig: core/symdiff.change_kind (API vs Impl ueber exportierte public-Oberflaeche) + Repository.symbol_change_kind (superseded vs aktuell) -> spec_schritt-4
 ## [2026-07-03] decision | I-4.2 fertig: Repository.dependencies (vorwaerts src->dst) + impact (rueckwaerts dst->src), rekursive CTE mit nativer CYCLE-Klausel -> spec_schritt-4
 ## [2026-07-03] lint | log auf P2-Format komprimiert, Archive -> memory-archiv/ (grep-frei); Details portiert -> feedback_edit-duplikate, spec_schritt-4
