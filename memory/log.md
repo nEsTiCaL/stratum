@@ -5,6 +5,8 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Aeltere Schritte + Langform: memory-archiv/ (ausserhalb memory/, nur bei
 explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-03] decision | I-4.5 fertig: Repository.retract_scope (Artefakte+ausgehende Kanten superseden, eingehende bleiben) + current_file_scopes; Watch on_deleted/on_moved -> retract; ingest_repo(prune) Glob-Domaenen-Abgleich; 22 Tests -> spec_schritt-4
+## [2026-07-03] decision | Funktionsreview Datengrundlage -> Konsolidierung I-4.5..4.8 angelegt (Loeschung/Rename-Hygiene, call/contains-Kanten-Qualitaet, Invalidierungs-Trace+list_stale, pgvector-Extension) -> spec_schritt-4
 ## [2026-07-03] decision | Schritt 4 VOLLSTAENDIG: I-4.4 fertig -- Migration 0007 stale-Flag, Repository.mark_stale/invalidate_after_reingest (API->impact-Huelle voll, Impl->nur eigene prob), get_current(trustworthy), Watch-Hook invalidate=True, lazy -> spec_schritt-4
 ## [2026-07-03] decision | I-4.3 fertig: core/symdiff.change_kind (API vs Impl ueber exportierte public-Oberflaeche) + Repository.symbol_change_kind (superseded vs aktuell) -> spec_schritt-4
 ## [2026-07-03] decision | I-4.2 fertig: Repository.dependencies (vorwaerts src->dst) + impact (rueckwaerts dst->src), rekursive CTE mit nativer CYCLE-Klausel -> spec_schritt-4

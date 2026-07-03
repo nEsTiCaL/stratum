@@ -12,7 +12,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from core.graph import all_edges_for_artifacts
 from core.indexer import (
@@ -184,6 +184,20 @@ def resolve_source_hash(repo_root: str | Path) -> str:
 _DEFAULT_INGEST_GLOBS = ("core/**/*.py", "interfaces/**/*.py")
 
 
+def _scope_in_domain(scope: str, globs: Sequence[str]) -> bool:
+    """True, wenn der file-scope in die von `globs` abgedeckte Domaene faellt.
+
+    Prune-Kriterium (I-4.5): ein aktueller Store-scope, den dieser Lauf NICHT
+    erzeugt hat, aber dessen Pfad ein Glob matcht, muss verschwunden sein --
+    existierte er noch, haette ihn `root.glob` gefunden. Scopes ausserhalb der
+    Domaene (anders ingestiert) bleiben unberuehrt.
+    """
+    if not scope.startswith("file:"):
+        return False
+    rel = PurePosixPath(scope[len("file:") :])
+    return any(rel.full_match(pattern) for pattern in globs)
+
+
 def ingest_repo(
     repo: Repository,
     repo_root: str | Path,
@@ -192,6 +206,7 @@ def ingest_repo(
     scan: SecretScan | None = None,
     session_id: str = "ingest",
     resolve_hash: Callable[[Path], str] = resolve_source_hash,
+    prune: bool = False,
 ) -> list[IngestResult]:
     """Ingestiert alle zu `globs` passenden Dateien in EINEM Lauf statt Datei
     fuer Datei einzeln zu starten (N1-Preflight/Dogfooding, siehe ops_n1-queries).
@@ -199,6 +214,11 @@ def ingest_repo(
     source_hash wird EINMAL fuer den ganzen Lauf aufgeloest (git rev-parse ist
     fuer alle Dateien gleich), nicht pro Datei -> aus N Prozessaufrufen wird
     einer. resolve_hash injizierbar fuer Tests (kein echtes git noetig).
+
+    prune=True gleicht danach den Store gegen den Working Tree ab (I-4.5):
+    aktuelle file-scopes der Domaene ohne Gegenstueck im Baum werden retracted
+    (Loeschungen/Renames zwischen zwei Laeufen). Kein DELETE (superseded-
+    Historie bleibt). Default aus -> bestehende Aufrufer/Preflight unveraendert.
     """
     root = Path(repo_root)
     source_hash = resolve_hash(root)
@@ -215,9 +235,17 @@ def ingest_repo(
                 rel_paths.append(rel)
     rel_paths.sort()
 
-    return [
+    results = [
         ingest_file(
             repo, root, rel, source_hash=source_hash, scan=scan, session_id=session_id
         )
         for rel in rel_paths
     ]
+
+    if prune:
+        ingested = {r.scope for r in results}
+        for scope in repo.current_file_scopes():
+            if scope not in ingested and _scope_in_domain(scope, globs):
+                repo.retract_scope(scope)
+
+    return results

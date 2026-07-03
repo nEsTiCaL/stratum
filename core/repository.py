@@ -319,6 +319,43 @@ class Repository:
             )
             return [row[0] for row in cur.fetchall()]
 
+    def retract_scope(self, scope: str) -> None:
+        """Zieht einen scope aus dem aktuellen Store zurueck (I-4.5).
+
+        Superseded alle aktuellen Artefakte UND ausgehenden Kanten (src=scope)
+        atomar. Eingehende Kanten (dst=scope) bleiben: sie gehoeren anderen
+        Dateien (deren src) und beschreiben deren -- nun ins Leere zeigenden --
+        Bezug weiterhin korrekt. Kein DELETE: die superseded-Historie bleibt
+        erhalten. Fuer geloeschte/umbenannte Dateien; danach sehen
+        get_current/find_symbol/impact den scope nicht mehr.
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE artifacts SET superseded = true "
+                    "WHERE scope = %s AND superseded = false",
+                    (scope,),
+                )
+                cur.execute(
+                    "UPDATE graph_edges SET superseded = true "
+                    "WHERE src = %s AND superseded = false",
+                    (scope,),
+                )
+
+    def current_file_scopes(self) -> list[str]:
+        """Alle scopes mit mindestens einem aktuellen Artefakt, file:-Praefix.
+
+        Basis fuer den ingest_repo-Prune (I-4.5): Abgleich Store gegen Working
+        Tree. Deterministisch geordnet.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT scope FROM artifacts "
+                "WHERE superseded = false AND scope LIKE 'file:%' "
+                "ORDER BY scope"
+            )
+            return [row[0] for row in cur.fetchall()]
+
     def symbol_change_kind(self, scope: str) -> ChangeKind | None:
         """Aenderungsart des zuletzt re-ingesteten symbol_index dieses Scopes.
 
