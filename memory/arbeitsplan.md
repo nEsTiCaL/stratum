@@ -161,7 +161,13 @@ I-5.5a  config_variant + Canary-Zuteil. det  I-5.1b    R5             fertig
 I-5.5b  Variant-A/B + Regressions-Gate  det  I-5.5a    R5             fertig
 I-5.5c  Regr.-Manifest + Enqueue        det  I-5.5b    R5             fertig
 I-5.5d  Eval-Lauf echte Modelle (opt-in) dev I-5.5c    R5, T          fertig
+I-5.6   Graph-Kontext in prob-Prompts   det   I-4.1     S5(Dogfood)    fertig
 ```
+
+I-5.6 aus dem N5-Dogfooding-Finding: Single-File-Scope liess das Modell
+faelschlich "keine Tests" behaupten. core/review_context.gather_context
+(Testdatei per Konvention + Aufrufer via impact) -> build_review_prompt(context=)
+-> app.py-Helper _review_prompt (eine Quelle fuer create/claim/prompt-Anzeige).
 
 ## Schalen  (Spec: SCH)
 

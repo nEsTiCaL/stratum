@@ -5,6 +5,7 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Abgeschlossene Architektur-Schritte 1-5: memory-archiv/log-archiv-schritt-N.md
 (ausserhalb memory/, nur bei explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-03] decision | I-5.6 fertig: Graph-Kontext in prob-Prompts (core/review_context.gather_context = Testdatei per Konvention + Aufrufer via impact) -> build_review_prompt(context=); app.py-Helper _review_prompt dedupliziert 3 Prompt-Bau-Stellen. Behebt Dogfooding-Finding (falsche "keine Tests"), live verifiziert (test_canary.py erkannt); 664 Tests -> arbeitsplan I-5.6
 ## [2026-07-03] finding | Dogfooding N5: explain core/canary.py live (Server/phi4-mini) -> echtes code_explanation-Artefakt, provenance gestempelt (input_hash ok). Modell bemaengelte "keine Tests" -> falsch (test_canary.py da): Single-File-Scope ohne Graph-/Test-Kontext -> ops_prob-dogfooding
 ## [2026-07-03] lint | log rotiert (P4): Schritt-4- und Schritt-5-Zeilen -> memory-archiv/log-archiv-schritt-4/5.md; log.md auf laufende Phase (Schalen/Dogfooding/Betrieb, post-N5) begrenzt; log-Header nachgezogen (war "Schritt 4")
 ## [2026-07-03] lint | log auf P2-Format komprimiert, Archive -> memory-archiv/ (grep-frei); Details portiert -> feedback_edit-duplikate, spec_schritt-4

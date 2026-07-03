@@ -54,6 +54,7 @@ from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
+from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
 from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.template_registry import DagNode, TaskDag
@@ -337,6 +338,19 @@ def create_app(
             raise HTTPException(status_code=404, detail="Kein Ergebnis verfuegbar")
         return result.model_dump(mode="json")
 
+    def _review_prompt(task_type: str, scope: str, extra_prompt: str = "") -> str:
+        """Prompt fuer prob-Tasks: Quellcode (falls file:-Scope) + Graph-Kontext
+        (I-5.6: Testdatei/Aufrufer) + Leitfragen. Eine Quelle fuer alle drei
+        Aufrufer (create/claim/prompt-Anzeige), damit Worker- und Human-Pfad
+        denselben Prompt sehen."""
+        source_code = ""
+        if source_root is not None and scope.startswith("file:"):
+            src = source_root / scope[5:]
+            if src.exists():
+                source_code = src.read_text(encoding="utf-8")
+        context = gather_context(repo, scope, source_root=source_root)
+        return build_review_prompt(task_type, scope, source_code, extra_prompt, context)
+
     @app.post("/api/task", status_code=201)
     async def create_task(
         body: TaskCreateBody, owner: str = Depends(_require_owner)
@@ -367,17 +381,9 @@ def create_app(
         )
         ids = queue.enqueue(dag, body.model, owner=owner)
         item_id = ids[0]
-
-        source_code = ""
-        if source_root is not None and body.scope.startswith("file:"):
-            src = source_root / body.scope[5:]
-            if src.exists():
-                source_code = src.read_text(encoding="utf-8")
-
-        full_prompt = build_review_prompt(
-            body.task_type, body.scope, source_code, body.prompt
+        queue.update_payload(
+            item_id, {"prompt": _review_prompt(body.task_type, body.scope, body.prompt)}
         )
-        queue.update_payload(item_id, {"prompt": full_prompt})
         return {"id": item_id}
 
     @app.post("/api/claim/{task_id}")
@@ -393,17 +399,11 @@ def create_app(
                 detail="Task nicht verfuegbar (nicht pending oder nicht gefunden)",
             )
 
-        source_code = ""
-        if source_root is not None and item.scope.startswith("file:"):
-            src = source_root / item.scope[5:]
-            if src.exists():
-                source_code = src.read_text(encoding="utf-8")
-
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "prompt": build_review_prompt(item.task_type, item.scope, source_code),
+            "prompt": _review_prompt(item.task_type, item.scope),
         }
 
     @app.get("/api/prompt/{task_id}")
@@ -414,16 +414,11 @@ def create_app(
         info = _check_task_owner(task_id, owner)
         scope = info["scope"]
         task_type = info["task_type"]
-        source_code = ""
-        if source_root is not None and scope.startswith("file:"):
-            src = source_root / scope[5:]
-            if src.exists():
-                source_code = src.read_text(encoding="utf-8")
         return {
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "prompt": build_review_prompt(task_type, scope, source_code),
+            "prompt": _review_prompt(task_type, scope),
         }
 
     @app.post("/api/validate")

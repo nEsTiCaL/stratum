@@ -75,17 +75,25 @@ _PROMPT_HEADER = (
 
 
 def build_review_prompt(
-    task_type: str, scope: str, source_code: str, extra_prompt: str = ""
+    task_type: str,
+    scope: str,
+    source_code: str,
+    extra_prompt: str = "",
+    context: str = "",
 ) -> str:
     """Kombinierter Markdown-Prompt (Rolle + Format + Quellcode + Aufgabe).
 
     Ein einziger String — passt fuer den Ollama-`prompt` (kein separater
-    System-Prompt) genauso wie fuers Dashboard-Kopierfeld.
+    System-Prompt) genauso wie fuers Dashboard-Kopierfeld. `context` (I-5.6,
+    optional) traegt Graph-Kontext (Testdatei, Aufrufer) nach dem Quellcode ein;
+    leer -> keine Section.
     """
     questions = _QUESTIONS.get(task_type, _QUESTIONS_DEFAULT)
     parts = [_PROMPT_HEADER, f"\nScope: {scope}"]
     if source_code:
         parts.append(f"\n```python\n{source_code}\n```")
+    if context:
+        parts.append(f"\n{context}")
     if extra_prompt:
         parts.append(f"\nHinweis: {extra_prompt}")
     parts.append(f"\n{questions}")
