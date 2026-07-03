@@ -28,8 +28,9 @@ Klasse  : det
 
 ### Konsumenten-Vertrag (fuer I-3.1 Cloud-Adapter)
 
-core/bundling.py, abgeschlossen, noch NICHT verdrahtet (LlmWorker baut Prompts
-weiterhin direkt aus item.payload["prompt"]). I-3.1 ist der erste Konsument:
+core/bundling.py. VERDRAHTET seit I-3.6: die Cloud-Phase des LlmWorker baut das
+Bundle ueber core/cloud_egress.prepare_cloud_egress (der flache Prompt bleibt nur
+der lokale Pfad). Vertrag der Bausteine:
 
 ```
 build_core_bundle(repo, scopes: Sequence[str]) -> CoreBundle
@@ -74,8 +75,8 @@ Klasse  : det
 
 ### Konsumenten-Vertrag (fuer I-3.1 Cloud-Adapter)
 
-core/redaction_gate.py, abgeschlossen, noch NICHT verdrahtet (kein Adapter
-vorhanden). I-3.1 ruft NACH Bundling, VOR dem eigentlichen API-Call:
+core/redaction_gate.py. VERDRAHTET seit I-3.6 (core/cloud_egress ruft NACH
+Bundling, VOR dem Adapter; der Worker schreibt die redaction_gate-Trace):
 
 ```
 gate(bundle: Bundle, sensitivity: Sensitivity, policy: EgressPolicy)
@@ -147,9 +148,8 @@ AnthropicSender      einziger dev-verifizierter Teil, lazy-Import anthropic-SDK
 Bewusst NICHT in diesem Cut (deferred): OpenAI/Google/Gratis-Backends (opt-in),
 Batch, Fast-Mode, free-Quota-Tracking (letzteres gehoert zu I-3.5
 Kosten-Telemetrie). Verdrahtung Bundle(I-3.2)->cache_prefix durch den Worker ist
-vorbereitet (CloudAdapter.cache_prefix), aber der LlmWorker baut den Prompt noch
-flach aus item.payload["prompt"] (gleicher Stand wie I-3.2: "noch nicht
-verdrahtet").
+seit I-3.6 vollzogen (core/cloud_egress + zweiphasiger LlmWorker); der flache
+Prompt bleibt nur der lokale Pfad.
 
 ### Konsumenten-Vertrag (fuer I-3.5 Kosten-Telemetrie)
 

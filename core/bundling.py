@@ -146,20 +146,27 @@ class Bundle:
     hotspots: tuple[Hotspot, ...]
 
 
+def serialize_hotspots(hotspots: tuple[Hotspot, ...]) -> bytes:
+    """Deterministische Serialisierung der Hotspot-Sequenz (I-3.6: auch vom
+    Cloud-Tail genutzt, damit Task+Hotspots exakt dem Bundle-Anteil entsprechen)."""
+    return _dump(
+        [
+            {
+                "scope": h.scope,
+                "start_line": h.start_line,
+                "end_line": h.end_line,
+                "snippet": h.snippet,
+            }
+            for h in hotspots
+        ]
+    )
+
+
 def serialize_bundle(bundle: Bundle) -> bytes:
-    hotspot_payload = [
-        {
-            "scope": h.scope,
-            "start_line": h.start_line,
-            "end_line": h.end_line,
-            "snippet": h.snippet,
-        }
-        for h in bundle.hotspots
-    ]
     return (
         serialize_core_bundle(bundle.core)
         + b"\n"
         + serialize_task_context(bundle.task_context)
         + b"\n"
-        + _dump(hotspot_payload)
+        + serialize_hotspots(bundle.hotspots)
     )

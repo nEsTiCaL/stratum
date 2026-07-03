@@ -108,6 +108,9 @@ class _FakeRepo:
         self.traces.append({"session_id": session_id, "stage": stage, "detail": detail})
         return len(self.traces)
 
+    def get_current(self, scope, artifact_type, *, trustworthy=False):
+        return None  # leeres Core-Bundle im Cloud-Pfad (I-3.6)
+
 
 class _MockTransport(httpx.BaseTransport):
     def __init__(self, response_body: dict, status_code: int = 200):
@@ -531,6 +534,109 @@ class TestTaskResultTrace:
         )
         loop.step("tree-sitter")
         assert self._traces(loop)[0]["detail"]["config_variant"] == "canary"
+
+
+# ---------------------------------------------------------------------------
+# LlmWorker: Cloud-Phase (I-3.6 — Bundle + Redaction-Gate vor Egress)
+# ---------------------------------------------------------------------------
+
+
+class _FixedSender:
+    """CloudSender-Double: liefert einen festen Text, merkt sich die Requests."""
+
+    def __init__(self, text: str):
+        self.text = text
+        self.requests: list = []
+
+    def send(self, request):
+        from core.cloud_adapter import RawCloudResponse
+
+        self.requests.append(request)
+        return RawCloudResponse(text=self.text, input_tokens=10, output_tokens=20)
+
+
+def _cloud_worker(sender, policy):
+    # Lokal: phi4-mini scheitert (leere Antwort -> eskaliert), Rest nicht
+    # installiert (None). Erzwingt die Cloud-Phase bei explain.
+    def local_factory(name: str):
+        return FakeModel(responses=["", ""]) if name == "phi4-mini" else None
+
+    return LlmWorker(
+        router=Router(),
+        model_factory=local_factory,
+        cloud_sender=sender,
+        egress_policy=policy,
+    )
+
+
+class TestCloudPhase:
+    def test_escalates_to_cloud_and_completes(self):
+        from core.secret_scan import EgressPolicy
+
+        sender = _FixedSender(_prob_response())
+        worker = _cloud_worker(sender, EgressPolicy(unsafe_test_egress=True))
+        repo = _FakeRepo()
+        outcome = worker.run(_item(task_type="explain"), repo)
+
+        assert outcome.status == "done"
+        assert outcome.final_model == "haiku"  # erster Cloud-Kandidat
+        assert len(sender.requests) == 1  # genau ein Egress
+        assert sender.requests[0].cache_prefix is not None  # PASS -> Core als Cache
+        assert any(a for a in repo.artifacts)  # Artefakt gespeichert
+        gate = [t for t in repo.traces if t["stage"] == "redaction_gate"]
+        assert gate and gate[0]["detail"]["decision"] == "PASS"
+        assert gate[0]["detail"]["warn"] is True  # unsafe_test_egress warnt
+
+    def test_default_policy_blocks_egress(self):
+        from core.secret_scan import EgressPolicy
+
+        sender = _FixedSender(_prob_response())
+        worker = _cloud_worker(sender, EgressPolicy())  # fail-safe: blockiert
+        repo = _FakeRepo()
+        outcome = worker.run(_item(task_type="explain"), repo)
+
+        assert outcome.status != "done"
+        assert outcome.validation_result == "escalated"
+        assert sender.requests == []  # kein Egress
+        gate = [t for t in repo.traces if t["stage"] == "redaction_gate"]
+        assert gate and gate[0]["detail"]["decision"] == "BLOCK"
+
+    def test_on_cost_and_guard_invoked_on_cloud_call(self):
+        # I-3.6 Folgeluecke: Cloud-Kosten (on_cost) + Tageskappungs-Guard laufen
+        # ueber den CloudAdapter, wenn die Cloud-Phase egress-t.
+        from core.secret_scan import EgressPolicy
+
+        records: list = []
+        guard_calls: list = []
+
+        def local_factory(name: str):
+            return FakeModel(responses=["", ""]) if name == "phi4-mini" else None
+
+        worker = LlmWorker(
+            router=Router(),
+            model_factory=local_factory,
+            cloud_sender=_FixedSender(_prob_response()),
+            egress_policy=EgressPolicy(unsafe_test_egress=True),
+            on_cost=records.append,
+            guard=lambda: guard_calls.append(1),
+        )
+        worker.run(_item(task_type="explain"), _FakeRepo())
+
+        assert len(guard_calls) == 1  # Pre-Send-Check (Tageskappung) lief
+        assert len(records) == 1  # Kosten gemeldet
+        assert records[0].cost_usd > 0  # haiku-Preis * Tokens
+
+    def test_no_cloud_sender_skips_cloud(self):
+        # Ohne cloud_sender bleibt es bei lokaler Eskalation, keine Gate-Trace.
+        def local_factory(name: str):
+            return FakeModel(responses=["", ""]) if name == "phi4-mini" else None
+
+        worker = LlmWorker(router=Router(), model_factory=local_factory)
+        repo = _FakeRepo()
+        outcome = worker.run(_item(task_type="explain"), repo)
+
+        assert outcome.status != "done"
+        assert not any(t["stage"] == "redaction_gate" for t in repo.traces)
 
 
 def _loop_for(

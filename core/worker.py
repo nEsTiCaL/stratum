@@ -13,13 +13,16 @@ provenance) werden deterministisch vom Worker gesetzt.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from core.canary import assign_variant
+from core.cloud_adapter import CloudSender, cloud_model_factory
+from core.cloud_egress import prepare_cloud_egress
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
+from core.redaction_gate import Decision
 from core.repository import Repository
 from core.review_format import build_content
 from core.router import (
@@ -30,6 +33,7 @@ from core.router import (
     Router,
     TaskType,
 )
+from core.secret_scan import EgressPolicy, Sensitivity
 from core.validator import EscalationLoop, EscalationOutcome, Validator
 
 
@@ -61,71 +65,175 @@ class DetWorker:
 
 @dataclass
 class LlmWorker:
-    """Fuehrt den probabilistischen LLM-Pfad via EscalationLoop aus."""
+    """Fuehrt den probabilistischen LLM-Pfad via EscalationLoop aus.
+
+    Zwei Phasen (I-3.6): erst lokale Kandidaten mit dem flachen Prompt; wenn
+    lokal erschoepft UND eskalierbar (nicht hart gefailt), die Cloud-Kandidaten
+    ueber Bundling (I-3.2) + Redaction-Gate (I-3.3/3.4, Position fix: nach
+    Bundling, vor Adapter). Cloud laeuft nur, wenn ein cloud_sender konfiguriert
+    ist (sonst wie pre-S3: Cloud-Kandidaten entfallen). egress_policy ist
+    fail-safe (Default blockiert -> kein Egress ohne bewusstes Opt-in)."""
 
     router: Router
     model_factory: Callable
     root: Path = field(default_factory=Path)
+    cloud_sender: CloudSender | None = None
+    egress_policy: EgressPolicy = field(default_factory=EgressPolicy)
+    on_cost: Callable | None = None
+    guard: Callable | None = None
     _loop: EscalationLoop = field(init=False)
 
     def __post_init__(self) -> None:
         self._loop = EscalationLoop(Validator())
 
     def run(self, item: QueueItem, repo: Repository) -> EscalationOutcome:
-        from core.secret_scan import Sensitivity
-
         task_type = TaskType(item.task_type)
-        sensitivity_str = item.payload.get("sensitivity", "none")
         try:
-            sensitivity = Sensitivity(sensitivity_str)
+            sensitivity = Sensitivity(item.payload.get("sensitivity", "none"))
         except ValueError:
             sensitivity = Sensitivity.none
 
         candidates = self.router.candidates(
-            task_type,
-            sensitivity,
-            prefs=None,
-            installed=None,
+            task_type, sensitivity, prefs=None, installed=None
         )
-        outcome = self._loop.run(
+        local = [c for c in candidates if not c.is_cloud]
+        cloud = [c for c in candidates if c.is_cloud]
+
+        outcome = self._local_phase(task_type, item.payload["prompt"], local)
+        if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:
+            cloud_outcome = self._cloud_phase(item, repo, task_type, sensitivity, cloud)
+            if cloud_outcome is not None:
+                prior = outcome.attempts if outcome is not None else 0
+                outcome = replace(
+                    cloud_outcome, attempts=prior + cloud_outcome.attempts
+                )
+
+        if outcome is None:  # kein lokaler Kandidat + keine Cloud -> graceful
+            outcome = EscalationOutcome(
+                status="unresolved",
+                validation_result="escalated",
+                trigger="no_candidate",
+                attempts=0,
+                final_model=None,
+                response=None,
+            )
+
+        self._store_if_done(item, repo, task_type, outcome)
+        return outcome
+
+    def _local_phase(
+        self, task_type: TaskType, prompt: str, local: list
+    ) -> EscalationOutcome | None:
+        """Lokale Kandidaten mit flachem Prompt. Leere Liste -> None (kein
+        Loop-Aufruf: EscalationLoop.run wuerde bei leerer Liste asserten)."""
+        if not local:
+            return None
+        return self._loop.run(
             task_type=task_type,
             producer_class="prob",
-            prompt=item.payload["prompt"],
-            candidates=candidates,
+            prompt=prompt,
+            candidates=local,
             model_factory=self.model_factory,
         )
 
-        if outcome.status == "done" and outcome.response is not None:
-            artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
-            artifact_type = ArtifactType(artifact_type_str)
+    @staticmethod
+    def _should_escalate(outcome: EscalationOutcome | None) -> bool:
+        """Cloud nur, wenn lokal nicht fertig UND eskalierbar erschoepft ist
+        (validation_result 'escalated', nicht hart 'fail'). Kein lokaler
+        Kandidat (outcome None) -> direkt Cloud versuchen."""
+        if outcome is None:
+            return True
+        return outcome.status != "done" and outcome.validation_result == "escalated"
 
-            # Confidence aus Modell-Tier — LLM liefert sie nicht zuverlaessig.
-            model_name = outcome.final_model or "unknown"
-            cap = MODEL_CAPABILITIES.get(model_name)
-            confidence = TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
+    def _cloud_phase(
+        self,
+        item: QueueItem,
+        repo: Repository,
+        task_type: TaskType,
+        sensitivity: Sensitivity,
+        cloud: list,
+    ) -> EscalationOutcome | None:
+        """Bundle + Redaction-Gate, dann Cloud-Kandidaten mit dem Bundle-Tail.
+        BLOCK -> None (Knoten bleibt eskaliert/unresolved). Trace schreibt der
+        Worker (Gate ist IO-frei)."""
+        egress = prepare_cloud_egress(
+            repo,
+            item.scope,
+            question=item.payload["prompt"],
+            sensitivity=sensitivity,
+            policy=self.egress_policy,
+            source_provider=self._read_source,
+        )
+        repo.write_trace(
+            item.dag_id,
+            "redaction_gate",
+            detail={
+                "decision": egress.decision.value,
+                "reason": egress.report.reason,
+                "warn": egress.report.warn,
+                "stub": egress.report.stub,
+            },
+        )
+        if egress.decision == Decision.BLOCK:
+            return None
+        factory = cloud_model_factory(
+            self.cloud_sender,
+            on_cost=self.on_cost,
+            guard=self.guard,
+            cache_prefix=egress.cache_prefix,
+        )
+        return self._loop.run(
+            task_type=task_type,
+            producer_class="prob",
+            prompt=egress.tail,
+            candidates=cloud,
+            model_factory=factory,
+        )
 
-            prov = build_prob_provenance(
-                scope=item.scope,
-                artifact_type=artifact_type_str,
-                producer=model_name,
-                root=self.root,
-            )
+    def _read_source(self, scope: str) -> str:
+        if not scope.startswith("file:"):
+            return ""
+        src = self.root / scope[len("file:") :]
+        return src.read_text(encoding="utf-8") if src.exists() else ""
 
-            # Gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-Split
-            # (1+2 -> text, 3 -> findings, 4 -> recommendations). Kein Split
-            # moeglich -> ganze Antwort als content.text (core.review_format).
-            content = build_content(outcome.response)
+    def _store_if_done(
+        self,
+        item: QueueItem,
+        repo: Repository,
+        task_type: TaskType,
+        outcome: EscalationOutcome,
+    ) -> None:
+        if not (outcome.status == "done" and outcome.response is not None):
+            return
+        artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
+        artifact_type = ArtifactType(artifact_type_str)
 
-            result_obj = ResultProb(
+        # Confidence aus Modell-Tier — LLM liefert sie nicht zuverlaessig.
+        model_name = outcome.final_model or "unknown"
+        cap = MODEL_CAPABILITIES.get(model_name)
+        confidence = TIER_CONFIDENCE.get(cap.cost_tier, 0.70) if cap else 0.70
+
+        prov = build_prob_provenance(
+            scope=item.scope,
+            artifact_type=artifact_type_str,
+            producer=model_name,
+            root=self.root,
+        )
+
+        # Gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-Split
+        # (1+2 -> text, 3 -> findings, 4 -> recommendations). Kein Split
+        # moeglich -> ganze Antwort als content.text (core.review_format).
+        content = build_content(outcome.response)
+
+        repo.put_artifact(
+            ResultProb(
                 artifact_type=artifact_type,
                 scope=item.scope,
                 content=content,
                 confidence=confidence,
                 provenance=prov,
             )
-            repo.put_artifact(result_obj)
-
-        return outcome
+        )
 
 
 @dataclass

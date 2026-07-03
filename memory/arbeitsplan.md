@@ -124,9 +124,22 @@ I-3.3   Redaction-Gate Stub + Egress   det   I-1.8     R3, `spec_schritt-3` (Kon
 I-3.1   Cloud-Adapter (Multi-Provider) gem   I-3.2/3.3 R3, SK(7), claude-api, `spec_schritt-3`   det-core fertig (dev-verif offen bis I-3.4)
 I-3.4   Detektor-Bibliothek + scharf   det   I-3.3     R3   [HARTES GATE]   fertig
 I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)      fertig
+I-3.6   Cloud-Egress-Verdrahtung        det   I-3.1/3.3 S3(Luecke)     fertig
 ```
 
 Realer Cloud-Egress erst nach I-3.4.
+
+I-3.6 schliesst die S3-Verdrahtungsluecke: LlmWorker.run ist jetzt zweiphasig --
+Phase 1 lokal (flacher Prompt, unveraendert), Phase 2 Cloud ueber core/cloud_egress
+.prepare_cloud_egress (Bundle I-3.2 -> gate I-3.3/3.4 -> CloudAdapter, Core als
+cache_prefix / Task+Hotspots als tail; REDACT -> redigierter tail ohne Cache;
+BLOCK -> unresolved). serve.py haengt cloud_sender (nur bei ANTHROPIC_API_KEY) +
+EgressPolicy (fail-safe, STRATUM_SCAN_REAL/UNSAFE_EGRESS) ein. Profil D: kein Key
+-> Cloud inaktiv. Realer Egress weiter nur dev-verif (kein Key/Cloud hier).
+Kosten-Telemetrie (I-3.5) verdrahtet: serve haengt bei aktivem cloud_sender
+CostStore+make_on_cost ein -> on_cost schreibt CostRecords (cloud_costs, speist
+/api/metrics), guard = Tageskappung (STRATUM_DAILY_CAP_USD, Default 5) vor jedem
+Call. Worker reicht on_cost/guard an den CloudAdapter durch (Seam-Test).
 
 ## Schritt 4: Graph-Tiefe  (Spec: S4)
 

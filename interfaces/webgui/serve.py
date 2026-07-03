@@ -19,6 +19,7 @@ import os
 import socket
 import threading
 import time
+from datetime import date
 from pathlib import Path
 
 import psycopg
@@ -30,6 +31,7 @@ from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
 from core.router import MODEL_CAPABILITIES, Provider, Router
+from core.secret_scan import EgressPolicy
 from core.template_registry import DagNode, TaskDag
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from interfaces.webgui.app import create_app
@@ -158,6 +160,35 @@ def _make_worker_loop(
     def on_item_fail(item, reason: str) -> None:
         print(f"[worker] Task {item.id} ({item.task_type}) fehlgeschlagen: {reason}")
 
+    # Cloud-Seam (I-3.6): nur aktiv, wenn ein Anbieter konfiguriert ist
+    # (ANTHROPIC_API_KEY). Egress bleibt per EgressPolicy fail-safe -> ohne
+    # bewusstes STRATUM_SCAN_REAL kein realer Egress (Gate blockt), STRATUM_
+    # UNSAFE_EGRESS nur fuer Tests. Auf Profil D (kein Key) bleibt Cloud inaktiv.
+    cloud_sender = None
+    cloud_guard = None
+    cloud_on_cost = None
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from core.cloud_adapter import AnthropicSender
+        from core.cost_store import CostStore, make_on_cost
+
+        cloud_sender = AnthropicSender()
+        # I-3.5-Kosten-Telemetrie + Tageskappung an den Cloud-Pfad (I-3.6-Folge):
+        # on_cost schreibt CostRecords -> cloud_costs (speist /api/metrics),
+        # guard blockt vor jedem Call bei Ueberschreitung des Tagesbudgets.
+        cap_usd = float(os.environ.get("STRATUM_DAILY_CAP_USD", "5.0"))
+        cost_store = CostStore(worker_conn)
+        cloud_guard, cloud_on_cost = make_on_cost(
+            cost_store, cap_usd, date_fn=date.today
+        )
+        print(
+            f"[worker] Cloud-Sender aktiv (Anthropic); Egress-Policy fail-safe; "
+            f"Tageskappung {cap_usd} USD"
+        )
+    egress_policy = EgressPolicy(
+        scan_real=os.environ.get("STRATUM_SCAN_REAL") == "1",
+        unsafe_test_egress=os.environ.get("STRATUM_UNSAFE_EGRESS") == "1",
+    )
+
     return WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
@@ -166,6 +197,10 @@ def _make_worker_loop(
             router=router,
             model_factory=model_factory,
             root=Path(__file__).parent.parent.parent,
+            cloud_sender=cloud_sender,
+            egress_policy=egress_policy,
+            on_cost=cloud_on_cost,
+            guard=cloud_guard,
         ),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
