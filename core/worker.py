@@ -16,11 +16,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from core.llm_parser import parse_llm_response
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
 from core.repository import Repository
+from core.review_format import build_content
 from core.router import (
     MODEL_CAPABILITIES,
     TASK_REQUIREMENTS,
@@ -95,8 +95,6 @@ class LlmWorker:
         )
 
         if outcome.status == "done" and outcome.response is not None:
-            parsed = parse_llm_response(outcome.response)
-
             artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
             artifact_type = ArtifactType(artifact_type_str)
 
@@ -114,15 +112,10 @@ class LlmWorker:
                 root=self.root,
             )
 
-            content: dict = {"text": parsed.text}
-            if parsed.model_self_reported:
-                content["model_self_reported"] = parsed.model_self_reported
-            if parsed.findings:
-                content["findings"] = parsed.findings
-            if parsed.risks:
-                content["risks"] = parsed.risks
-            if parsed.recommendations:
-                content["recommendations"] = parsed.recommendations
+            # Gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-Split
+            # (1+2 -> text, 3 -> findings, 4 -> recommendations). Kein Split
+            # moeglich -> ganze Antwort als content.text (core.review_format).
+            content = build_content(outcome.response)
 
             result_obj = ResultProb(
                 artifact_type=artifact_type,

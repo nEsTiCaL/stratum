@@ -154,8 +154,11 @@ class TestClaimEndpoint:
         body = r.json()
         assert body["id"] == item_id
         assert body["task_type"] == "summarize"
-        assert "erklaere queue.py" in body["user_message"]
-        assert "system_prompt" in body
+        # Ein kombiniertes Prompt-Feld (Human == LLM, kein system_prompt/user_message).
+        assert "system_prompt" not in body
+        assert "user_message" not in body
+        assert "Scope: file:core/queue.py" in body["prompt"]
+        assert "## 1. Struktur & Verantwortlichkeiten" in body["prompt"]
 
     def test_claim_requires_auth(self, client_with_task):
         c, item_id = client_with_task
@@ -236,12 +239,13 @@ class TestSubmitEndpoint:
         )
         assert r.status_code == 403
 
-    def test_invalid_response_returns_422(self, client_with_task):
+    def test_empty_response_returns_422(self, client_with_task):
+        # Freier Text/Markdown wird jetzt akzeptiert; nur leere Antwort -> 422.
         c, item_id = client_with_task
         c.post(f"/api/claim/{item_id}", headers=AUTH)
         r = c.post(
             f"/api/submit/{item_id}",
-            json={"response": "kein JSON", "task_type": "summarize"},
+            json={"response": "   \n  ", "task_type": "summarize"},
             headers=AUTH,
         )
         assert r.status_code == 422

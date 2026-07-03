@@ -29,7 +29,6 @@ Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight):
 from __future__ import annotations
 
 import dataclasses
-import re
 import time
 import uuid
 from pathlib import Path
@@ -42,11 +41,11 @@ from pydantic import BaseModel
 from core.db import apply_migrations
 from core.ingest import ingest_repo
 from core.json_extract import extract_json
-from core.llm_parser import parse_llm_response
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
+from core.review_format import build_content, build_review_prompt
 from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.template_registry import DagNode, TaskDag
 from core.validator import Validator
@@ -67,52 +66,6 @@ _ARTIFACT_FOR_TASK: dict[str, str] = {
     "crypto_audit": "review_findings",
 }
 
-_TASK_CONTEXT: dict[str, str] = {
-    "summarize": (
-        "Du analysierst ein Python-Modul. Deine Zusammenfassung ersetzt das "
-        "Lesen des Quellcodes: Ein Entwickler muss danach Zweck, Schnittstelle "
-        "und wesentliche Implementierungsdetails kennen."
-    ),
-    "explain": (
-        "Du erklaerst Python-Code fuer einen erfahrenen Entwickler, der das Modul "
-        "noch nicht kennt. Fokus auf Kontrollfluss, Abhaengigkeiten und "
-        "nicht-offensichtliche Design-Entscheidungen."
-    ),
-    "review": (
-        "Du fuehrst ein Code-Review durch. Suche nach Bugs, Sicherheitsluecken, "
-        "Performance-Problemen und Verletzungen gaengiger Best Practices."
-    ),
-    "document": (
-        "Du schreibst Docstrings fuer alle oeffentlichen Funktionen und Klassen "
-        "eines Python-Moduls. Stil: Google-Style, praezise, keine Banalitaeten."
-    ),
-    "refactor_suggest": (
-        "Du schlaegs konkrete Refactoring-Massnahmen vor. Priorisiere nach "
-        "Auswirkung auf Lesbarkeit, Testbarkeit und Wartbarkeit."
-    ),
-    "debug": (
-        "Du analysierst Python-Code auf potenzielle Laufzeitfehler, "
-        "Randfaelle und logische Fehler. Erklaere jeden Fund mit Kontext."
-    ),
-    "test_gen": (
-        "Du generierst pytest-Tests fuer ein Python-Modul. Decke Hauptpfade, "
-        "Randfaelle und Fehlerpfade ab. Keine Mocks ausser unbedingt noetig."
-    ),
-    "cross_module": (
-        "Du analysierst die Abhaengigkeiten zwischen Modulen und erklaerst "
-        "Kopplungen, zyklische Abhaengigkeiten und Schnittstellen."
-    ),
-    "architecture": (
-        "Du beschreibst die Architektur des vorliegenden Codes: Schichten, "
-        "Verantwortlichkeiten, Datenfluss und Erweiterungspunkte."
-    ),
-    "crypto_audit": (
-        "Du pruefst den Code auf kryptographische Schwachstellen: schwache "
-        "Algorithmen, falsche Parameterwahl, Zufallszahlengeneratoren, "
-        "Schluesselmanagement und Protokollfehler."
-    ),
-}
-
 _EXPECTED_TOKENS: dict[str, int] = {
     "summarize": 350,
     "explain": 250,
@@ -127,141 +80,9 @@ _EXPECTED_TOKENS: dict[str, int] = {
 }
 
 
-_TASK_QUESTIONS_HUMAN: dict[str, str] = {
-    "review": (
-        "Fuehre ein vollstaendiges Code-Review durch.\n"
-        "Leitfragen je Abschnitt:\n"
-        "- Struktur: Welche Klassen/Funktionen gibt es, was ist ihr Zweck, "
-        "wie sieht der Haupt-Kontrollfluss aus?\n"
-        "- Robustheit: Werden Exceptions korrekt behandelt? "
-        "Gibt es stille Fehler oder Ressourcen-Leaks?\n"
-        "- Bugs: Race Conditions, falsche Annahmen, Edge Cases, "
-        "Sicherheitsluecken, Performance-Probleme?\n"
-        "- Design: Was ist nicht-offensichtlich geloest? "
-        "Welche eine Aenderung haette den groessten Wartbarkeits-Gewinn?"
-    ),
-}
-
-_TASK_QUESTIONS_HUMAN_DEFAULT = (
-    "Beschreibe Zweck, Struktur und wesentliche Implementierungsdetails. "
-    "Nenne konkrete Verbesserungsvorschlaege."
-)
-
-
-def _make_system_prompt() -> str:
-    return (
-        "Du bist ein praeziser Code-Analyse-Assistent. "
-        "Antworte ausschliesslich mit dem angeforderten JSON-Objekt — "
-        "kein Prosa-Text, keine Markdown-Fences, kein Kommentar ausserhalb des JSON."
-    )
-
-
-def _make_user_message(
-    task_type: str, scope: str, source_code: str, extra_prompt: str
-) -> str:
-    context = _TASK_CONTEXT.get(task_type, "Analysiere den folgenden Code.")
-    parts = [context, f"\nScope: {scope}"]
-    if source_code:
-        parts.append(f"\n```python\n{source_code}\n```")
-    if extra_prompt:
-        parts.append(f"\nHinweis: {extra_prompt}")
-    parts.append("\nAntworte mit einem JSON-Objekt gemaess dem vorgegebenen Schema.")
-    return "\n".join(parts)
-
-
-def _make_human_prompt(
-    task_type: str, scope: str, source_code: str, extra_prompt: str
-) -> str:
-    """Einzelner kombinierter Prompt fuer Human-Tasks (direkt kopierbar)."""
-    questions = _TASK_QUESTIONS_HUMAN.get(task_type, _TASK_QUESTIONS_HUMAN_DEFAULT)
-    parts = [
-        "Du bist ein erfahrener Code-Reviewer. Du bekommst eine Quelldatei und "
-        "beantwortest strukturierte Fragen dazu.\n"
-        "Antworte ausschliesslich mit Markdown. Verwende genau diese vier "
-        "Ueberschriften in dieser Reihenfolge — keine anderen:\n"
-        "## 1. Struktur & Verantwortlichkeiten\n"
-        "## 2. Fehlerbehandlung & Robustheit\n"
-        "## 3. Bugs & Schwachstellen\n"
-        "## 4. Design & Verbesserungsvorschlaege\n\n"
-        "Beispiel (gekuerzt):\n"
-        "## 1. Struktur & Verantwortlichkeiten\n"
-        "`Dispatcher.run()` iteriert ueber Jobs und delegiert per Typ an "
-        "`HandlerA` oder `HandlerB`. Rueckgabe: Anzahl verarbeiteter Items.\n"
-        "## 2. Fehlerbehandlung & Robustheit\n"
-        "`run()` faengt `Exception`, loggt und re-raisst (Z. 42). "
-        "Wenn der Cleanup-Handler selbst wirft, geht der Originalfehler verloren.\n"
-        "## 3. Bugs & Schwachstellen\n"
-        "`daemon=True` am Worker-Thread: laufender Job wird hart abgebrochen "
-        "wenn der Hauptprozess endet — kein sauberes Rollback.\n"
-        "## 4. Design & Verbesserungsvorschlaege\n"
-        "Cleanup-Handler sollte Fehler separat loggen; Original-Exception "
-        "als `__cause__` verketten.\n\n"
-        "---",
-        f"\nScope: {scope}",
-    ]
-    if source_code:
-        parts.append(f"\n```python\n{source_code}\n```")
-    if extra_prompt:
-        parts.append(f"\nHinweis: {extra_prompt}")
-    parts.append(f"\n{questions}")
-    return "\n".join(parts)
-
-
 # Vertrauensstufe fuer manuell (vom Menschen) verfasste/gepruefte Antworten.
 # Ersetzt den Modell-Tier-Proxy (TIER_CONFIDENCE), der nur fuer LLMs existiert.
 _HUMAN_CONFIDENCE = 0.9
-
-
-def _strip_code_fence(raw: str) -> str:
-    """Entfernt eine umschliessende ```-Fence (```markdown / ```md / ```), falls
-    ein Chatbot die Antwort so verpackt hat. Ohne Fence unveraendert."""
-    s = raw.strip()
-    if not s.startswith("```"):
-        return s
-    s = s.split("\n", 1)[1] if "\n" in s else ""
-    if s.rstrip().endswith("```"):
-        s = s.rstrip()[:-3]
-    return s.strip()
-
-
-# Die vier festen Ueberschriften des Human-Review-Prompts -> Zielfeld in content.
-# 1+2 -> text, 3 -> findings, 4 -> recommendations (Option A). Match ist tolerant
-# ggue. Markdown-Deko (#/**), fuehrender Nummer und Umlaut/ae (Chatbots rendern
-# oft, wodurch ## verloren geht und ae<->ae variiert).
-_SECTION_MAP: dict[str, str] = {
-    "struktur & verantwortlichkeiten": "text",
-    "fehlerbehandlung & robustheit": "text",
-    "bugs & schwachstellen": "findings",
-    "design & verbesserungsvorschlaege": "recommendations",
-}
-
-
-def _normalize_heading(line: str) -> str:
-    """Reduziert eine Zeile auf ihren nackten Ueberschrift-Text (lower, ohne
-    #/*/Bullet, ohne fuehrende 'N.'/'N)', Umlaut->ae). Fuer den ==-Vergleich."""
-    s = line.strip().lower().lstrip("#*-• \t")
-    s = re.sub(r"^\d+\s*[.)]\s*", "", s)  # fuehrende "3." / "3)"
-    s = s.strip("*_ \t").rstrip(":").strip()
-    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
-        s = s.replace(a, b)
-    return s
-
-
-def _split_human_review(text: str) -> dict[str, str]:
-    """Teilt ein Markdown-Review anhand der vier festen Ueberschriften in Felder.
-
-    Rueckgabe: nur nicht-leere Felder aus {text, findings, recommendations}. Die
-    Ueberschriften-Zeile selbst bleibt im jeweiligen Feld (Traceability). Wird eine
-    Ueberschrift nicht erkannt, faellt ihr Inhalt in das offene Feld (Default text).
-    """
-    buckets: dict[str, list[str]] = {"text": [], "findings": [], "recommendations": []}
-    current = "text"
-    for line in text.splitlines():
-        target = _SECTION_MAP.get(_normalize_heading(line))
-        if target is not None:
-            current = target
-        buckets[current].append(line)
-    return {k: "\n".join(v).strip() for k, v in buckets.items() if "\n".join(v).strip()}
 
 
 def _result_from_submission(
@@ -269,12 +90,12 @@ def _result_from_submission(
 ) -> ResultProb:
     """Baut ein ResultProb aus einer eingereichten Antwort — format-tolerant.
 
-    Faengt die Muster ab, die beim Copy-Paste aus einem Chatbot auftreten:
+    Zwei Faelle:
       1. Vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen.
-      2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) -> via parse_llm_response.
-      3. Freier Text / gerendertes Markdown, evtl. in ```-Fence -> Ueberschriften-
-         Split (1+2 text, 3 findings, 4 recommendations); greift der Split nicht,
-         landet alles in content.text (plus etwaige Label-Felder).
+      2. Freier Text / gerendertes Markdown (auch in ```-Fence) -> Ueberschriften-
+         Split via core.review_format.build_content (dieselbe Logik wie der
+         LLM-Worker: 1+2 text, 3 findings, 4 recommendations; kein Split ->
+         alles in content.text).
     Wirft ValueError mit erklaerender Meldung, wenn kein verwertbarer Text bleibt.
     """
     artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
@@ -295,36 +116,14 @@ def _result_from_submission(
             {**data, "provenance": prov.model_dump(mode="json")}
         )
 
-    # 2./3. Label-Prefix oder freier Text/Markdown.
-    parsed = parse_llm_response(_strip_code_fence(response))
-    if not parsed.text.strip():
+    # 2. Freier Text / Markdown -> gemeinsamer Content-Builder (Human == LLM).
+    content = build_content(response)
+    if not content.get("text", "").strip():
         raise ValueError(
             "Antwort enthaelt keinen verwertbaren Text. Bitte den vollstaendigen "
             "Review-Text (Markdown) einfuegen — nicht nur eine Ueberschrift, ein "
             "leeres Feld oder einen reinen Link/Codeblock."
         )
-
-    # Ueberschriften-Split nur uebernehmen, wenn er wirklich aufgeteilt hat
-    # (text-Feld gefuellt UND mind. ein strukturiertes Feld) — sonst Fallback.
-    sections = _split_human_review(parsed.text)
-    if sections.get("text") and (
-        sections.get("findings") or sections.get("recommendations")
-    ):
-        content: dict[str, Any] = {"text": sections["text"]}
-        if sections.get("findings"):
-            content["findings"] = sections["findings"]
-        if sections.get("recommendations"):
-            content["recommendations"] = sections["recommendations"]
-        if parsed.risks:
-            content["risks"] = parsed.risks
-    else:
-        content = {"text": parsed.text}
-        if parsed.findings:
-            content["findings"] = parsed.findings
-        if parsed.risks:
-            content["risks"] = parsed.risks
-        if parsed.recommendations:
-            content["recommendations"] = parsed.recommendations
 
     prov = build_prob_provenance(
         scope=scope, artifact_type=artifact_type_str, producer=producer, root=root
@@ -484,7 +283,7 @@ def create_app(
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
 
-        full_prompt = _make_user_message(
+        full_prompt = build_review_prompt(
             body.task_type, body.scope, source_code, body.prompt
         )
         queue.update_payload(item_id, {"prompt": full_prompt})
@@ -494,7 +293,7 @@ def create_app(
     async def claim_task(
         task_id: int, owner: str = Depends(_require_owner)
     ) -> dict[str, Any]:
-        """Claimen: Owner-Check, dann system_prompt + user_message."""
+        """Claimen: Owner-Check, dann der kombinierte Prompt (ein Feld)."""
         _check_task_owner(task_id, owner)
         item = queue.claim_by_id(task_id)
         if item is None:
@@ -509,29 +308,11 @@ def create_app(
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
 
-        if item.model == "human":
-            return {
-                "id": item.id,
-                "task_type": item.task_type,
-                "scope": item.scope,
-                "prompt": _make_human_prompt(
-                    item.task_type,
-                    item.scope,
-                    source_code,
-                    item.payload.get("prompt", ""),
-                ),
-            }
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "system_prompt": _make_system_prompt(),
-            "user_message": _make_user_message(
-                item.task_type,
-                item.scope,
-                source_code,
-                item.payload.get("prompt", ""),
-            ),
+            "prompt": build_review_prompt(item.task_type, item.scope, source_code),
         }
 
     @app.get("/api/prompt/{task_id}")
@@ -547,19 +328,11 @@ def create_app(
             src = source_root / scope[5:]
             if src.exists():
                 source_code = src.read_text(encoding="utf-8")
-        if info.get("model") == "human":
-            return {
-                "id": task_id,
-                "task_type": task_type,
-                "scope": scope,
-                "prompt": _make_human_prompt(task_type, scope, source_code, ""),
-            }
         return {
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "system_prompt": _make_system_prompt(),
-            "user_message": _make_user_message(task_type, scope, source_code, ""),
+            "prompt": build_review_prompt(task_type, scope, source_code),
         }
 
     @app.post("/api/validate")

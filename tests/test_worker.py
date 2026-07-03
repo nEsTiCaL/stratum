@@ -41,14 +41,20 @@ def _prob_response(content: str = "Erklaerung des Codes.") -> str:
     )
 
 
-def _prob_response_full() -> str:
-    """LLM-Antwort mit allen Sections befuellt."""
+def _prob_response_review() -> str:
+    """LLM-Antwort im gemeinsamen Markdown-Ueberschriften-Format (core.review_format).
+
+    1+2 -> content.text, 3 -> content.findings, 4 -> content.recommendations.
+    """
     return (
-        "MODEL: phi4-mini\n\n"
-        "CONTENT:\nDies ist die Hauptantwort.\n\n"
-        "FINDINGS:\n- Bug auf Zeile 42\n\n"
-        "RISKS:\n- SQL-Injection moeglich\n\n"
-        "RECOMMENDATIONS:\n- Input validieren\n"
+        "## 1. Struktur & Verantwortlichkeiten\n"
+        "Dies ist die Hauptantwort.\n"
+        "## 2. Fehlerbehandlung & Robustheit\n"
+        "Exceptions werden gefangen.\n"
+        "## 3. Bugs & Schwachstellen\n"
+        "- Bug auf Zeile 42\n"
+        "## 4. Design & Verbesserungsvorschlaege\n"
+        "- Input validieren\n"
     )
 
 
@@ -270,37 +276,30 @@ class TestLlmWorker:
         worker.run(_item(), repo)
         assert "Erklaerung" in repo.artifacts[0].content["text"]
 
-    def test_full_sections_stored_in_content(self):
-        """findings/risks/recommendations landen in content als plain text."""
-        worker = self._make_worker(FakeModel(responses=[_prob_response_full()]))
+    def test_full_sections_split_into_content(self):
+        """Markdown-Ueberschriften -> content.text/findings/recommendations."""
+        worker = self._make_worker(FakeModel(responses=[_prob_response_review()]))
         repo = _FakeRepo()
         worker.run(_item(task_type="review"), repo)
         content = repo.artifacts[0].content
+        assert "Hauptantwort" in content["text"]
         assert "Bug" in content.get("findings", "")
-        assert "SQL" in content.get("risks", "")
         assert "validieren" in content.get("recommendations", "")
 
-    def test_none_sections_absent_from_content(self):
-        """Sections mit 'none' tauchen nicht in content auf."""
+    def test_unstructured_response_all_in_text(self):
+        """Antwort ohne die festen Ueberschriften -> alles in content.text."""
         worker = self._make_worker(FakeModel(responses=[_prob_response()]))
         repo = _FakeRepo()
         worker.run(_item(), repo)
         content = repo.artifacts[0].content
+        assert content["text"]
         assert "findings" not in content
-        assert "risks" not in content
         assert "recommendations" not in content
 
-    def test_model_self_reported_in_content(self):
-        """MODEL-Label landet in content['model_self_reported']."""
-        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
-        repo = _FakeRepo()
-        worker.run(_item(), repo)
-        assert repo.artifacts[0].content.get("model_self_reported") == "phi4-mini"
-
     def test_plain_text_response_accepted(self):
-        """Antwort ohne Labels (Fallback) wird akzeptiert."""
+        """Antwort ohne Struktur (Fallback) wird akzeptiert."""
         worker = self._make_worker(
-            FakeModel(responses=["Einfache Antwort ohne Labels."])
+            FakeModel(responses=["Einfache Antwort ohne Ueberschriften."])
         )
         repo = _FakeRepo()
         outcome = worker.run(_item(), repo)

@@ -29,7 +29,7 @@ GET  /api/status          → {"status":"ok"} (Health-Check, kein Auth)
 GET  /api/whoami          → {"owner":"..."} (Key-Validierung)
 GET  /api/tasks           → Owner-gefilterte Task-Liste (Polling-Basis, inkl. Progress)
 GET  /api/prompt/{id}     → Prompt eines Tasks (Owner-Check)
-POST /api/claim/{id}      → Task claimen (Owner-Check) → system_prompt + user_message
+POST /api/claim/{id}      → Task claimen (Owner-Check) → EIN kombiniertes Feld `prompt`
 POST /api/submit/{id}     → Antwort einreichen, validieren, speichern (Owner-Check)
 POST /api/validate        → Dry-run-Validierung ohne Speichern
 
@@ -69,7 +69,7 @@ Request:
 - `scope`: `file:<pfad>` relativ zu source_root; später auch `project:<pfad>` für
   Verzeichnisse (Phase 2 Session-Cache)
 - `model`: optional, Default phi-4-mini
-- `prompt`: optional, Zusatzhinweis (wird in _make_user_message eingebettet)
+- `prompt`: optional, Zusatzhinweis (wird von build_review_prompt als "Hinweis:" eingebettet)
 
 Response 201:
 ```json
@@ -123,39 +123,40 @@ Die `artifacts`-Tabelle behaelt die gleichnamigen Spalten aus Kompat-Gruenden, a
 `repository._row_to_result` reicht sie NICHT ins Modell (sonst 500 beim Lesen jeder
 prob-Antwort). `put_artifact` schreibt dort NULL. Aufraeumen (Spalten droppen) = spaeter.
 
-## Human-Tasks (model=human)
+## Prob-Tasks: EIN Prompt- + Antwortformat (human UND LLM)
 
-Ein Task mit `model: "human"` wird vom Worker ignoriert (kein Ollama-Lauf) und
-manuell ueber das Dashboard bearbeitet: claimen -> Prompt kopieren -> in einen
-beliebigen Chatbot -> Antwort zurueck einreichen. Der Prompt ist bewusst GENERISCH
-(kein Projektname), damit er fuer beliebigen Zielcode taugt.
+Vereinheitlicht: der lokale Ollama-Worker und der manuelle Dashboard-Pfad nutzen
+DASSELBE generische Markdown-Format. Kein JSON-Zwang mehr fuer LLMs, kein
+Label-Prefix-Format. Einzige Wahrheitsquelle: `core/review_format.py`
+(`build_review_prompt`, `split_review_sections`, `build_content`) — Kern-Schicht,
+von `core.worker` UND `interfaces.webgui.app` genutzt.
 
-Prompt-Auslieferung (`/api/claim/{id}`, `/api/prompt/{id}`) ist modusabhaengig:
-- `model == "human"` -> EIN Feld `prompt` (Rolle + Kontext + Quellcode + Aufgabe +
-  Format komplett zusammengefuehrt; direkt kopierbar). Format-Vorgabe: Antwort als
-  Markdown mit vier festen Ueberschriften (## 1. Struktur & Verantwortlichkeiten /
-  2. Fehlerbehandlung & Robustheit / 3. Bugs & Schwachstellen / 4. Design &
-  Verbesserungsvorschlaege), Beispiel im Prompt eingebettet.
-- sonst -> getrennt `system_prompt` + `user_message` (LLM erwartet JSON-Schema).
+Prompt (`build_review_prompt`): ein einziger kombinierter String — Rolle
+("Code-Reviewer") + vier feste Ueberschriften + eingebettetes Beispiel + Scope +
+Quellcode + task-spezifische Leitfragen. GENERISCH (kein Projektname). Passt fuer
+Ollamas `prompt` (kein separater System-Prompt) genauso wie fuers Dashboard-
+Kopierfeld. Task-Anlage (`POST /api/task`) legt ihn in `payload["prompt"]` ab (der
+Worker sendet ihn direkt an Ollama). `/api/claim/{id}` und `/api/prompt/{id}`
+liefern IMMER genau EIN Feld `prompt` (kein system_prompt/user_message mehr).
 
-Einreichen (`/api/submit/{id}`) ist FORMAT-TOLERANT (Copy-Paste aus Chatbots liefert
-selten sauberes JSON). `_result_from_submission` probiert in dieser Reihenfolge:
+Antwort -> content (`build_content`): Ueberschriften-Split mappt die vier festen
+Ueberschriften auf `content`-Felder — 1+2 -> `text`, 3 (Bugs & Schwachstellen) ->
+`findings`, 4 (Design & Verbesserungsvorschlaege) -> `recommendations`.
+`_normalize_heading` matcht tolerant: gerendertes Markdown (## verloren, Zeile
+heisst nur "3. Bugs & Schwachstellen"), `**bold**`, fuehrende "N.", Umlaut
+(schlaege<->schläge). Greift der Split nicht, landet alles in `content.text`
+(verlustfrei). Der LLM-Worker (`LlmWorker.run`) ruft `build_content` direkt auf;
+`confidence` weiter aus dem Modell-Tier (`TIER_CONFIDENCE`).
+
+Einreichen (`/api/submit/{id}`) fuer den Human-Pfad ist zusaetzlich format-tolerant:
 1. vollstaendiges JSON-Objekt (alte ResultProb-Form) -> direkt uebernommen;
-2. Label-Prefix-Format (CONTENT:/FINDINGS:/...) via `parse_llm_response`;
-3. freier Text / gerendertes Markdown, auch in ```-Fence -> Ueberschriften-Split.
-   Leere/nur-Ueberschrift-Antwort -> klare 422-Meldung.
-Damit spiegelt der Submit-Pfad den `LlmWorker` (Text parsen -> ResultProb aus
-task_type bauen), statt wie zuvor stur `extract_json` zu erzwingen. Menschlich
-verfasste Antworten bekommen `confidence = 0.9` (Modell-Tier-Proxy existiert nicht).
+2. sonst `build_content` (Markdown-Split, auch in ```-Fence). Leere Antwort ->
+   klare 422-Meldung. Manuelle Antwort -> `confidence = 0.9` (`_HUMAN_CONFIDENCE`).
 
-Ueberschriften-Split (Option A, `_split_human_review` + `_SECTION_MAP`): die vier
-festen Prompt-Ueberschriften werden auf `content`-Felder gemappt — 1+2 -> `text`,
-3 (Bugs & Schwachstellen) -> `findings`, 4 (Design & Verbesserungsvorschlaege) ->
-`recommendations`. `_normalize_heading` matcht tolerant: Chatbots rendern Markdown,
-wodurch `##` verloren geht (Zeile heisst dann nur "3. Bugs & Schwachstellen") oder
-`**bold**`/Umlaut (schlaege<->schläge) variiert. Greift der Split nicht (keine
-Ueberschrift erkannt), landet alles in `content.text` (Fallback, verlustfrei).
-Der Split gilt fuer NEUE Submits; bereits gespeicherte Artefakte aendern sich nicht.
+`model == "human"`: Worker ignoriert den Task (kein Ollama-Lauf), Bearbeitung nur
+manuell ueber das Dashboard. Validator (`_validate_prob`) prueft weiterhin nur, ob
+Text nicht leer ist (via `parse_llm_response`-Fallback) — Markdown besteht das.
+Der Split gilt fuer NEUE Artefakte; bereits gespeicherte aendern sich nicht.
 
 ## Aufruf-Beispiele (curl)
 

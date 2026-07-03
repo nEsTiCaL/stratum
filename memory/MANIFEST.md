@@ -54,7 +54,8 @@ ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nu
                          |   fuers aktive N1-Dogfooding, Fund WSL-Klon-Drift + Pfad-Umzug        |   wsl-drift, pfad-umzug
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
                          |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag,          |   pythonpath, pyunbuffered, quoting,
-                         |   Docker-Daemon fuer DB-Tests, API-Key erzeugen                       |   testcontainers, api-key, core.auth
+                         |   Docker-Daemon fuer DB-Tests, API-Key erzeugen, Container-Zyklus     |   testcontainers, api-key, core.auth,
+                         |   durch WSL-Session-Churn (fast shutdown/RestartCount=0/--no-deps)     |   session-churn, fast-shutdown, socket-aktiviert
 ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreichbarkeit,        | curl, invoke-restmethod, powershell,
                          |   WSL2-Port-Forwarding, PowerShell-Quoting-Falle (curl.exe vs.        |   quoting-falle, localhost, bearer,
                          |   Invoke-RestMethod), kanonische Befehlsformen je Plattform            |   windows, wsl2, single-quote
@@ -78,8 +79,9 @@ spec_schritt-5.md        | Inkremente Schritt 5 (Betrieb) I-5.1..5.5            
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
 spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task,                    | sse, task-create, result-abruf, ssh-pipe,
                          |   GET /api/task/{id}/events, GET /api/result/{id}),                   |   session-cache, scope, curl-beispiele,
-                         |   Phase-2-Go-CLI-Mapping, Scope-Typen (I-REST.1),                     |   human-task, submit-toleranz,
-                         |   Human-Tasks (model=human, 1 Prompt-Feld, format-toleranter Submit)  |   resultprob-divergenz
+                         |   Phase-2-Go-CLI-Mapping, Scope-Typen (I-REST.1), Prob-Tasks:         |   human-task, submit-toleranz, resultprob-divergenz,
+                         |   EIN Markdown-Format human+LLM (core/review_format), Ueberschriften- |   review-format, ueberschriften-split,
+                         |   Split -> content.text/findings/recommendations                     |   markdown-prompt, build-content
 spec_i-d0-devharness.md  | I-D.0 Dev-Harness: find_symbol + devcli (N1-Einstieg)               | repository, jsonb-lateral, symbolhit
 spec_i-2-0-capacity.md   | I-2.0 Capacity-Profil + Lifecycle: 3 Ebenen, resolve, measure       | capacity.toml, model_config, profil-d
 spec_i-2-1-router.md     | I-2.1 Capability-Router (Matrix v2): Achsen, Tiers, Multi-Provider,  | candidates, cost_tier, free-tier, eskalation,

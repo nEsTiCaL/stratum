@@ -22,13 +22,32 @@ nur im Image installiert (Dockerfile: `uv pip install --system ".[web]"`). Folge
 dem Windows-Baum. Also erst geaenderte Dateien nach ~/stratum syncen (Phase-A-cp,
 `ops_sync-workflow`), dann:
   wsl -d Debian -- bash -c "cd ~/stratum && docker compose up -d --build --no-deps server"
-`--no-deps` ist Pflicht: ohne es interagiert Compose mit dem db-Container und kann
-einen Restart-Loop ausloesen (DB bekommt SIGTERM, server verliert Connection,
-beide crashen alle ~15 s bis Docker-Backoff greift). Mit --no-deps wird die
-laufende DB ignoriert. Nur Env aendern (kein Code) -> ohne --build:
-`docker compose up -d --no-deps server`. PYTHONUNBUFFERED=1 (compose env) ist
-noetig, sonst haengen die print()-Logs des Worker-Threads im stdout-Blockpuffer
-und erscheinen nie in `docker logs`.
+`--no-deps` = nur den server-Service (neu) bauen/starten, die laufende db nicht
+anfassen (kleine Optimierung, kein Muss). Frueher als Loop-Fix begruendet -- das
+war FALSCH; der beobachtete Container-Zyklus kam von WSL-Session-Churn, nicht von
+Compose (siehe unten "Container-Zyklus ...."). Nur Env aendern (kein Code) -> ohne
+--build: `docker compose up -d --no-deps server`. PYTHONUNBUFFERED=1 (compose env)
+ist noetig, sonst haengen die print()-Logs des Worker-Threads im stdout-Block-
+puffer und erscheinen nie in `docker logs`.
+
+## Container-Zyklus (fast shutdown / Skipping initialization) = WSL-Session-Churn
+
+Symptom: db+server zyklen im ~20-40s-Takt, db-Log wechselt "received fast shutdown
+request" <-> "database system is ready", server nicht erreichbar (curl 000). NICHT
+die App, NICHT compose, NICHT --no-deps.
+
+Ursache: viele kurze `wsl -d Debian -- …`-Aufrufe (z.B. Diagnose-Barrage) oeffnen/
+schliessen je eine Login-Session. Der docker-Daemon ist socket-aktiviert
+(TriggeredBy docker.socket) und kommt bei jeder neuen Session frisch hoch -> die
+`restart: unless-stopped`-Container starten neu. Kennzeichen: `RestartCount=0`
+(kein Policy-Restart) + "Skipping initialization" (Entrypoint laeuft neu) +
+Distro-VM-Uptime bleibt gross (nicht die VM rebootet, nur Session/Daemon).
+
+Belegtest: eine Session 50s offen halten -> KEIN fast shutdown im Fenster.
+Abhilfe: eine langlebige Session halten, solange gearbeitet wird:
+  wsl -d Debian -- sleep 3600   # im Hintergrund; haelt Docker/Container oben
+Browser-Zugriff aufs Dashboard (HTTP an :8000) erzeugt KEINE WSL-Session, stoert
+also nicht -- nur wiederholte `wsl`-CLI-Aufrufe tun es.
 
 ## Task End-to-End laufen lassen
 
