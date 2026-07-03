@@ -4,6 +4,9 @@ Kurzer Ende-zu-Ende-Test, ob der N1-Dogfooding-Workflow (`ops_n1-queries`)
 gerade funktioniert, plus die Begruendung, warum er jetzt schon aktiv genutzt
 wird statt nur als erreichter Meilenstein zu gelten.
 
+Deckt die DET-Haelfte ab (Index-Queries). Die PROB-Haelfte (Code per LLM/Human
+reviewen lassen) steht in `ops_prob-dogfooding`.
+
 ## Wann laufen lassen
 
 Zu Sessionbeginn ab Schritt 2 (vor dem `ops_n1-queries`-Preflight), nach

@@ -52,6 +52,9 @@ ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B via sync.ps1, Entschei
 ops_sync-script.md       | Inhalt .local/sync.ps1 (Commit+Push+WSL-Sync), Aufrufform            | sync.ps1, powershell, WIN_REPO_PFAD
 ops_dogfooding-smoketest.md | Preflight-Checkliste (WSL-Sync/Docker/Ollama) + Nutzen-Begruendung | smoketest, ollama-erreichbar,
                          |   fuers aktive N1-Dogfooding, Fund WSL-Klon-Drift + Pfad-Umzug        |   wsl-drift, pfad-umzug
+ops_prob-dogfooding.md   | Prob-Loop: eigenen Code per Worker(LLM)/Human reviewen — curl        | prob-dogfooding, task-loop, routing,
+                         |   create/poll/result; Routing-Gotcha Profil D (summarize/explain     |   profil-d, review-cloud, model-human,
+                         |   lokal, review->Cloud/human, EscalationLoop-AssertionError)          |   escalationloop-assertion
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
                          |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag,          |   pythonpath, pyunbuffered, quoting,
                          |   Docker-Daemon fuer DB-Tests, API-Key erzeugen, Container-Zyklus     |   testcontainers, api-key, core.auth,
