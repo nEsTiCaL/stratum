@@ -517,9 +517,27 @@ class TestTaskResultTrace:
         assert tr[0]["detail"]["validation_result"] == "fail"
         assert tr[0]["detail"]["trigger"] == "exception"
 
+    def test_config_variant_defaults_baseline(self):
+        # I-5.5a: ohne Canary (fraction 0.0) traegt jede task_result baseline.
+        loop = _loop_for(_item(task_type="index", scope="file:core/router.py"))
+        loop.step("tree-sitter")
+        assert self._traces(loop)[0]["detail"]["config_variant"] == "baseline"
+
+    def test_config_variant_canary_at_full_fraction(self):
+        # I-5.5a: fraction 1.0 -> alles canary.
+        loop = _loop_for(
+            _item(task_type="index", scope="file:core/router.py"),
+            canary_fraction=1.0,
+        )
+        loop.step("tree-sitter")
+        assert self._traces(loop)[0]["detail"]["config_variant"] == "canary"
+
 
 def _loop_for(
-    item: QueueItem, fake_model: FakeModel | None = None, model_factory=None
+    item: QueueItem,
+    fake_model: FakeModel | None = None,
+    model_factory=None,
+    canary_fraction: float = 0.0,
 ) -> WorkerLoop:
     if model_factory is None:
         _m = fake_model
@@ -529,4 +547,5 @@ def _loop_for(
         repo=_FakeRepo(),
         det_worker=DetWorker(ingest_fn=lambda *_: "artifact-det"),
         llm_worker=LlmWorker(router=Router(), model_factory=model_factory),
+        canary_fraction=canary_fraction,
     )

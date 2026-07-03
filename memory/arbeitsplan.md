@@ -157,7 +157,10 @@ I-5.1b  Worker task_result-Trace        det  I-2.5     S5(Luecke)     fertig
 I-5.2   REST-Aggregate (read-only)     det   I-1.3     R5             fertig
 I-5.3   Web-Dashboard Frontend         gem   I-5.1/5.2 R5             fertig
 I-5.4   Kalibrierung (Auswertung)      det   I-1.3     R5             fertig
-I-5.5   Canary + Regression + Eval     gem   I-5.4     R5, T
+I-5.5a  config_variant + Canary-Zuteil. det  I-5.1b    R5             fertig
+I-5.5b  Variant-A/B + Regressions-Gate  det  I-5.5a    R5             fertig
+I-5.5c  Regr.-Manifest + Enqueue        det  I-5.5b    R5             fertig
+I-5.5d  Eval-Lauf echte Modelle (opt-in) dev I-5.5c    R5, T          fertig
 ```
 
 ## Schalen  (Spec: SCH)
@@ -187,10 +190,19 @@ log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
 aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
 Stand 2026-07-03: Schritt 4 VOLLSTAENDIG inkl. Konsolidierung (I-4.1..4.8).
-Schritt 5: I-5.1 (Live gepollt) + I-5.1b (Worker task_result-Trace) + I-5.2
-(REST-Aggregate) + I-5.3 (Monitor-Frontend) + I-5.4 (Kalibrierung) fertig.
-Offen: I-5.5 (Canary + Regression + Eval). Naechstes: I-5.5 (letztes Haeppchen
-Schritt 5; braucht Eval-Harness + echte Modelle, s. spec_schritt-5 I-5.5).
+Schritt 5: I-5.1..5.4 fertig; I-5.5 in a/b/c/d geschnitten (Requirement
+neu abgeleitet: SWE-Faelle = eingefrorene Dogfooding-Tasks, gemessen mit
+VORHANDENEN Metriken, KEIN neuer Grader -- roadmap "kein neues Mess-System").
+I-5.5a/b/c (config_variant + Canary-Zuteilung, compare_variants +
+regression_verdict + GET /api/variants, Regr.-Manifest eval/regression_tasks.toml
++ Enqueue) fertig. I-5.5d dev-verifiziert: eval/run_regression.py hat baseline
+vs. canary mit echtem phi4-mini gefahren, compare_variants + regression_verdict
+lieferten reale Zahlen: baseline+canary je success_rate 1.0, Verdikt ok.
+SCHRITT 5 VOLLSTAENDIG -> N5 erreicht (beobachtbar + kalibriert). Harness-Lehre:
+OllamaAdapter MUSS mit on_token (Streaming) laufen -- blockierend greift der
+120-s-Timeout ueber die Gesamt-Generierung, auf CPU sonst ReadTimeout ->
+faelschlich transient_error/escalated (erster Lauf, behoben). Naechstes: Schalen
+(I-D.1 VSCode / I-D.4 Packaging / I-S.* Server) oder Kosten-je-Variant-Luecke.
 Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).

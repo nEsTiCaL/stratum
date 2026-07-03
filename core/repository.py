@@ -636,6 +636,39 @@ class Repository:
 
         return {"by_task_type": by_task_type, "confidence": confidence}
 
+    def compare_variants(self) -> dict[str, dict[str, Any] | None]:
+        """A/B der task_result-Trace nach config_variant (I-5.5b, read-only).
+
+        Reuse der vorhandenen Erfolgs-/Eskalationssignale (kein neues Mess-
+        System, roadmap-schritt-5 Teil 3): je Variant Schema-Erfolgsrate
+        (success_rate = pass/n), escalation_rate und fail_rate. Speist das
+        Regressions-Gate (canary.regression_verdict): eine neue Config (canary)
+        darf gegenueber baseline nicht schlechter abschneiden. Fehlt eine
+        Variant, ist ihr Wert None.
+
+        Kosten/Task fehlen hier bewusst -- cloud_costs traegt (noch) keine
+        config_variant-Zuordnung (Luecke, s. spec_schritt-5 I-5.5).
+        """
+        out: dict[str, dict[str, Any] | None] = {"baseline": None, "canary": None}
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT detail->>'config_variant', count(*), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'pass'), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'escalated'), "
+                "count(*) FILTER (WHERE detail->>'validation_result' = 'fail') "
+                "FROM trace WHERE stage = 'task_result' "
+                "AND detail->>'config_variant' IS NOT NULL "
+                "GROUP BY detail->>'config_variant'"
+            )
+            for variant, n, ok, esc, fail in cur.fetchall():
+                out[variant] = {
+                    "n": n,
+                    "success_rate": ok / n,
+                    "escalation_rate": esc / n,
+                    "fail_rate": fail / n,
+                }
+        return out
+
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
 

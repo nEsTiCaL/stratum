@@ -1,0 +1,34 @@
+# Eingefrorene Regressions-Suite (I-5.5c).
+#
+# Die "eigenen SWE-Faelle" sind reale Dogfooding-Tasks ueber Stratums eigenen
+# Code (task_type + scope) -- KEIN neuer Grader. Das Erfolgssignal beim Lauf ist
+# die vorhandene Validierung (Repository.compare_variants). Diese Liste ist die
+# Regressions-Baseline: Aenderungen hier verschieben bewusst die Referenz und
+# gehoeren versioniert/besprochen.
+#
+# Reihenfolge stabil. Lokal (phi4-mini) laufen summarize/explain; review/
+# architecture routen auf Profil D zur Cloud bzw. model:human (ops_prob-dogfooding).
+
+[[task]]
+task_type = "summarize"
+scope = "file:core/scope.py"
+
+[[task]]
+task_type = "explain"
+scope = "file:core/router.py"
+
+[[task]]
+task_type = "summarize"
+scope = "file:core/canary.py"
+
+[[task]]
+task_type = "explain"
+scope = "file:core/repository.py"
+
+[[task]]
+task_type = "review"
+scope = "file:core/validator.py"
+
+[[task]]
+task_type = "architecture"
+scope = "file:core/worker.py"

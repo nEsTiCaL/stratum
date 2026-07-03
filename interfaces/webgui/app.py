@@ -16,6 +16,7 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/history            -> Tages-Rollup Kosten/Eskalationen (?days=N)
   GET  /api/task-stats         -> Ø Tokens/Zeit/tok-s je task_type
   GET  /api/calibration        -> Eskalation/Swap je task_type + confidence-Kalibr.
+  GET  /api/variants           -> Canary-A/B je config_variant + Regressions-Verdikt
   GET  /api/trace/{session}    -> Trace einer Session (Drill-down)
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
@@ -44,6 +45,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
 from core.ingest import ingest_repo
@@ -291,6 +293,19 @@ def create_app(
         + confidence-Kalibrierung je final_model. Read-only; Schwellen wendet der
         Mensch an."""
         return repo.calibration()
+
+    @app.get("/api/variants")
+    async def variants(
+        tolerance: float = 0.0, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """Canary-A/B (I-5.5): vorhandene Signale je config_variant + Regressions-
+        Verdikt (Loesungsrate darf nicht fallen). Read-only; ausrollen/
+        zuruecknehmen entscheidet der Mensch (R5)."""
+        comparison = repo.compare_variants()
+        verdict = regression_verdict(
+            comparison["baseline"], comparison["canary"], tolerance=tolerance
+        )
+        return {"comparison": comparison, "verdict": verdict}
 
     @app.get("/api/trace/{session_id}")
     async def trace(

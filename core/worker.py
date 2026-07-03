@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.canary import assign_variant
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
@@ -137,6 +138,7 @@ class WorkerLoop:
     llm_worker: LlmWorker
     on_item_start: Callable[[QueueItem], None] | None = None
     on_item_fail: Callable[[QueueItem, str], None] | None = None
+    canary_fraction: float = 0.0  # I-5.5a: Anteil canary; 0 = alles baseline
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -153,8 +155,9 @@ class WorkerLoop:
         attempts: int = 0,
     ) -> None:
         """Schreibt die R2-Trace-Zeile je Knoten (I-5.1b): stage='task_result',
-        session_id = dag_id. Speist die Aggregate (I-5.2: Eskalationsrate) und
-        das Kalibrierungs-Fenster (I-5.4)."""
+        session_id = dag_id. Speist die Aggregate (I-5.2: Eskalationsrate), das
+        Kalibrierungs-Fenster (I-5.4) und den Canary-A/B-Vergleich (I-5.5:
+        config_variant, deterministisch aus dag_id + canary_fraction)."""
         self.repo.write_trace(
             item.dag_id,
             "task_result",
@@ -164,6 +167,7 @@ class WorkerLoop:
                 "trigger": trigger,
                 "final_model": final_model,
                 "attempts": attempts,
+                "config_variant": assign_variant(item.dag_id, self.canary_fraction),
             },
         )
 

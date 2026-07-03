@@ -223,6 +223,29 @@ class TestAggregateEndpoints:
         assert conf["final_model"] == "sonnet"
         assert conf["confidence"] == 0.88  # paid_mid-Proxy
 
+    def test_variants_requires_auth(self, client):
+        assert client.get("/api/variants").status_code == 401
+
+    def test_variants_shape_and_verdict(self, client, conn):
+        repo = Repository(conn)
+
+        def _tr(variant: str, vr: str) -> None:
+            repo.write_trace(
+                "d",
+                "task_result",
+                detail={"config_variant": variant, "validation_result": vr},
+            )
+
+        for vr in ("pass", "pass", "pass"):  # baseline: 100% Erfolg
+            _tr("baseline", vr)
+        for vr in ("pass", "fail"):  # canary: 50% -> Regression
+            _tr("canary", vr)
+        body = client.get("/api/variants", headers=AUTH).json()
+        assert body["comparison"]["baseline"]["success_rate"] == 1.0
+        assert body["comparison"]["canary"]["success_rate"] == 0.5
+        assert body["verdict"]["ok"] is False
+        assert "success_rate_dropped" in body["verdict"]["reasons"]
+
     def test_history_requires_auth(self, client):
         assert client.get("/api/history").status_code == 401
 

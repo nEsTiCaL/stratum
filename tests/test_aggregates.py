@@ -210,3 +210,46 @@ class TestCalibration:
         cal = repo.calibration()
         assert cal["by_task_type"] == []
         assert cal["confidence"] == []
+
+
+class TestVariantComparison:
+    """I-5.5b: A/B der task_result-Trace nach config_variant (read-only)."""
+
+    def _result(self, repo: Repository, variant: str, validation_result: str) -> None:
+        repo.write_trace(
+            "dag",
+            "task_result",
+            detail={"config_variant": variant, "validation_result": validation_result},
+        )
+
+    def test_empty(self, conn):
+        assert Repository(conn).compare_variants() == {
+            "baseline": None,
+            "canary": None,
+        }
+
+    def test_splits_by_variant(self, conn):
+        repo = Repository(conn)
+        # baseline: 3 pass / 1 escalated -> success 3/4, esc 1/4
+        self._result(repo, "baseline", "pass")
+        self._result(repo, "baseline", "pass")
+        self._result(repo, "baseline", "pass")
+        self._result(repo, "baseline", "escalated")
+        # canary: 1 pass / 1 fail -> success 1/2, fail 1/2
+        self._result(repo, "canary", "pass")
+        self._result(repo, "canary", "fail")
+
+        cmp = repo.compare_variants()
+        assert cmp["baseline"]["n"] == 4
+        assert cmp["baseline"]["success_rate"] == pytest.approx(3 / 4)
+        assert cmp["baseline"]["escalation_rate"] == pytest.approx(1 / 4)
+        assert cmp["canary"]["n"] == 2
+        assert cmp["canary"]["success_rate"] == pytest.approx(1 / 2)
+        assert cmp["canary"]["fail_rate"] == pytest.approx(1 / 2)
+
+    def test_ignores_rows_without_variant(self, conn):
+        repo = Repository(conn)
+        repo.write_trace(
+            "dag", "task_result", detail={"validation_result": "pass"}
+        )  # kein config_variant -> zaehlt in keiner Variante
+        assert repo.compare_variants() == {"baseline": None, "canary": None}
