@@ -409,7 +409,9 @@ class Repository:
                 cur.execute(sql, params)
                 return cur.rowcount
 
-    def invalidate_after_reingest(self, scope: str) -> ChangeKind | None:
+    def invalidate_after_reingest(
+        self, scope: str, *, session_id: str = "ingest"
+    ) -> ChangeKind | None:
         """Differenzierte Invalidierung nach Re-Ingest eines file-scopes (I-4.4).
 
         Bestimmt die Aenderungsart (I-4.3) und markiert abhaengige Artefakte
@@ -419,17 +421,55 @@ class Repository:
           - API-Change: transitive Rueckwaerts-Huelle (impact, I-4.2) voll stale
           - Impl-Change: nur die eigenen prob-Artefakte (det der Abhaengigen
             bleiben gueltig)
-        Liefert die Aenderungsart, None beim Erst-Ingest (kein Vorgaenger ->
-        nichts zu invalidieren). Neuberechnung erfolgt bedarfsgetrieben ueber
-        die Queue, nicht hier.
+        Schreibt eine Trace-Zeile stage="invalidation" mit kind, Anzahl
+        markierter Zeilen und betroffenen scopes (Erklaerbarkeit/Kalibrierung,
+        I-4.7). Liefert die Aenderungsart, None beim Erst-Ingest (kein
+        Vorgaenger -> nichts zu invalidieren). Neuberechnung erfolgt
+        bedarfsgetrieben ueber die Queue (list_stale), nicht hier.
         """
         kind = self.symbol_change_kind(scope)
-        if kind is None:
-            return None
-        self.mark_stale([scope], producer_class=ProducerClass.prob)
-        if kind == ChangeKind.api:
-            self.mark_stale(self.impact(scope))
+        marked_scopes: list[str] = []
+        marked_count = 0
+        if kind is not None:
+            marked_count += self.mark_stale([scope], producer_class=ProducerClass.prob)
+            marked_scopes.append(scope)
+            if kind == ChangeKind.api:
+                hull = self.impact(scope)
+                marked_count += self.mark_stale(hull)
+                marked_scopes.extend(hull)
+        self.write_trace(
+            session_id,
+            "invalidation",
+            detail={
+                "kind": kind.value if kind is not None else None,
+                "marked_count": marked_count,
+                "scopes": marked_scopes,
+            },
+        )
         return kind
+
+    def list_stale(
+        self, *, producer_class: ProducerClass | None = None
+    ) -> list[tuple[str, str]]:
+        """Alle aktuellen (nicht superseded) stale-Artefakte als (scope,
+        artifact_type), deterministisch geordnet (I-4.7).
+
+        Betriebs-/Queue-Bruecke: was ist nicht mehr vertrauenswuerdig und damit
+        Kandidat fuer bedarfsgetriebene Neuberechnung. Optional auf eine
+        producer_class beschraenkt (z.B. nur prob-Reviews).
+        """
+        sql = (
+            "SELECT scope, artifact_type FROM artifacts "
+            "WHERE superseded = false AND stale = true"
+        )
+        params: list[object] = []
+        if producer_class is not None:
+            sql += " AND producer_class = %s"
+            params.append(producer_class.value)
+        sql += " ORDER BY scope, artifact_type"
+        with self._conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [(row[0], row[1]) for row in cur.fetchall()]
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.

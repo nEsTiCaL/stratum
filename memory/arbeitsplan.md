@@ -138,9 +138,9 @@ I-4.2   rekursive CTE + CYCLE          det   I-4.1     R4             fertig
 I-4.3   Symbol-Diff -> Aenderungsart   det   I-1.4     R4             fertig
 I-4.4   diff. Invalidierung + stale    det   I-4.2/4.3 R4             fertig
 I-4.5   Hygiene Loeschung/Rename       det   I-1.7/4.1 S4(Kons.)      fertig
-I-4.6   Kanten-Qualitaet call/contains det   I-4.1     S4(Kons.)
-I-4.7   Invalidierungs-Trace+list_stale det  I-4.4     S4(Kons.)
-I-4.8   pgvector-Extension (Nachzug)   det   I-1.2     S4(Kons.)
+I-4.6   Kanten-Qualitaet call/contains det   I-4.1     S4(Kons.)      fertig
+I-4.7   Invalidierungs-Trace+list_stale det  I-4.4     S4(Kons.)      fertig
+I-4.8   pgvector-Extension (Nachzug)   det   I-1.2     S4(Kons.)      fertig
 ```
 
 I-4.5..4.8 = Konsolidierung aus dem Funktionsreview der Datengrundlage
@@ -185,9 +185,10 @@ Abschluss stehen im jeweiligen Spec-/Domaenen-Chunk und in log.md (bzw.
 log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
 aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
-Stand 2026-07-03: Schritt 1-4 Kern VOLLSTAENDIG (I-4.1..4.4). Aus dem
-Funktionsreview: Konsolidierung I-4.5..4.8 angelegt, VOR Schritt 5
-abarbeiten. Danach Schritt 5 (Betrieb), Einstieg I-5.1 oder I-5.2.
+Stand 2026-07-03: Schritt 4 VOLLSTAENDIG inkl. Konsolidierung (I-4.1..4.8).
+Datengrundlage bereinigt (Loeschung/Rename-Hygiene, Kanten-Qualitaet,
+Invalidierungs-Trace+list_stale, pgvector). Naechstes: Schritt 5 (Betrieb),
+Einstieg I-5.1 (Live-Status + SSE-Stream) oder I-5.2 (REST-Aggregate).
 Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).

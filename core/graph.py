@@ -9,10 +9,16 @@ Alle Kanten haben src = file-scope der analysierten Datei. Das erlaubt
 put_edges(scope, edges) per einfachem WHERE src=scope zu superseden.
 
 dst-Konventionen:
-  file:core/db.py       — internes Modul (target aufgeloest)
-  module:subprocess     — externes Modul (target=None)
-  symbol::Session.login — aufgeloester Callee (kein Datei-Kontext noch)
-  symbol:core/x.py::fn  — Symbol innerhalb einer Datei (contains)
+  file:core/db.py            — internes Modul (target aufgeloest)
+  module:subprocess          — externes Modul (target=None)
+  symbol:core/x.py::fn       — Symbol innerhalb einer Datei (contains, call)
+  symbol:core/x.py::Cls.meth — qualifiziertes Symbol (parent.name)
+
+Contains- UND (dateilokal aufgeloeste) call-Kanten teilen denselben
+Symbolknoten-Namespace symbol:<pfad>::<qualifizierter Name> (I-4.6): callee_ref
+stammt aus LOCAL_DEF/SELF_METHOD und ist damit im file-scope selbst definiert,
+also derselbe Pfad. Der qualifizierte Name (parent.name bzw. name) haelt
+gleichnamige Symbole verschiedener Klassen einer Datei auseinander.
 """
 
 from __future__ import annotations
@@ -27,6 +33,17 @@ class GraphEdge:
     edge_type: str  # "import" | "call" | "contains"
     confidence: float | None
     source_hash: str
+
+
+def _symbol_node(file_path: str, qualified_name: str) -> str:
+    """Kanonischer Symbolknoten fuer contains- und call-Kanten (I-4.6)."""
+    return f"symbol:{file_path}::{qualified_name}"
+
+
+def _qualified_name(sym: dict) -> str:
+    """parent.name fuer geschachtelte Symbole (Methoden), sonst name."""
+    parent = sym.get("parent")
+    return f"{parent}.{sym['name']}" if parent else sym["name"]
 
 
 def edges_from_dependency_graph(
@@ -56,12 +73,15 @@ def edges_from_call_graph(
 
     Unaufgeloeste Callees (callee_ref=None) werden uebersprungen.
     """
+    file_path = scope[len("file:") :]
     edges = []
     for call in content.get("calls", []):
         callee_ref = call.get("callee_ref")
         if not callee_ref:
             continue
-        dst = f"symbol::{callee_ref}"
+        # callee_ref ist dateilokal aufgeloest (LOCAL_DEF/SELF_METHOD) und
+        # traegt bereits den qualifizierten Namen -> selber Knoten wie contains.
+        dst = _symbol_node(file_path, callee_ref)
         edges.append(
             GraphEdge(
                 src=scope,
@@ -78,10 +98,10 @@ def edges_from_symbol_index(
     scope: str, content: dict, source_hash: str
 ) -> list[GraphEdge]:
     """Contains-Kanten aus symbol_index.content. scope muss 'file:'-Praefix haben."""
-    file_path = scope[5:]  # strip "file:"
+    file_path = scope[len("file:") :]
     edges = []
     for sym in content.get("symbols", []):
-        dst = f"symbol:{file_path}::{sym['name']}"
+        dst = _symbol_node(file_path, _qualified_name(sym))
         edges.append(
             GraphEdge(
                 src=scope,

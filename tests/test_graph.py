@@ -94,9 +94,27 @@ class TestEdgesFromCallGraph:
         assert len(edges) == 1
         e = edges[0]
         assert e.src == SCOPE
-        assert e.dst == "symbol::Session.login"
+        # I-4.6: dst traegt den Dateipfad (dateilokale Aufloesung), konsistent
+        # mit contains -> selbe Knoten-Namespace, kein Sackgassen-symbol::.
+        assert e.dst == "symbol:core/auth.py::Session.login"
         assert e.edge_type == "call"
         assert e.confidence == pytest.approx(0.6)
+
+    def test_local_def_call_dst_carries_file_path(self):
+        content = {
+            "calls": [
+                {
+                    "caller": "top",
+                    "callee_raw": "helper",
+                    "callee_ref": "helper",
+                    "confidence": 0.5,
+                    "span": [3, 3],
+                }
+            ]
+        }
+        edges = edges_from_call_graph(SCOPE, content, HASH)
+        # gleicher Knoten wie die contains-Kante von helper in derselben Datei.
+        assert edges[0].dst == "symbol:core/auth.py::helper"
 
     def test_unresolved_callee_skipped(self):
         content = {
@@ -165,6 +183,44 @@ class TestEdgesFromSymbolIndex:
         assert all(e.src == SCOPE for e in edges)
         assert all(e.confidence is None for e in edges)
 
+    def test_contains_dst_includes_parent(self):
+        # I-4.6: Methode mit parent -> qualifizierter Knoten Parent.name.
+        content = {
+            "symbols": [
+                {
+                    "name": "login",
+                    "kind": "method",
+                    "span": [2, 3],
+                    "parent": "Session",
+                    "visibility": "public",
+                    "signature": "(self)",
+                    "docstring": None,
+                }
+            ]
+        }
+        edges = edges_from_symbol_index(SCOPE, content, HASH)
+        assert edges[0].dst == "symbol:core/auth.py::Session.login"
+
+    def test_same_name_different_parent_distinct(self):
+        # A.foo und B.foo derselben Datei -> verschiedene Knoten (kollisionsfrei).
+        def _method(name: str, parent: str) -> dict:
+            return {
+                "name": name,
+                "kind": "method",
+                "span": [1, 1],
+                "parent": parent,
+                "visibility": "public",
+                "signature": None,
+                "docstring": None,
+            }
+
+        content = {"symbols": [_method("foo", "A"), _method("foo", "B")]}
+        dsts = {e.dst for e in edges_from_symbol_index(SCOPE, content, HASH)}
+        assert dsts == {
+            "symbol:core/auth.py::A.foo",
+            "symbol:core/auth.py::B.foo",
+        }
+
     def test_empty_symbols(self):
         assert edges_from_symbol_index(SCOPE, {"symbols": []}, HASH) == []
 
@@ -223,7 +279,7 @@ class TestRepositoryEdges:
         repo = Repository(conn)
         edge = GraphEdge(
             src=SCOPE,
-            dst="symbol::Session.login",
+            dst="symbol:core/auth.py::Session.login",
             edge_type="call",
             confidence=0.5,
             source_hash=HASH,
@@ -419,3 +475,22 @@ class TestIngestEdgeIntegration:
         import_dsts = {e.dst for e in edges if e.edge_type == "import"}
         assert "module:sys" in import_dsts
         assert "module:os" not in import_dsts
+
+    def test_local_call_reachable_via_impact(self, conn):
+        # I-4.6: dateilokaler Call top()->helper() erzeugt eine call-Kante auf
+        # denselben Symbolknoten wie contains -> rueckwaerts per impact
+        # erreichbar (frueher Sackgasse durch divergentes symbol::-Format).
+        from core.ingest import ingest_content
+
+        repo = Repository(conn)
+        src = b"def helper(): pass\n\ndef top():\n    helper()\n"
+        ingest_content(repo, "core/tmp_test.py", src, source_hash="hash-1")
+
+        edges = repo.get_edges("file:core/tmp_test.py")
+        call_edges = [e for e in edges if e.edge_type == "call"]
+        assert call_edges, "erwartete eine aufgeloeste call-Kante (LOCAL_DEF)"
+        assert call_edges[0].dst == "symbol:core/tmp_test.py::helper"
+        # der Aufrufer ist rueckwaerts ueber den Symbolknoten auffindbar.
+        assert repo.impact("symbol:core/tmp_test.py::helper") == [
+            "file:core/tmp_test.py"
+        ]

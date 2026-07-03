@@ -189,3 +189,121 @@ class TestDifferentiatedInvalidation:
     def _reingest(self, repo, path, src, h) -> ChangeKind | None:
         ingest_content(repo, path, src, source_hash=h, invalidate=True)
         return repo.symbol_change_kind(f"file:{path}")
+
+
+# ---------------------------------------------------------------------------
+# I-4.7: Invalidierungs-Trace (Erklaerbarkeit) + list_stale (Queue-Bruecke)
+# ---------------------------------------------------------------------------
+
+
+def _invalidation_line(repo: Repository, session_id: str):
+    lines = [t for t in repo.get_trace(session_id) if t.stage == "invalidation"]
+    assert len(lines) == 1, f"erwartete genau eine invalidation-Zeile, {len(lines)}"
+    return lines[0]
+
+
+class TestInvalidationTrace:
+    def _seed_dependent(self, repo: Repository) -> None:
+        repo.put_edges(
+            "file:session.py", [_import_edge("file:session.py", "file:auth.py")]
+        )
+        repo.put_artifact(_review("file:session.py"))
+
+    def test_api_change_writes_trace_line(self, conn):
+        repo = Repository(conn)
+        ingest_content(repo, "auth.py", b"def login(pw): pass\n", source_hash="h1")
+        self._seed_dependent(repo)
+        repo.put_artifact(_review("file:auth.py"))
+
+        ingest_content(
+            repo,
+            "auth.py",
+            b"def login(pw, extra): pass\n",
+            source_hash="h2",
+            invalidate=True,
+            session_id="s-api",
+        )
+        line = _invalidation_line(repo, "s-api")
+        assert line.detail["kind"] == "api"
+        assert line.detail["marked_count"] >= 2  # eigenes Review + Huelle
+        assert "file:session.py" in line.detail["scopes"]
+        assert "file:auth.py" in line.detail["scopes"]
+
+    def test_impl_change_writes_trace_line(self, conn):
+        repo = Repository(conn)
+        ingest_content(
+            repo, "auth.py", b"def login(pw):\n    return 1\n", source_hash="h1"
+        )
+        self._seed_dependent(repo)
+        repo.put_artifact(_review("file:auth.py"))
+
+        ingest_content(
+            repo,
+            "auth.py",
+            b"def login(pw):\n    return 2\n",
+            source_hash="h2",
+            invalidate=True,
+            session_id="s-impl",
+        )
+        line = _invalidation_line(repo, "s-impl")
+        assert line.detail["kind"] == "impl"
+        # nur eigenes prob-Artefakt, Huelle nicht angefasst.
+        assert line.detail["scopes"] == ["file:auth.py"]
+
+    def test_first_ingest_trace_has_no_kind(self, conn):
+        repo = Repository(conn)
+        ingest_content(
+            repo,
+            "auth.py",
+            b"def login(pw): pass\n",
+            source_hash="h1",
+            invalidate=True,
+            session_id="s-first",
+        )
+        line = _invalidation_line(repo, "s-first")
+        assert line.detail["kind"] is None
+        assert line.detail["marked_count"] == 0
+        assert line.detail["scopes"] == []
+
+
+class TestListStale:
+    def test_lists_marked_stale_sorted(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_det("file:b.py", "symbol_index"))
+        repo.put_artifact(_det("file:a.py", "dependency_graph"))
+        repo.put_artifact(_det("file:a.py", "symbol_index"))
+        repo.mark_stale(["file:a.py", "file:b.py"])
+        assert repo.list_stale() == [
+            ("file:a.py", "dependency_graph"),
+            ("file:a.py", "symbol_index"),
+            ("file:b.py", "symbol_index"),
+        ]
+
+    def test_excludes_fresh(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_det("file:a.py", "symbol_index"))  # frisch
+        repo.put_artifact(_det("file:b.py", "symbol_index"))
+        repo.mark_stale(["file:b.py"])
+        assert repo.list_stale() == [("file:b.py", "symbol_index")]
+
+    def test_producer_class_filter(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_det("file:a.py", "symbol_index"))
+        repo.put_artifact(_review("file:a.py"))
+        repo.mark_stale(["file:a.py"])
+        assert repo.list_stale(producer_class=ProducerClass.prob) == [
+            ("file:a.py", "review_findings")
+        ]
+
+    def test_excludes_superseded(self, conn):
+        # stale-Artefakt, das danach superseded wird, ist kein Kandidat mehr.
+        repo = Repository(conn)
+        repo.put_artifact(_det("file:a.py", "symbol_index"))
+        repo.mark_stale(["file:a.py"])
+        repo.put_artifact(_det("file:a.py", "symbol_index"))  # supersedet + frisch
+        assert repo.list_stale() == []
+
+    def test_empty_when_nothing_stale(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_det("file:a.py", "symbol_index"))
+        assert repo.list_stale() == []

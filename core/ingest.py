@@ -117,7 +117,7 @@ def ingest_content(
     repo.put_edges(scope, edges)
 
     if invalidate:
-        repo.invalidate_after_reingest(scope)
+        repo.invalidate_after_reingest(scope, session_id=session_id)
 
     scan = scan or NoopSecretScan()
     scan_result = scan.scan(src, scope)
