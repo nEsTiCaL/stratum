@@ -1,28 +1,12 @@
 # Log
 
-Chronik der laufenden Phase (Schritt 4 + Schalen/Dogfooding), append-only.
+Chronik der laufenden Phase (Schalen/Dogfooding/Betrieb, post-N5), append-only.
 Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
-Aeltere Schritte + Langform: memory-archiv/ (ausserhalb memory/, nur bei
-explizitem Historie-Bedarf lesen, siehe P3/P4).
+Abgeschlossene Architektur-Schritte 1-5: memory-archiv/log-archiv-schritt-N.md
+(ausserhalb memory/, nur bei explizitem Historie-Bedarf lesen, siehe P3/P4).
 
-## [2026-07-03] decision | I-5.5 Requirement neu abgeleitet: SWE-Faelle = eingefrorene Dogfooding-Tasks, gemessen mit VORHANDENEN Metriken (Validator=Schema-Gate, kein Korrektheits-Orakel); roadmap "kein neues Mess-System" -> keine Keyword/Mutant/Judge-Orakel. Grenze: Gate faengt Routing/Kosten/Format-Regression, nicht semantische Qualitaet -> spec_schritt-5
-## [2026-07-03] decision | I-5.5d dev-verifiziert -> SCHRITT 5 VOLLSTAENDIG (N5): eval/run_regression.py fuhr baseline vs. canary mit echtem phi4-mini, beide success_rate 1.0, Verdikt ok. Harness-Lehre: OllamaAdapter MUSS streamen (on_token); blockierend greift 120s-Timeout ueber die Gesamt-Generierung -> auf CPU ReadTimeout -> faelschlich transient_error/escalated (1. Lauf, behoben) -> spec_schritt-5
-## [2026-07-03] decision | I-5.5a/b/c fertig (Schritt 5 det-vollstaendig): core/canary (assign_variant deterministisch aus dag_id+fraction, Worker stempelt config_variant; regression_verdict Gate) + Repository.compare_variants + GET /api/variants + core/regression (Manifest eval/regression_tasks.toml, enqueue_regression_suite); offen nur I-5.5d dev-verif; 656 Tests -> spec_schritt-5
-## [2026-07-03] decision | I-5.4 fertig: Repository.calibration (Eskalation/Abbruch/Swap je task_type + confidence-Kalibrierung je final_model via TIER_CONFIDENCE-Proxy, overconfidence) + GET /api/calibration + 2 Monitor-Tabellen (td.warn-CSS ergaenzt, Preview-verifiziert); Schritt 5 nur noch I-5.5 offen; 635 Tests -> spec_schritt-5
-## [2026-07-03] lint | HEAD-Drift bereinigt: ungenutzter pytest-Import (test_manual_adapter) + ruff-format auf llm_parser/router/test_llm_parser (Hand-Ausrichtung kollabiert); Gate wieder voll gruen (ruff check + format)
-## [2026-07-03] ui | Dashboard-Kontrast angehoben (Labels #556->#aab0c0 etc.) + Kurzstatistik je task_type (O Tokens/Zeit/tok-s): Migration 0009 task_type an model_metrics, MetricsStore.record persistiert task_type (serve _on_metrics), Repository.task_type_stats + GET /api/task-stats + Frontend-Tabelle; I-5.4-Vorlauf; 628 Tests
-## [2026-07-03] decision | I-5.3 fertig: read-only Monitor-Sektion in static/index.html (Kapazitaet/Live-Zaehler/Kosten/Eskalation/stale/7-Tage-Strip) gegen /api/live//metrics//history, poll 2s/15s; det-Smoke-Test + Preview-Harness visuell verifiziert (cap-bar 64%, warn #f84); 622 Tests
-## [2026-07-03] decision | I-5.1b fertig: WorkerLoop.step schreibt stage=task_result (session_id=dag_id) mit validation_result/trigger/final_model/attempts fuer det+llm+exception -> Eskalationsrate/history (I-5.2) jetzt live; 42 Tests
-## [2026-07-03] decision | I-5.2 fertig: Repository.metrics (cost_today/escalation_rate/stale_count) + history(days) Tages-Rollup; GET /api/metrics//history//trace/{session} read-only. Luecke I-5.1b angelegt: Worker schreibt keine task_result-Trace -> escalation noch 0 -> spec_schritt-5
-## [2026-07-03] decision | I-5.1 fertig: Live-Status GEPOLLT statt SSE (P1-Linie, konsistent I-REST.2; Stream erst P2) -- Queue.live_snapshot (queue/running/next_batch) + GET /api/live + capacity-Seam in create_app; spec_schritt-5 I-5.1/5.3/Vor angepasst; 603 Tests
-## [2026-07-03] decision | I-4.8 fertig: Migration 0008 CREATE EXTENSION vector (S4-Voraussetzung nachgezogen, nur Extension, Embeddings-Schema erst mit RAG); test_migrations (Extension+vector-Typ); Schritt 4 inkl. Konsolidierung VOLLSTAENDIG -> spec_schritt-4
-## [2026-07-03] decision | I-4.7 fertig: invalidate_after_reingest schreibt Trace stage=invalidation (kind/marked_count/scopes, session_id durchgereicht), Repository.list_stale (Queue-Bruecke, producer_class-Filter, sortiert); 18 Tests -> spec_schritt-4
-## [2026-07-03] decision | I-4.6 fertig: call-dst dateilokal auf symbol:pfad::callee_ref (konsistent mit contains, impact-erreichbar), contains-dst parent-qualifiziert (A.foo/B.foo kollisionsfrei); graph._symbol_node/_qualified_name; kein Migration (Re-Ingest); 34 Tests -> spec_schritt-4
-## [2026-07-03] decision | I-4.5 fertig: Repository.retract_scope (Artefakte+ausgehende Kanten superseden, eingehende bleiben) + current_file_scopes; Watch on_deleted/on_moved -> retract; ingest_repo(prune) Glob-Domaenen-Abgleich; 22 Tests -> spec_schritt-4
-## [2026-07-03] decision | Funktionsreview Datengrundlage -> Konsolidierung I-4.5..4.8 angelegt (Loeschung/Rename-Hygiene, call/contains-Kanten-Qualitaet, Invalidierungs-Trace+list_stale, pgvector-Extension) -> spec_schritt-4
-## [2026-07-03] decision | Schritt 4 VOLLSTAENDIG: I-4.4 fertig -- Migration 0007 stale-Flag, Repository.mark_stale/invalidate_after_reingest (API->impact-Huelle voll, Impl->nur eigene prob), get_current(trustworthy), Watch-Hook invalidate=True, lazy -> spec_schritt-4
-## [2026-07-03] decision | I-4.3 fertig: core/symdiff.change_kind (API vs Impl ueber exportierte public-Oberflaeche) + Repository.symbol_change_kind (superseded vs aktuell) -> spec_schritt-4
-## [2026-07-03] decision | I-4.2 fertig: Repository.dependencies (vorwaerts src->dst) + impact (rueckwaerts dst->src), rekursive CTE mit nativer CYCLE-Klausel -> spec_schritt-4
+## [2026-07-03] finding | Dogfooding N5: explain core/canary.py live (Server/phi4-mini) -> echtes code_explanation-Artefakt, provenance gestempelt (input_hash ok). Modell bemaengelte "keine Tests" -> falsch (test_canary.py da): Single-File-Scope ohne Graph-/Test-Kontext -> ops_prob-dogfooding
+## [2026-07-03] lint | log rotiert (P4): Schritt-4- und Schritt-5-Zeilen -> memory-archiv/log-archiv-schritt-4/5.md; log.md auf laufende Phase (Schalen/Dogfooding/Betrieb, post-N5) begrenzt; log-Header nachgezogen (war "Schritt 4")
 ## [2026-07-03] lint | log auf P2-Format komprimiert, Archive -> memory-archiv/ (grep-frei); Details portiert -> feedback_edit-duplikate, spec_schritt-4
 ## [2026-07-03] decision | rules erweitert: P2 Log=140-Zeichen-Schlagzeile, F5 Bezeichner-Treue, P7 Status-Quelle, P8 CLAUDE.md-Check; log rotiert (P4)
 ## [2026-07-03] lint | Memory-Review: SSE-Drift behoben (CLAUDE.md/spec_rest-api), phi4-mini kanonisch (F5), Profil D verifiziert (host.md), stale Status
@@ -36,7 +20,6 @@ explizitem Historie-Bedarf lesen, siehe P3/P4).
 ## [2026-07-02] decision | sync.ps1 baut nur den server-Service (--no-deps); Loop-Fix-Begruendung war FALSCH (Session-Churn) -> ops_docker-server
 ## [2026-07-02] decision | LLM-Output refaktoriert: Label-Prefix statt JSON, Worker stempelt Strukturfelder (am 03.07. durch Markdown-Format abgeloest)
 ## [2026-07-02] decision | GET /api/dev/calls nachgeruestet; ops_n1-queries auf REST-curl umgestellt (war devcli) -> spec_rest-api
-## [2026-07-02] decision | I-4.1 fertig: graph_edges (Migration 0006) + Befuellung aus Artefakten; Kanten-Scope-Konvention -> spec_schritt-4
 ## [2026-07-02] finding | ops_rest-curl angelegt: PS5.1 zerstoert curl.exe-JSON-Quotes -> Invoke-RestMethod kanonisch auf Windows
 ## [2026-07-02] lint | ops_sync-workflow aufgeteilt: Script-Inhalt -> ops_sync-script, Docker-Daemon-Hinweis -> ops_docker-server
 ## [2026-07-02] decision | Zwei-Klon-Workflow (Windows/WSL) bewusst beibehalten, Alternativen zurueckgestellt -> ops_sync-workflow
