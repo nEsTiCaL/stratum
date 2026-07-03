@@ -19,6 +19,7 @@ from core.graph import GraphEdge
 from core.models.provenance_schema import ProducerClass, Provenance
 from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
+from core.symdiff import ChangeKind, change_kind
 
 Result = ResultDet | ResultProb
 
@@ -306,6 +307,34 @@ class Repository:
                 (scope,),
             )
             return [row[0] for row in cur.fetchall()]
+
+    def symbol_change_kind(self, scope: str) -> ChangeKind | None:
+        """Aenderungsart des zuletzt re-ingesteten symbol_index dieses Scopes.
+
+        Vergleicht den aktuellen symbol_index mit dem gerade superseded (I-4.3).
+        None, wenn kein Vorgaenger existiert (Erst-Ingest -> nichts zu
+        invalidieren) oder kein aktueller symbol_index vorliegt.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT content FROM artifacts "
+                "WHERE scope = %s AND artifact_type = 'symbol_index' "
+                "AND superseded = false",
+                (scope,),
+            )
+            current = cur.fetchone()
+            cur.execute(
+                "SELECT content FROM artifacts "
+                "WHERE scope = %s AND artifact_type = 'symbol_index' "
+                "AND superseded = true ORDER BY id DESC LIMIT 1",
+                (scope,),
+            )
+            previous = cur.fetchone()
+        if current is None or previous is None:
+            return None
+        return change_kind(
+            previous[0].get("symbols", []), current[0].get("symbols", [])
+        )
 
     def staleness_lookup(self, scope: str, artifact_type: str, input_hash: str) -> bool:
         """True, wenn ein aktuelles Artefakt genau diesen input_hash hat.
