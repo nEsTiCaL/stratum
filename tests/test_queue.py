@@ -220,3 +220,67 @@ class TestCompleteAndFail:
         assert len(failed) == 1
         assert failed[0]["status"] == "failed"
         assert failed[0]["attempts"] == 1
+
+
+# ---------------------------------------------------------------------------
+# I-5.1: Live-Status-Snapshot (gepollt, ersetzt SSE)
+# ---------------------------------------------------------------------------
+
+
+class TestLiveSnapshot:
+    def test_empty_queue(self, conn):
+        snap = Queue(conn).live_snapshot()
+        assert snap["queue"] == {"pending": 0, "running": 0, "done": 0, "failed": 0}
+        assert snap["running"] == []
+        assert snap["next_batch"] is None
+
+    def test_pending_counts_and_next_batch(self, conn):
+        q = Queue(conn)
+        q.enqueue(_dag("d1", [_node("n1")]), model="phi4-mini")
+        q.enqueue(_dag("d2", [_node("n1")]), model="phi4-mini")
+        q.enqueue(_dag("d3", [_node("n1")]), model="qwen2.5-coder")
+        snap = q.live_snapshot()
+        assert snap["queue"]["pending"] == 3
+        # groesste pending-Charge = phi4-mini (2 Tasks) -> Batch-Vorschau.
+        assert snap["next_batch"] == {"model": "phi4-mini", "pending": 2}
+
+    def test_running_task_listed_with_elapsed(self, conn):
+        q = Queue(conn)
+        q.enqueue(
+            _dag("d1", [_node("n1", task_type="review", scope="file:a.py")]),
+            model="phi4-mini",
+        )
+        item = q.claim("phi4-mini")
+        assert item is not None
+        snap = q.live_snapshot()
+        assert snap["queue"]["running"] == 1
+        assert len(snap["running"]) == 1
+        r = snap["running"][0]
+        assert r["id"] == item.id
+        assert r["task_type"] == "review"
+        assert r["scope"] == "file:a.py"
+        assert r["model"] == "phi4-mini"
+        assert isinstance(r["elapsed_s"], int) and r["elapsed_s"] >= 0
+
+    def test_done_and_failed_counts(self, conn):
+        q = Queue(conn)
+        q.enqueue(_dag("d1", [_node("n1")]), model="phi4-mini")
+        q.enqueue(_dag("d2", [_node("n1")]), model="phi4-mini")
+        a = q.claim("phi4-mini")
+        assert a is not None
+        q.complete(a.id)
+        b = q.claim("phi4-mini")
+        assert b is not None
+        q.fail(b.id)
+        snap = q.live_snapshot()
+        assert snap["queue"]["done"] == 1
+        assert snap["queue"]["failed"] == 1
+        assert snap["running"] == []  # done/failed sind nicht running
+
+    def test_next_batch_none_when_no_pending(self, conn):
+        q = Queue(conn)
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
+        assert item is not None
+        q.complete(item.id)
+        assert q.live_snapshot()["next_batch"] is None

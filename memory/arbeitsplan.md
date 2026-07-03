@@ -152,7 +152,7 @@ I-4.5..4.8 = Konsolidierung aus dem Funktionsreview der Datengrundlage
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-5.1   Live-Status + SSE-Stream       det   I-2.3     R5
+I-5.1   Live-Status (gepollt, kein SSE) det  I-2.3     R5             fertig
 I-5.2   REST-Aggregate (read-only)     det   I-1.3     R5
 I-5.3   Web-Dashboard Frontend         gem   I-5.1/5.2 R5
 I-5.4   Kalibrierung (Auswertung)      det   I-1.3     R5
@@ -186,9 +186,8 @@ log-archiv-schritt-N). Beim Abschluss eines Haeppchens: Status in der Tabelle
 aktualisieren (offen -> in arbeit -> fertig), Log-Zeile (P2), commit.
 
 Stand 2026-07-03: Schritt 4 VOLLSTAENDIG inkl. Konsolidierung (I-4.1..4.8).
-Datengrundlage bereinigt (Loeschung/Rename-Hygiene, Kanten-Qualitaet,
-Invalidierungs-Trace+list_stale, pgvector). Naechstes: Schritt 5 (Betrieb),
-Einstieg I-5.1 (Live-Status + SSE-Stream) oder I-5.2 (REST-Aggregate).
+Schritt 5 begonnen: I-5.1 fertig (Live-Status gepollt, GET /api/live; SSE
+verworfen zugunsten Polling, P1-Linie). Naechstes: I-5.2 (REST-Aggregate).
 Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).

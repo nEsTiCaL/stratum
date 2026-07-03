@@ -9,18 +9,28 @@ Nutzt den seit S1 mitlaufenden Trace. Grundlage: roadmap-schritt-5.md.
 Vor (neu) je Inkrement:
   I-5.3  statisches Frontend-Geruest (kein Build)
   I-5.5  Eval-Harness (eigene SWE-Faelle)
-  (SSE bringt FastAPI mit)
+  (FastAPI steht seit I-D.2; Live-Status gepollt statt SSE, s. I-5.1)
 ```
 
-## I-5.1  Live-Status + SSE-Stream
+## I-5.1  Live-Status (gepollt, ersetzt SSE)
 
 ```
-Modul   : Live-Status im Orchestrator-Speicher (vram, tasks, queue), GET
-          /stream (SSE: vram, tasks, queue, batch-preview)
-Akzeptanz (det): Zustandsaenderung -> erwartetes SSE-Event; Event-Schema je
-          Typ; leichter SSE-Client-Test
+Modul   : Live-Status-Snapshot, GET /api/live (queue-Zaehler je Status,
+          laufende Tasks mit elapsed_s, next_batch = groesste pending-
+          Modellcharge, optional capacity-Panel)
+Akzeptanz (det): Zustandsaenderung -> erwarteter Snapshot-Inhalt; Schema je
+          Abschnitt; leichter Client-Test (TestClient)
 Klasse  : det
 ```
+
+Umsetzung (fertig 2026-07-03): ENTSCHEIDUNG statt SSE -> Polling (P1-Linie,
+konsistent mit I-REST.2, das SSE entfernt hat; Stream erst mit Go-CLI in P2,
+dann SSE vs. Long-Poll neu entscheiden). Queue.live_snapshot() (queue/running/
+next_batch, EINE Abfrage-Gruppe); GET /api/live in interfaces/webgui/app.py
+(Bearer-Auth, system-weit read-only); capacity-Seam in create_app
+(ResolvedCapacity optional -> _capacity_dict, sonst null). serve.py reicht
+capacity noch nicht durch (Live-Kapazitaets-Objekt nicht im Web-Pfad; Nachzug
+wenn Lifecycle-Live-Status verdrahtet wird). Frontend-Panel: I-5.3.
 
 ## I-5.2  REST-Aggregate (read-only)
 
@@ -36,7 +46,8 @@ Klasse  : det
 ## I-5.3  Web-Dashboard Frontend (read-only)
 
 ```
-Modul   : leichtgewichtige SPA, Live-Panels aus SSE, History/Trace aus REST
+Modul   : leichtgewichtige SPA, Live-Panels aus GET /api/live (Polling, I-5.1),
+          History/Trace aus REST
 Akzeptanz (det): API-Vertrag getestet; Frontend visuell entwickler-verifiziert
 Klasse  : gemischt (API det, Darstellung dev-verifiziert)
 ```

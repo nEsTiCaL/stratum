@@ -11,6 +11,7 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/whoami             -> {"owner": "..."}
   POST /api/task               -> Task einreihen, gibt {"id": N}
   GET  /api/tasks              -> Owner-gefilterte Task-Liste (Polling-Basis)
+  GET  /api/live               -> Live-Status-Snapshot (Queue/Tasks/Batch, gepollt)
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
   GET  /api/prompt/{id}        -> Prompt lesen (Owner-Check)
@@ -38,6 +39,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
 from core.ingest import ingest_repo
 from core.json_extract import extract_json
@@ -51,6 +53,19 @@ from core.template_registry import DagNode, TaskDag
 from core.validator import Validator
 
 _STATIC = Path(__file__).parent / "static"
+
+
+def _capacity_dict(cap: ResolvedCapacity) -> dict[str, Any]:
+    """Kapazitaets-Panel des Live-Status (I-5.1). budget_mb ist VRAM (GPU) bzw.
+    RAM (CPU-Modus, Profil D); is_cpu unterscheidet beides."""
+    return {
+        "is_cpu": cap.is_cpu,
+        "budget_mb": cap.policy.budget_mb,
+        "resident_cost_mb": cap.resident_cost_mb,
+        "free_mb": cap.free_mb,
+        "resident_set": list(cap.policy.resident_set),
+    }
+
 
 # artifact_type je task_type
 _ARTIFACT_FOR_TASK: dict[str, str] = {
@@ -181,8 +196,13 @@ def create_app(
     sse_max_events: int | None = None,
     sse_queue: Queue | None = None,
     progress_store: dict | None = None,
+    capacity: ResolvedCapacity | None = None,
 ) -> FastAPI:
-    """Factory fuer die FastAPI-App; Queue und Repository werden injiziert."""
+    """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
+
+    capacity (optional): aufgeloeste Laufzeit-Kapazitaet fuer das Live-Status-
+    Kapazitaets-Panel (I-5.1); None -> Feld wird als null geliefert.
+    """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
 
     # ── Auth-Dependency ────────────────────────────────────────────────────────
@@ -231,6 +251,15 @@ def create_app(
         if progress_store:
             tasks = _augment_progress(tasks, progress_store)
         return tasks
+
+    @app.get("/api/live")
+    async def live_status(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Gepollter Live-Status (I-5.1): Queue-Zaehler, laufende Tasks,
+        Batch-Vorschau, optional Kapazitaet. Ersetzt den urspruenglichen
+        SSE-/stream (Polling-Entscheidung P1). System-weit, read-only."""
+        snap = queue.live_snapshot()
+        snap["capacity"] = _capacity_dict(capacity) if capacity is not None else None
+        return snap
 
     @app.get("/api/result/{task_id}")
     async def get_task_result(

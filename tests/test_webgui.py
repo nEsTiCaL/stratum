@@ -92,6 +92,50 @@ class TestStatusEndpoint:
         assert r.json() == {"status": "ok"}
 
 
+class TestLiveStatus:
+    def test_requires_auth(self, client):
+        assert client.get("/api/live").status_code == 401
+
+    def test_returns_snapshot(self, client, conn):
+        # client-Fixture nutzt Queue(conn); ueber dieselbe conn seeden.
+        Queue(conn).enqueue(_dag("d1"), model="phi4-mini", owner=TEST_OWNER)
+        r = client.get("/api/live", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["queue"]["pending"] == 1
+        assert body["next_batch"] == {"model": "phi4-mini", "pending": 1}
+        assert body["running"] == []
+        assert body["capacity"] is None  # kein Capacity-Objekt injiziert
+
+    def test_includes_capacity_when_configured(self, conn):
+        from core.capacity import CapacityPolicy, HardwareFacts, ResolvedCapacity
+
+        cap = ResolvedCapacity(
+            policy=CapacityPolicy(
+                budget_mb=16000,
+                max_parallel=2,
+                resident_set=("phi4-mini",),
+                allowed_models=("phi4-mini",),
+            ),
+            facts=HardwareFacts(total_vram_mb=0, total_ram_mb=32000),
+            is_cpu=True,
+            resident_cost_mb=3000,
+            free_mb=11976,
+            loadable_ondemand=(),
+            max_parallel=2,
+        )
+        app = create_app(Queue(conn), Repository(conn), capacity=cap)
+        with TestClient(app, raise_server_exceptions=True) as c:
+            body = c.get("/api/live", headers=AUTH).json()
+        assert body["capacity"] == {
+            "is_cpu": True,
+            "budget_mb": 16000,
+            "resident_cost_mb": 3000,
+            "free_mb": 11976,
+            "resident_set": ["phi4-mini"],
+        }
+
+
 class TestAuthEndpoint:
     def test_whoami_returns_owner(self, client):
         r = client.get("/api/whoami", headers=AUTH)

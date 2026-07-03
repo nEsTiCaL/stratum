@@ -202,7 +202,8 @@ class Queue:
         Im Gegensatz zu list_tasks() auch fuer done-Tasks abfragbar.
         """
         row = self._conn.execute(
-            "SELECT id, task_type, scope, status, owner, model FROM queue WHERE id = %s",
+            "SELECT id, task_type, scope, status, owner, model "
+            "FROM queue WHERE id = %s",
             (item_id,),
         ).fetchone()
         if row is None:
@@ -252,6 +253,46 @@ class Queue:
             "claimed_at",
         )
         return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def live_snapshot(self) -> dict[str, Any]:
+        """Polling-Snapshot des Live-Status fuers Dashboard (I-5.1, read-only).
+
+        Ersetzt den urspruenglich als SSE geplanten /stream durch einen
+        gepollten Endpoint (P1-Entscheidung: Polling statt SSE, Stream erst mit
+        der Go-CLI in P2, siehe spec_rest-api). Aggregiert Queue-Zaehler je
+        Status, laufende Tasks (mit verstrichener Zeit) und die groesste
+        pending-Modellcharge als Batch-Vorschau. System-weit, nicht
+        owner-gefiltert.
+        """
+        counts = {"pending": 0, "running": 0, "done": 0, "failed": 0}
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT status, count(*) FROM queue GROUP BY status")
+            for status, n in cur.fetchall():
+                counts[status] = n
+
+            cur.execute(
+                "SELECT id, task_type, scope, model, "
+                "EXTRACT(EPOCH FROM now() - claimed_at)::int "
+                "FROM queue WHERE status = 'running' ORDER BY claimed_at, id"
+            )
+            running = [
+                {
+                    "id": r[0],
+                    "task_type": r[1],
+                    "scope": r[2],
+                    "model": r[3],
+                    "elapsed_s": r[4],
+                }
+                for r in cur.fetchall()
+            ]
+
+            cur.execute(
+                "SELECT model, count(*) FROM queue WHERE status = 'pending' "
+                "GROUP BY model ORDER BY count(*) DESC, model LIMIT 1"
+            )
+            row = cur.fetchone()
+        next_batch = {"model": row[0], "pending": row[1]} if row is not None else None
+        return {"queue": counts, "running": running, "next_batch": next_batch}
 
 
 def _row_to_item(row: tuple[Any, ...]) -> QueueItem:
