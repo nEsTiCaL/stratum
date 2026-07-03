@@ -23,6 +23,13 @@ Akzeptanz (det): gegebene Artefakte -> erwartete Kanten (import/call/contains);
 Klasse  : det
 ```
 
+Umsetzung (fertig 2026-07-02): Migration 0006; core/graph.py (GraphEdge +
+edges_from_dependency_graph/call_graph/symbol_index); Repository.put_edges
+(atomares supersede+insert per TX) / get_edges; in ingest_content eingehaengt.
+Scope-Konvention: src = file-scope der analysierten Datei -> Superseden per
+einfachem WHERE src=scope. dst-Praefixe: file:/module: (import), symbol::
+(call, unaufgeloeste Callees uebersprungen), symbol:pfad::name (contains).
+
 ## I-4.2  Rekursive CTE vorwaerts/rueckwaerts + CYCLE
 
 ```

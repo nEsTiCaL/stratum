@@ -9,7 +9,8 @@ Fakt suchen (Befehl, Name, Konstante, Signatur)  -> grep memory/
 Kontext suchen (Begruendung, Stand, "was ist X") -> MANIFEST.md, dann 1-2 Chunks
 Modul bauen                                       -> arbeitsplan.md
 Wie das Gedaechtnis funktioniert                  -> rules.md
-Historie / Zeitpunkt                              -> log.md
+Historie / Zeitpunkt                              -> log.md (nur laufende Phase;
+                                                     Aelteres: memory-archiv/, Notfall)
 ```
 
 ## Konventionen (Kurz, Details in rules.md)

@@ -29,8 +29,11 @@ memory_start.md Einstieg jeder Session (Routing zu grep / Manifest / arbeitsplan
 MANIFEST.md    diese Datei
 rules.md       Gedaechtnis-Regeln (Zugriff/Schreiben/Format/Pflege)
 arbeitsplan.md BAU-DISPATCH: Haeppchen -> Quellen + Fortschritts-Status
-log.md         Chronik der laufenden Phase, append-only (nur bei Historienfrage)
-log-archiv-schritt-N.md  rotierte Log-Zeilen abgeschlossener Schritte (P4), N=1..3
+log.md         Chronik der laufenden Phase, append-only, P2-Kurzformat
+               (nur bei Historienfrage lesen)
+../memory-archiv/  rotierte Logs abgeschlossener Schritte + Langform-Sicherung
+               (P4); bewusst ausserhalb memory/ -> grep trifft sie nie;
+               NUR im Historie-Notfall lesen (P3)
 ```
 
 ## Chunks
@@ -66,6 +69,8 @@ ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreic
                          |   Invoke-RestMethod), kanonische Befehlsformen je Plattform            |   windows, wsl2, single-quote
 feedback_ps51-pitfalls.md | PS5.1-Fallstricke: UTF-8 ohne BOM (non-ASCII bricht Strings),        | ps51, encoding, em-dash, @{u},
                          |   @{u} als Hashtable-Literal in Double-Quoted-Strings                  |   utf8-bom, windows-1252, hashtable
+feedback_edit-duplikate.md | nach Insert-Edits auf doppelte Definitionen grepen (Python nimmt     | doppelte-def, insert-edit, redefinition,
+                         |   still die letzte; py_compile faengt es nicht)                        |   grep-check, app.py-vorfall
 
 method_tdd.md            | TDD-Abnahme: det test-driven / prob dev-verifiziert, Model-Seam,     | golden, contract, concurrency, eval-suite,
                          |   Testarten, Reihenfolge im Inkrement                               |   fakemodel, replaymodel

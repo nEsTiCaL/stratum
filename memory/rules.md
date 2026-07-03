@@ -83,10 +83,14 @@ P2  Jeder Schreibanlass -> genau eine Zeile an log.md, Twitter-Mass:
     140 sprengt, gehoert in den Ziel-Chunk (dorthin schreiben, dann verweisen).
     Selbsttest: passt die Erkenntnis nicht in die Zeile, fehlt ein Chunk.
     Typen: ingest, decision, finding, question, assumption, lint.
-P3  log.md nur bei Frage nach Historie/Zeitpunkt lesen, nicht default beim Start.
+P3  log.md nur bei Frage nach Historie/Zeitpunkt lesen, nicht default beim
+    Start. Log-Archive (memory-archiv/) sind NOTFALL-Lektuere: nur oeffnen,
+    wenn eine konkrete Historie-Frage in log.md + Chunks NICHT beantwortbar
+    ist. Sie liegen bewusst AUSSERHALB memory/, damit grep/Glob auf memory/
+    sie nie mittrifft (Token-Schutz).
 P4  log.md rotiert: nach Abschluss eines Architektur-Schritts die zugehoerigen
-    Zeilen nach log-archiv-schritt-N.md auslagern; log.md bleibt auf die
-    laufende Phase begrenzt.
+    Zeilen nach memory-archiv/log-archiv-schritt-N.md auslagern; log.md bleibt
+    auf die laufende Phase begrenzt (Richtwert: unter ~40 Zeilen).
 P5  Lint (nur auf Aufforderung): grep-basiert pruefen auf wortgleiche
     Befehls-/Codebloecke in >1 Datei (Redundanz -> auf Verweis reduzieren),
     tote Verweise (Backtick-Name ohne Datei), veraltete Stellen. Korrekturen
