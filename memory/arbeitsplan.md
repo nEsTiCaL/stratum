@@ -51,7 +51,7 @@ Basis (immer lesen):
   A  = `arch_core`            globale Entscheidungen + Vertraege (Kurz)
 
 Spec je Schritt (die Haeppchen-Definitionen selbst):
-  S1..S5 = `spec_schritt-1`..`spec_schritt-5`
+  S1..S7 = `spec_schritt-1`..`spec_schritt-7`
   SCH    = `spec_schalen`
 
 Architektur-Detail (nur bei Bedarf laut Zeile):
@@ -181,6 +181,40 @@ I-5.6 aus dem N5-Dogfooding-Finding: Single-File-Scope liess das Modell
 faelschlich "keine Tests" behaupten. core/review_context.gather_context
 (Testdatei per Konvention + Aufrufer via impact) -> build_review_prompt(context=)
 -> app.py-Helper _review_prompt (eine Quelle fuer create/claim/prompt-Anzeige).
+
+## Schritt 6: Intent-Paket  (Spec: S6)
+
+Verdrahtung Prompt -> Plan -> DAG (Kern existiert seit I-2.7, nie in eine
+Schale verdrahtet). Entwurfsentscheidungen: `spec_schritt-6`.
+
+```
+ID      Haeppchen                      Kl    dep       Detail
+------  -----------------------------  ----  --------  ----------------
+I-6.1   Artefakttyp plan + Codegen     det   I-1.0     S6             offen
+I-6.2   POST /api/intent -> Plan-Art.  gem   I-6.1     S6, `spec_i-2-1-router`   offen
+I-6.3   Plan-Edit + Confirm -> DAG     det   I-6.2     S6             offen
+I-6.4   Metadaten det (Kalibr.-Lookup) det   I-6.1     S6, R5         offen
+I-6.5   Dashboard Plan-Viewer/Editor   gem   I-6.2/6.3 S6             offen
+```
+
+## Schritt 7: Schreibpfad  (Spec: S7)
+
+Erste schreibende Faehigkeitsklasse (implement/fix -> Patch -> Verify ->
+Apply). VerifyWorker = eigener det-Worker (decision 2026-07-04);
+Apply-Gate hinter dem Verify. Entwurfsentscheidungen: `spec_schritt-7`.
+
+```
+ID      Haeppchen                      Kl    dep       Detail
+------  -----------------------------  ----  --------  ----------------
+I-7.1   Artefakttypen patch+verify_rep det   I-1.0     S7             offen
+I-7.2   implement/fix -> Patch-Artef.  gem   I-7.1     S7, `spec_i-2-1-router`   offen
+I-7.3   VerifyWorker (ephem. Worktree) det   I-7.1     S7             offen
+I-7.4   Rueckkante impl<-verify Queue  det   I-7.3     S7             offen
+I-7.5   Apply-Gate + Re-Ingest         det   I-7.3     S7, R4   [HARTES GATE]   offen
+```
+
+Realer Apply auf den Nutzer-Tree erst nach I-7.5 (analog "realer Egress erst
+nach I-3.4"). I-6.x und I-7.1..7.4 sind unabhaengig davon gefahrlos.
 
 ## Schalen  (Spec: SCH)
 
