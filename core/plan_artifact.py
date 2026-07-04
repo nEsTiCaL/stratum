@@ -66,11 +66,14 @@ def build_plan_artifact(
     root: Path,
     producer: str,
     status: str = STATUS_PROPOSED,
+    dag_id: str | None = None,
 ) -> ResultProb:
     """Baut ein plan-ResultProb aus einer Zerlegung.
 
     producer = Modellname der Zerlegung (Provenance-Ehrlichkeit); root = Repo-
     Wurzel fuer source_hash. input_hash ist Prompt-gebunden (s. Modul-Docstring).
+    dag_id (nur bei confirmed gesetzt) verknuepft den Plan mit seinen Queue-
+    Subtasks -> Discard kann sie kaskadierend verwerfen (queue.discard_dag).
     """
     prov = build_prob_provenance(
         scope=PLAN_SCOPE,
@@ -94,6 +97,8 @@ def build_plan_artifact(
             for goal in plan.goals
         ],
     }
+    if dag_id is not None:
+        content["dag_id"] = dag_id
     return ResultProb(
         artifact_type=ArtifactType(PLAN_ARTIFACT_TYPE),
         scope=PLAN_SCOPE,

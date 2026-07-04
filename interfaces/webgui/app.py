@@ -637,6 +637,7 @@ def create_app(
             root=source_root or Path("."),
             producer="manual",
             status=STATUS_CONFIRMED,
+            dag_id=dag.dag_id,  # verknuepft Plan <-> Subtasks (Discard-Kaskade)
         )
         confirmed_id = repo.put_artifact(confirmed)
         return {
@@ -651,9 +652,13 @@ def create_app(
         plan_id: int, owner: str = Depends(_require_owner)
     ) -> dict[str, Any]:
         """I-6.3 Discard: Plan verwerfen -> Status-Artefakt (discarded), das den
-        Vorgaenger supersedet. Kein Enqueue."""
+        Vorgaenger supersedet. War der Plan bereits bestaetigt (dag_id gesetzt),
+        werden seine Queue-Subtasks kaskadierend verworfen (queue.discard_dag) --
+        sonst blieben fehlgeschlagene/haengende Subtasks verwaist zurueck."""
         current = _load_current_plan(plan_id)
         plan = plan_from_content(current.content)
+        dag_id = current.content.get("dag_id")
+        discarded_tasks = queue.discard_dag(dag_id) if dag_id else 0
         discarded = build_plan_artifact(
             current.content.get("prompt", ""),
             plan,
@@ -662,7 +667,11 @@ def create_app(
             status=STATUS_DISCARDED,
         )
         new_id = repo.put_artifact(discarded)
-        return {"status": STATUS_DISCARDED, "plan_id": new_id}
+        return {
+            "status": STATUS_DISCARDED,
+            "plan_id": new_id,
+            "discarded_tasks": discarded_tasks,
+        }
 
     @app.get("/api/plan/{plan_id}/metadata")
     async def plan_metadata(

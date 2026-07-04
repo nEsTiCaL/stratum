@@ -98,6 +98,17 @@ class TestBuildPlanArtifact:
         )
         assert art.content["status"] == "confirmed"
 
+    def test_dag_id_persisted_when_given(self):
+        # confirm verankert die dag_id -> Discard kann Subtasks kaskadieren.
+        art = build_plan_artifact(
+            "p", _plan(), root=_ROOT, producer="fake", dag_id="dag-xyz"
+        )
+        assert art.content["dag_id"] == "dag-xyz"
+
+    def test_dag_id_absent_by_default(self):
+        art = build_plan_artifact("p", _plan(), root=_ROOT, producer="fake")
+        assert "dag_id" not in art.content
+
     def test_empty_plan(self):
         art = build_plan_artifact(
             "p", Plan(goals=(), large=False), root=_ROOT, producer="fake"

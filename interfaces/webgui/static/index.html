@@ -952,6 +952,7 @@
     if (isConf) {
       h += `<div class="pc-row" style="margin-top:.6rem">
         <span class="ok" style="font-size:.78rem">✓ Bestätigt — läuft in der Queue.</span>
+        <button class="btn-pc-danger" onclick="discardPlan()">Verwerfen (inkl. Subtasks)</button>
         <button class="btn-pc-ghost" onclick="newAuftrag()">Neuer Auftrag</button></div>`;
     } else {
       h += `<div class="pc-row" style="margin-top:.6rem">
@@ -1139,11 +1140,14 @@
   }
 
   async function discardPlan() {
-    if (!confirm('Plan verwerfen?')) return;
+    if (!confirm('Plan verwerfen? Bereits eingereihte Subtasks werden mitverworfen.')) return;
     const r = await apiFetch(`/api/plan/${_planId}/discard`, { method:'POST' });
     if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    const d = await r.json();
     _sel = { kind:'prompt' }; _pendingPrompt = '';
-    await fetchPlan(); pcMsg('Verworfen.', 'ok');
+    await fetchPlan(); fetchTasks();
+    const n = d.discarded_tasks || 0;
+    pcMsg(n ? `Verworfen — ${n} Subtask(s) entfernt.` : 'Verworfen.', 'ok');
   }
 
   // ── Utils ──────────────────────────────────────────────────────────────────

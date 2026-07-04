@@ -158,6 +158,18 @@ class Queue:
                     (item_id,),
                 )
 
+    def discard_dag(self, dag_id: str) -> int:
+        """Verwirft alle Subtasks eines DAG (Plan-Discard, I-6.3-Erweiterung).
+
+        Loescht saemtliche Queue-Zeilen des dag -- unabhaengig vom Status. Ein
+        evtl. laufender Worker aktualisiert danach 0 Zeilen (harmlos); bereits
+        erzeugte Artefakte bleiben im Store, die Trace-Historie ebenso. Gibt die
+        Anzahl entfernter Knoten zurueck."""
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute("DELETE FROM queue WHERE dag_id = %s", (dag_id,))
+                return cur.rowcount
+
     def reopen_after_verify(
         self, verify_item: QueueItem, *, feedback: str, max_attempts: int = 2
     ) -> bool:

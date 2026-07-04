@@ -970,6 +970,34 @@ class TestPlanConfirmDiscard:
             r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
             assert r.status_code == 409
 
+    def test_confirm_persists_dag_id(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            body = c.post(f"/api/plan/{pid}/confirm", headers=AUTH).json()
+        current = Repository(conn).get_current("repo:", "plan")
+        assert current.content["dag_id"] == body["dag_id"]
+
+    def test_discard_confirmed_plan_cascades_to_subtasks(self, conn):
+        # Kernanforderung: Discard eines bestaetigten Plans verwirft die Subtasks.
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            confirmed = c.post(f"/api/plan/{pid}/confirm", headers=AUTH).json()
+            n_queued = conn.execute("SELECT count(*) FROM queue").fetchone()[0]
+            assert n_queued == len(confirmed["task_ids"]) > 0
+            # aktueller Plan ist jetzt das confirmed-Artefakt.
+            cid = c.get("/api/plan/current", headers=AUTH).json()["id"]
+            r = c.post(f"/api/plan/{cid}/discard", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["discarded_tasks"] == n_queued
+        assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 0
+
+    def test_discard_proposed_plan_reports_zero_subtasks(self, conn):
+        # Ohne Confirm gibt es keine dag_id -> nichts zu kaskadieren.
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r = c.post(f"/api/plan/{pid}/discard", headers=AUTH)
+        assert r.json()["discarded_tasks"] == 0
+
 
 class TestCurrentPlan:
     """I-6.5: GET /api/plan/current (Cockpit-Viewer, Reload/Polling)."""

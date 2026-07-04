@@ -284,3 +284,39 @@ class TestLiveSnapshot:
         assert item is not None
         q.complete(item.id)
         assert q.live_snapshot()["next_batch"] is None
+
+
+class TestDiscardDag:
+    """Plan-Discard-Kaskade (I-6.3): queue.discard_dag entfernt alle Subtasks."""
+
+    def test_removes_all_nodes_of_dag(self, conn):
+        q = Queue(conn)
+        ids = q.enqueue(
+            _dag("plan-dag", [_node("n1"), _node("n2"), _node("n3")]),
+            model="phi4-mini",
+        )
+        removed = q.discard_dag("plan-dag")
+        assert removed == 3
+        for i in ids:
+            assert q.get_status(i) is None  # Zeile geloescht
+
+    def test_only_targets_named_dag(self, conn):
+        q = Queue(conn)
+        q.enqueue(_dag("keep", [_node("n1")]), model="phi4-mini")
+        gone = q.enqueue(_dag("drop", [_node("n1")]), model="phi4-mini")
+        assert q.discard_dag("drop") == 1
+        assert q.get_status(gone[0]) is None
+        # anderer DAG bleibt claimbar
+        assert q.claim("phi4-mini") is not None
+
+    def test_removes_failed_and_running_nodes(self, conn):
+        # "alle Subtasks" -> auch bereits fehlgeschlagene/laufende Knoten weg.
+        q = Queue(conn)
+        q.enqueue(_dag("d", [_node("n1"), _node("n2")]), model="phi4-mini")
+        running = q.claim("phi4-mini")
+        assert running is not None  # n1 running
+        q.fail(running.id)  # n1 failed
+        assert q.discard_dag("d") == 2
+
+    def test_unknown_dag_returns_zero(self, conn):
+        assert Queue(conn).discard_dag("does-not-exist") == 0
