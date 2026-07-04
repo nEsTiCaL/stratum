@@ -133,6 +133,19 @@ REGISTRY: dict[str, tuple[NodeTemplate, ...]] = {
         _n("n1", "index"),
         _n("n2", "crypto_audit", ("n1",), flags=_EXCLUSIVE),
     ),
+    # Gruppe F: schreibend (Schritt 7). Kontext (index) -> Patch (implement/fix,
+    # prob) -> Verify (det, VerifyWorker). Die Rueckkante verify->implement
+    # (I-7.4) lebt in der Queue, nicht im Template.
+    "implement": (
+        _n("n1", "index"),
+        _n("n2", "implement", ("n1",)),
+        _n("n3", "verify", ("n2",)),
+    ),
+    "fix": (
+        _n("n1", "index"),
+        _n("n2", "fix", ("n1",)),
+        _n("n3", "verify", ("n2",)),
+    ),
 }
 
 

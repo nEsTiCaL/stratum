@@ -135,6 +135,84 @@ class TestResultProb:
         assert r.content["custom_key"] == 42
 
 
+class TestPlanArtifact:
+    """I-6.1: plan ist ein prob-Artefakt (LLM-Zerlegung, confidence Pflicht)."""
+
+    def test_plan_accepted_as_prob(self):
+        r = ResultProb(
+            artifact_type="plan",
+            scope="repo:",
+            content={
+                "prompt": "Baue ein REST-API mit Auth",
+                "status": "proposed",
+                "goals": [
+                    {"task_type": "architecture", "scope": "repo:", "depends_on": []}
+                ],
+            },
+            confidence=0.9,
+            provenance={**_PROV_PROB, "artifact_type": "plan"},
+        )
+        assert r.artifact_type.value == "plan"
+
+    def test_plan_rejected_as_det(self):
+        with pytest.raises(ValidationError):
+            ResultDet(
+                artifact_type="plan",
+                scope="repo:",
+                content={},
+                provenance={**_PROV_DET, "artifact_type": "plan"},
+            )
+
+
+class TestPatchArtifact:
+    """I-7.1: patch ist prob (LLM/Human-Diff), verify_report ist det."""
+
+    def test_patch_accepted_as_prob(self):
+        r = ResultProb(
+            artifact_type="patch",
+            scope="file:src/auth.py",
+            content={
+                "diff": "--- a/src/auth.py\n+++ b/src/auth.py\n@@ ...",
+                "target_scope": "file:src/auth.py",
+            },
+            confidence=0.8,
+            provenance={**_PROV_PROB, "artifact_type": "patch"},
+        )
+        assert r.artifact_type.value == "patch"
+
+    def test_patch_rejected_as_det(self):
+        with pytest.raises(ValidationError):
+            ResultDet(
+                artifact_type="patch",
+                scope="file:src/auth.py",
+                content={},
+                provenance={**_PROV_DET, "artifact_type": "patch"},
+            )
+
+    def test_verify_report_accepted_as_det(self):
+        r = ResultDet(
+            artifact_type="verify_report",
+            scope="file:src/auth.py",
+            content={
+                "passed": False,
+                "commands": [{"cmd": "pytest -q", "exit_code": 1}],
+                "summary": "1 test failed",
+            },
+            provenance={**_PROV_DET, "artifact_type": "verify_report"},
+        )
+        assert r.artifact_type.value == "verify_report"
+
+    def test_verify_report_rejected_as_prob(self):
+        with pytest.raises(ValidationError):
+            ResultProb(
+                artifact_type="verify_report",
+                scope="file:src/auth.py",
+                content={},
+                confidence=0.9,
+                provenance={**_PROV_PROB, "artifact_type": "verify_report"},
+            )
+
+
 class TestScopePattern:
     @pytest.mark.parametrize(
         "scope",

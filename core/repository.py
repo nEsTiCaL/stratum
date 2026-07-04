@@ -143,6 +143,17 @@ class Repository:
             row = cur.fetchone()
         return _row_to_result(row) if row is not None else None
 
+    def list_current_scopes(self, artifact_type: str) -> list[str]:
+        """Alle scopes mit einem aktuellen (nicht superseded) Artefakt dieses
+        Typs, deterministisch geordnet. Fuer das Apply-Gate (I-7.5): welche
+        Patches liegen zur Bestaetigung vor."""
+        rows = self._conn.execute(
+            "SELECT scope FROM artifacts "
+            "WHERE artifact_type = %s AND superseded = false ORDER BY scope",
+            (str(artifact_type),),
+        ).fetchall()
+        return [r[0] for r in rows]
+
     def write_trace(
         self,
         session_id: str,

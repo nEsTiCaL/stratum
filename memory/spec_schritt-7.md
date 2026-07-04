@@ -91,3 +91,32 @@ Klasse  : det
 Harte Reihenfolge: I-7.5 (Gate) MUSS vor dem ersten realen Apply auf einen
 Nutzer-Tree abgenommen sein; I-7.1..7.4 arbeiten ausschliesslich in
 ephemeren Worktrees und sind ohne Gate gefahrlos.
+
+## Umgesetzt (2026-07-04, I-7.1..7.5 fertig, 717 Tests)
+
+- Artefakttypen: patch (prob), verify_report (det) -- in schemas/ +
+  core/models/* (result_prob/result_det/provenance/events) + cli/schema/
+  generated.go. Codegen NICHT idempotent (result_prob_schema.py ist
+  "Manuell gepflegt"): Enums HAND-editiert, Go via go-jsonschema regeneriert.
+- task_types: implement, fix (Axis.code min 55 -> phi4-mini raus, nur
+  Cloud/human), verify (_det("verify")). TASK_TYPE_TO_ARTIFACT_TYPE:
+  implement/fix -> patch. REGISTRY: implement/fix = index->implement/fix->verify.
+- core/diff_extract.extract_diff: Fence/Prosa-tolerant, ValueError ohne
+  @@-Hunk/diff --git. Validator._validate_patch (task_type implement/fix)
+  -> patch_parse_fail (may_escalate). Worker baut content={diff,target_scope}.
+- core/verify_worker: VerifyWorker (det) + run_in_worktree (Seam: git_cmd/
+  run_cmd injizierbar; Worktree-Cleanup im finally; Timeout->fail). Report
+  IMMER erzeugt. WorkerLoop routet task_type==verify VOR is_det zum
+  verify_worker (sonst faelschlich DetWorker/ingest).
+- Rueckkante: Queue.reopen_after_verify(verify_item, feedback, max_attempts=2)
+  oeffnet implement/fix-Vorgaenger (attempts<cap) + verify-Knoten neu, injiziert
+  payload.verify_feedback; sonst False -> WorkerLoop failt verify terminal.
+  WorkerLoop.verify_max_attempts=2.
+- Apply-Gate: core/apply_gate.apply_confirmed_patch -- 3 fail-safe-Gates in
+  Reihenfolge (confirmed -> ApplyPolicy.allow_apply -> gruener verify_report),
+  dann git apply + ingest_file(invalidate=True) (I-4.4). REST: POST /api/apply
+  (409 bei Ablehnung), GET /api/patches. serve.py: ApplyPolicy(allow_apply=
+  STRATUM_UNSAFE_APPLY==1), fail-safe Default; VerifyWorker in WorkerLoop.
+  Repository.list_current_scopes(artifact_type).
+- Offen: kein realer Apply/Egress dev-verifiziert (Profil D, kein Chaining
+  Prompt->DAG->patch -- das ist die Intent-Verdrahtung I-6.2..6.5).

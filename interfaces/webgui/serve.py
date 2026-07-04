@@ -25,6 +25,7 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
+from core.apply_gate import ApplyPolicy
 from core.db import apply_migrations
 from core.metrics import InferenceSample, MetricsStore
 from core.ollama_adapter import OllamaAdapter
@@ -33,6 +34,7 @@ from core.repository import Repository
 from core.router import MODEL_CAPABILITIES, Provider, Router
 from core.secret_scan import EgressPolicy
 from core.template_registry import DagNode, TaskDag
+from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from interfaces.webgui.app import create_app
 
@@ -189,19 +191,21 @@ def _make_worker_loop(
         unsafe_test_egress=os.environ.get("STRATUM_UNSAFE_EGRESS") == "1",
     )
 
+    root = Path(__file__).parent.parent.parent
     return WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
-        det_worker=DetWorker(root=Path(__file__).parent.parent.parent),
+        det_worker=DetWorker(root=root),
         llm_worker=LlmWorker(
             router=router,
             model_factory=model_factory,
-            root=Path(__file__).parent.parent.parent,
+            root=root,
             cloud_sender=cloud_sender,
             egress_policy=egress_policy,
             on_cost=cloud_on_cost,
             guard=cloud_guard,
         ),
+        verify_worker=VerifyWorker(root=root),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
     )
@@ -267,6 +271,11 @@ def main() -> None:
         source_root=Path(__file__).parent.parent.parent,
         sse_queue=Queue(sse_conn),
         progress_store=_progress,
+        # Apply auf den echten Tree fail-safe: nur mit explizitem Opt-in
+        # (STRATUM_UNSAFE_APPLY=1), analog Egress. Default blockiert (I-7.5).
+        apply_policy=ApplyPolicy(
+            allow_apply=os.environ.get("STRATUM_UNSAFE_APPLY") == "1"
+        ),
     )
 
     print(f"Dashboard: http://{args.host}:{args.port}/")

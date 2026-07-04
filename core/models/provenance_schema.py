@@ -25,6 +25,9 @@ class ArtifactType(StrEnum):
     debug_analysis = 'debug_analysis'
     test_generation = 'test_generation'
     docstring = 'docstring'
+    plan = 'plan'
+    patch = 'patch'
+    verify_report = 'verify_report'
 
 
 class Provenance(BaseModel):

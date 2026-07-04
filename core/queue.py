@@ -158,6 +158,53 @@ class Queue:
                     (item_id,),
                 )
 
+    def reopen_after_verify(
+        self, verify_item: QueueItem, *, feedback: str, max_attempts: int = 2
+    ) -> bool:
+        """Rueckkante implement<-verify (I-7.4).
+
+        Bei rotem Verify die Vorgaenger-Knoten (task_type implement/fix) des
+        verify-Knotens im selben DAG neu oeffnen, sofern ihre attempts noch
+        unter der Kappung liegen:
+          - Vorgaenger: status='pending', attempts+=1, payload.verify_feedback
+            = feedback (Kontext fuer den naechsten Patch-Versuch)
+          - der verify-Knoten selbst: status='pending' (laeuft nach dem neuen
+            Patch erneut; wartet via depends_on auf den Vorgaenger)
+        Gibt True zurueck, wenn mindestens ein Vorgaenger neu geoeffnet wurde;
+        False bei Kappung (kein Vorgaenger mehr unter max_attempts) -> der
+        Aufrufer laesst den verify-Knoten terminal fehlschlagen (Belegkette:
+        Patch- + verify_report-Artefakt bleiben im Store).
+        """
+        deps = list(verify_item.depends_on)
+        if not deps:
+            return False
+        feedback_json = json.dumps({"verify_feedback": feedback})
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM queue "
+                    "WHERE dag_id = %s AND node_id = ANY(%s) "
+                    "AND task_type IN ('implement', 'fix') "
+                    "AND attempts < %s",
+                    (verify_item.dag_id, deps, max_attempts),
+                )
+                reopen_ids = [r[0] for r in cur.fetchall()]
+                if not reopen_ids:
+                    return False
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', attempts = attempts + 1, "
+                    "claimed_at = NULL, "
+                    "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
+                    "WHERE id = ANY(%s)",
+                    (feedback_json, reopen_ids),
+                )
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', claimed_at = NULL "
+                    "WHERE id = %s",
+                    (verify_item.id,),
+                )
+        return True
+
     def claim_by_id(self, item_id: int, *, model: str = "human") -> QueueItem | None:
         """Beansprucht einen spezifischen pending-Knoten per ID.
 

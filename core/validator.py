@@ -101,6 +101,8 @@ class Validator:
 
         if producer_class == "det":
             return self._validate_det(response)
+        if task_type in (TaskType.implement, TaskType.fix):
+            return self._validate_patch(response)
         return self._validate_prob(response)
 
     def _validate_det(self, response: str) -> ValidationResult:
@@ -139,6 +141,23 @@ class Validator:
                 detail="CONTENT leer oder fehlt",
             )
 
+        return ValidationResult(passed=True, trigger="pass")
+
+    def _validate_patch(self, response: str) -> ValidationResult:
+        # implement/fix: die Antwort muss einen parsebaren Unified-Diff
+        # enthalten. Kein Diff -> may_escalate=True (Retry/naechster Kandidat
+        # liefert vielleicht einen), NICHT det_schema_fail (kein Bug).
+        from core.diff_extract import extract_diff
+
+        try:
+            extract_diff(response)
+        except ValueError as exc:
+            return ValidationResult(
+                passed=False,
+                trigger="patch_parse_fail",
+                may_escalate=True,
+                detail=str(exc),
+            )
         return ValidationResult(passed=True, trigger="pass")
 
 

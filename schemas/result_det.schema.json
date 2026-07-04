@@ -9,7 +9,7 @@
   "properties": {
     "artifact_type": {
       "type": "string",
-      "enum": ["symbol_index", "dependency_graph", "call_graph"],
+      "enum": ["symbol_index", "dependency_graph", "call_graph", "verify_report"],
       "description": "Typ des det-Artefakts (Teilmenge der Gesamtenum in provenance)"
     },
     "scope": {

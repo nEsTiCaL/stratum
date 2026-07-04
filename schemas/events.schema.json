@@ -78,7 +78,10 @@
             "refactor_plan",
             "debug_analysis",
             "test_generation",
-            "docstring"
+            "docstring",
+            "plan",
+            "patch",
+            "verify_report"
           ]
         },
         "scope": { "type": "string" },

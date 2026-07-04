@@ -54,6 +54,11 @@ class TaskType(StrEnum):
     cross_module = "cross_module"
     # Gruppe E: Spezialfall (reasoning, Praezision, solo)
     crypto_audit = "crypto_audit"
+    # Gruppe F: schreibend (Schritt 7) -- implement/fix erzeugen Patches (prob),
+    # verify prueft sie deterministisch (VerifyWorker, kein Modell).
+    implement = "implement"
+    fix = "fix"
+    verify = "verify"
 
 
 class Axis(StrEnum):
@@ -195,11 +200,11 @@ class TaskRequirement:
     deterministic_model: str | None = None
 
 
-def _det() -> TaskRequirement:
-    return TaskRequirement(deterministic_model="tree-sitter")
+def _det(model: str = "tree-sitter") -> TaskRequirement:
+    return TaskRequirement(deterministic_model=model)
 
 
-# Alle 14 task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
+# Alle 16 task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
 TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     TaskType.index: _det(),
     TaskType.symbol_lookup: _det(),
@@ -214,6 +219,12 @@ TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     TaskType.architecture: TaskRequirement(Axis.reasoning, 70, 100),
     TaskType.cross_module: TaskRequirement(Axis.reasoning, 60, 100),
     TaskType.crypto_audit: TaskRequirement(Axis.reasoning, 80, 100, exclusive=True),
+    # Schreibend: implement/fix sind anspruchsvolle Code-Tasks. min_cap=55
+    # schliesst phi4-mini (code=35) aus -> auf Profil D bleibt nur Cloud oder
+    # model:human (schreibt keinen brauchbaren Code lokal). verify ist det.
+    TaskType.implement: TaskRequirement(Axis.code, 55, 100),
+    TaskType.fix: TaskRequirement(Axis.code, 55, 100),
+    TaskType.verify: _det("verify"),
 }
 
 
@@ -380,6 +391,8 @@ TASK_TYPE_TO_ARTIFACT_TYPE: dict[TaskType, str] = {
     TaskType.architecture: "review_findings",
     TaskType.cross_module: "review_findings",
     TaskType.crypto_audit: "review_findings",
+    TaskType.implement: "patch",
+    TaskType.fix: "patch",
 }
 
 # Confidence-Proxy aus dem Modell-Tier (ersetzt LLM-Selbsteinschaetzung).

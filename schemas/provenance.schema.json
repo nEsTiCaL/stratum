@@ -59,7 +59,10 @@
         "refactor_plan",
         "debug_analysis",
         "test_generation",
-        "docstring"
+        "docstring",
+        "plan",
+        "patch",
+        "verify_report"
       ],
       "description": "Typ des Artefakts. Geschlossene Enum ueber S1-S5, vorgebaut."
     },

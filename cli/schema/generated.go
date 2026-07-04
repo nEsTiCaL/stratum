@@ -287,10 +287,13 @@ const ResultEventArtifactTypeCodeSummary ResultEventArtifactType = "code_summary
 const ResultEventArtifactTypeDebugAnalysis ResultEventArtifactType = "debug_analysis"
 const ResultEventArtifactTypeDependencyGraph ResultEventArtifactType = "dependency_graph"
 const ResultEventArtifactTypeDocstring ResultEventArtifactType = "docstring"
+const ResultEventArtifactTypePatch ResultEventArtifactType = "patch"
+const ResultEventArtifactTypePlan ResultEventArtifactType = "plan"
 const ResultEventArtifactTypeRefactorPlan ResultEventArtifactType = "refactor_plan"
 const ResultEventArtifactTypeReviewFindings ResultEventArtifactType = "review_findings"
 const ResultEventArtifactTypeSymbolIndex ResultEventArtifactType = "symbol_index"
 const ResultEventArtifactTypeTestGeneration ResultEventArtifactType = "test_generation"
+const ResultEventArtifactTypeVerifyReport ResultEventArtifactType = "verify_report"
 
 var enumValues_ResultEventArtifactType = []interface{}{
 	"symbol_index",
@@ -303,6 +306,9 @@ var enumValues_ResultEventArtifactType = []interface{}{
 	"debug_analysis",
 	"test_generation",
 	"docstring",
+	"plan",
+	"patch",
+	"verify_report",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

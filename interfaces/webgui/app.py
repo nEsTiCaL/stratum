@@ -19,6 +19,8 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/variants           -> Canary-A/B je config_variant + Regressions-Verdikt
   GET  /api/trace/{session}    -> Trace einer Session (Drill-down)
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
+  GET  /api/patches            -> Patches zur Bestaetigung (scope + verified-Flag)
+  POST /api/apply              -> HARTES GATE: verifizierten Patch anwenden (I-7.5)
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
   GET  /api/prompt/{id}        -> Prompt lesen (Owner-Check)
   POST /api/submit/{id}        -> Antwort einreichen (Owner-Check)
@@ -45,6 +47,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.apply_gate import ApplyPolicy, apply_confirmed_patch
 from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
@@ -195,6 +198,11 @@ class SubmitBody(BaseModel):
     producer: str = "manual"
 
 
+class ApplyBody(BaseModel):
+    scope: str
+    confirm: bool = False
+
+
 def create_app(
     queue: Queue,
     repo: Repository,
@@ -205,6 +213,7 @@ def create_app(
     sse_queue: Queue | None = None,
     progress_store: dict | None = None,
     capacity: ResolvedCapacity | None = None,
+    apply_policy: ApplyPolicy | None = None,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
 
@@ -212,6 +221,7 @@ def create_app(
     Kapazitaets-Panel (I-5.1); None -> Feld wird als null geliefert.
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
+    resolved_apply_policy = apply_policy or ApplyPolicy()  # fail-safe Default
 
     # ── Auth-Dependency ────────────────────────────────────────────────────────
 
@@ -385,6 +395,40 @@ def create_app(
             item_id, {"prompt": _review_prompt(body.task_type, body.scope, body.prompt)}
         )
         return {"id": item_id}
+
+    @app.get("/api/patches")
+    async def list_patches(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Patches zur Bestaetigung (I-7.5): scopes mit aktuellem patch-Artefakt,
+        markiert ob ein gruener verify_report vorliegt (nur gruene sind
+        anwendbar)."""
+        out = []
+        for scope in repo.list_current_scopes("patch"):
+            report = repo.get_current(scope, "verify_report")
+            verified = bool(report and report.content.get("passed"))
+            out.append({"scope": scope, "verified": verified})
+        return {"patches": out}
+
+    @app.post("/api/apply")
+    async def apply_patch(
+        body: ApplyBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """HARTES GATE (I-7.5): wendet einen bestaetigten, verifizierten Patch
+        auf den echten Tree an. Fail-safe -- ohne confirm ODER ohne Apply-Policy
+        ODER ohne gruenen verify_report kein Schreibzugriff (409)."""
+        if source_root is None:
+            raise HTTPException(
+                status_code=503, detail="source_root nicht konfiguriert"
+            )
+        result = apply_confirmed_patch(
+            repo,
+            source_root,
+            body.scope,
+            confirmed=body.confirm,
+            policy=resolved_apply_policy,
+        )
+        if not result.applied:
+            raise HTTPException(status_code=409, detail=result.reason)
+        return {"applied": True, "reason": result.reason, "scope": result.target_scope}
 
     @app.post("/api/claim/{task_id}")
     async def claim_task(

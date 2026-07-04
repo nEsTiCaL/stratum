@@ -16,7 +16,9 @@
         "refactor_plan",
         "debug_analysis",
         "test_generation",
-        "docstring"
+        "docstring",
+        "plan",
+        "patch"
       ],
       "description": "Typ des prob-Artefakts, vom Worker aus task_type abgeleitet (deterministisch)"
     },

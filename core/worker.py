@@ -220,10 +220,19 @@ class LlmWorker:
             root=self.root,
         )
 
-        # Gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-Split
-        # (1+2 -> text, 3 -> findings, 4 -> recommendations). Kein Split
+        # patch (implement/fix, I-7.2): content = geparster Diff + Zielscope.
+        # Sonst gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-
+        # Split (1+2 -> text, 3 -> findings, 4 -> recommendations); kein Split
         # moeglich -> ganze Antwort als content.text (core.review_format).
-        content = build_content(outcome.response)
+        if artifact_type_str == "patch":
+            from core.diff_extract import extract_diff
+
+            content = {
+                "diff": extract_diff(outcome.response),
+                "target_scope": item.scope,
+            }
+        else:
+            content = build_content(outcome.response)
 
         repo.put_artifact(
             ResultProb(
@@ -244,9 +253,11 @@ class WorkerLoop:
     repo: Repository
     det_worker: DetWorker
     llm_worker: LlmWorker
+    verify_worker: object | None = None  # I-7.3 VerifyWorker; None -> verify n/a
     on_item_start: Callable[[QueueItem], None] | None = None
     on_item_fail: Callable[[QueueItem, str], None] | None = None
     canary_fraction: float = 0.0  # I-5.5a: Anteil canary; 0 = alles baseline
+    verify_max_attempts: int = 2  # I-7.4: Rueckkanten-Kappung implement<-verify
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -279,6 +290,50 @@ class WorkerLoop:
             },
         )
 
+    def _run_verify(self, item: QueueItem) -> None:
+        """verify-Knoten (I-7.3): VerifyWorker laeuft, erzeugt verify_report.
+        passed -> Knoten done. Rot -> Rueckkante zu implement (I-7.4): Vorgaenger
+        neu oeffnen (mit Feedback), bis Kappung -> dann verify terminal failed."""
+        if self.verify_worker is None:
+            self._fail(item, "kein VerifyWorker konfiguriert")
+            self._trace_result(
+                item, validation_result="fail", trigger="no_verify_worker"
+            )
+            return
+        outcome = self.verify_worker.run(item, self.repo)
+        if outcome.passed:
+            self.queue.complete(item.id)
+            self._trace_result(
+                item,
+                validation_result="pass",
+                final_model="verify-worker",
+                attempts=1,
+            )
+            return
+        # Rot: Rueckkante (I-7.4). reopen_after_verify oeffnet Vorgaenger
+        # (implement/fix) + diesen verify-Knoten neu, solange die Kappung nicht
+        # erreicht ist; sonst faellt verify terminal (Belegkette: Patch + Report).
+        reopened = self.queue.reopen_after_verify(
+            item, feedback=outcome.summary, max_attempts=self.verify_max_attempts
+        )
+        if reopened:
+            self._trace_result(
+                item,
+                validation_result="escalated",
+                trigger="verify_failed_reopen",
+                final_model="verify-worker",
+                attempts=1,
+            )
+        else:
+            self._fail(item, f"verify erschoepft: {outcome.summary}")
+            self._trace_result(
+                item,
+                validation_result="fail",
+                trigger="verify_failed_capped",
+                final_model="verify-worker",
+                attempts=1,
+            )
+
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
         item = self.queue.claim(model)
@@ -288,6 +343,9 @@ class WorkerLoop:
             self.on_item_start(item)
         try:
             task_type = TaskType(item.task_type)
+            if task_type == TaskType.verify:
+                self._run_verify(item)
+                return True
             is_det = TASK_REQUIREMENTS[task_type].deterministic_model is not None
             if is_det:
                 self.det_worker.run(item, self.repo)

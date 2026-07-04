@@ -190,7 +190,7 @@ Schale verdrahtet). Entwurfsentscheidungen: `spec_schritt-6`.
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-6.1   Artefakttyp plan + Codegen     det   I-1.0     S6             offen
+I-6.1   Artefakttyp plan + Codegen     det   I-1.0     S6             fertig
 I-6.2   POST /api/intent -> Plan-Art.  gem   I-6.1     S6, `spec_i-2-1-router`   offen
 I-6.3   Plan-Edit + Confirm -> DAG     det   I-6.2     S6             offen
 I-6.4   Metadaten det (Kalibr.-Lookup) det   I-6.1     S6, R5         offen
@@ -206,11 +206,11 @@ Apply-Gate hinter dem Verify. Entwurfsentscheidungen: `spec_schritt-7`.
 ```
 ID      Haeppchen                      Kl    dep       Detail
 ------  -----------------------------  ----  --------  ----------------
-I-7.1   Artefakttypen patch+verify_rep det   I-1.0     S7             offen
-I-7.2   implement/fix -> Patch-Artef.  gem   I-7.1     S7, `spec_i-2-1-router`   offen
-I-7.3   VerifyWorker (ephem. Worktree) det   I-7.1     S7             offen
-I-7.4   Rueckkante impl<-verify Queue  det   I-7.3     S7             offen
-I-7.5   Apply-Gate + Re-Ingest         det   I-7.3     S7, R4   [HARTES GATE]   offen
+I-7.1   Artefakttypen patch+verify_rep det   I-1.0     S7             fertig
+I-7.2   implement/fix -> Patch-Artef.  gem   I-7.1     S7, `spec_i-2-1-router`   fertig
+I-7.3   VerifyWorker (ephem. Worktree) det   I-7.1     S7             fertig
+I-7.4   Rueckkante impl<-verify Queue  det   I-7.3     S7             fertig
+I-7.5   Apply-Gate + Re-Ingest         det   I-7.3     S7, R4   [HARTES GATE]   fertig
 ```
 
 Realer Apply auf den Nutzer-Tree erst nach I-7.5 (analog "realer Egress erst

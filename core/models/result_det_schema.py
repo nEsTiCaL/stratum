@@ -15,6 +15,7 @@ class ArtifactType(StrEnum):
     symbol_index = 'symbol_index'
     dependency_graph = 'dependency_graph'
     call_graph = 'call_graph'
+    verify_report = 'verify_report'
 
 
 class ResultDet(BaseModel):
