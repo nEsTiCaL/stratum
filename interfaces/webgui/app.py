@@ -57,16 +57,27 @@ from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.plan_artifact import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SCOPE,
+    STATUS_CONFIRMED,
+    STATUS_DISCARDED,
+    STATUS_PROPOSED,
     build_plan_artifact,
+    plan_from_content,
     plan_input_hash,
 )
-from core.planner import IntentDecomposer
+from core.planner import (
+    LARGE_PLAN_THRESHOLD,
+    GoalItem,
+    IntentDecomposer,
+    Plan,
+    build_dag,
+)
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
 from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
 from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
+from core.scope_resolver import RepoScopeResolver
 from core.template_registry import DagNode, TaskDag
 from core.validator import Model, Validator
 
@@ -212,6 +223,21 @@ class ApplyBody(BaseModel):
 
 class IntentBody(BaseModel):
     prompt: str
+
+
+class PlanGoalBody(BaseModel):
+    task_type: str
+    scope: str
+    depends_on: list[int] = []
+
+
+class PlanEditBody(BaseModel):
+    goals: list[PlanGoalBody]
+
+
+# Enqueue-Modell fuer einen bestaetigten Plan (I-6.3). Wie /api/task: der Worker
+# routet je Knoten per Router (TASK_REQUIREMENTS), das Feld ist nur der Claim-Key.
+_CONFIRM_MODEL = "phi4-mini"
 
 
 def create_app(
@@ -432,7 +458,12 @@ def create_app(
         if repo.staleness_lookup(PLAN_SCOPE, PLAN_ARTIFACT_TYPE, input_hash):
             cached = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
             if cached is not None:
-                return {"cached": True, "plan": cached.model_dump(mode="json")}
+                cached_id = repo.get_current_id(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+                return {
+                    "cached": True,
+                    "id": cached_id,
+                    "plan": cached.model_dump(mode="json"),
+                }
 
         if decompose_model is None:
             raise HTTPException(
@@ -450,8 +481,102 @@ def create_app(
             root=source_root or Path("."),
             producer=decompose_producer,
         )
-        repo.put_artifact(artifact)
-        return {"cached": False, "plan": artifact.model_dump(mode="json")}
+        new_id = repo.put_artifact(artifact)
+        return {"cached": False, "id": new_id, "plan": artifact.model_dump(mode="json")}
+
+    def _load_current_plan(plan_id: int) -> ResultProb:
+        """Laedt den aktuellen Plan und prueft {id} == aktuelle id (I-6.3).
+
+        404 wenn kein aktueller Plan; 409 wenn {id} nicht die aktuelle Version
+        ist (der Plan wurde zwischenzeitlich editiert/verworfen -> stale)."""
+        current_id = repo.get_current_id(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+        if current_id is None:
+            raise HTTPException(status_code=404, detail="Kein aktueller Plan")
+        if current_id != plan_id:
+            raise HTTPException(
+                status_code=409, detail="Plan veraltet (superseded) — neu laden"
+            )
+        current = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+        assert current is not None  # get_current_id lieferte gerade eine id
+        assert isinstance(current, ResultProb)
+        return current
+
+    @app.put("/api/plan/{plan_id}")
+    async def edit_plan(
+        plan_id: int, body: PlanEditBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """I-6.3 Edit: editierte Goals -> neues plan-Artefakt (proposed), das den
+        Vorgaenger supersedet. Editierbarkeit + vollstaendige Kette (Traceability)
+        ueber die vorhandene superseded-Mechanik."""
+        current = _load_current_plan(plan_id)
+        try:
+            goals = tuple(
+                GoalItem(
+                    task_type=TaskType(g.task_type),
+                    scope=g.scope,
+                    depends_on=tuple(g.depends_on),
+                )
+                for g in body.goals
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Ungueltiger task_type: {exc}"
+            ) from exc
+
+        plan = Plan(goals=goals, large=len(goals) >= LARGE_PLAN_THRESHOLD)
+        artifact = build_plan_artifact(
+            current.content.get("prompt", ""),
+            plan,
+            root=source_root or Path("."),
+            producer="manual",
+            status=STATUS_PROPOSED,
+        )
+        new_id = repo.put_artifact(artifact)
+        return {"id": new_id, "plan": artifact.model_dump(mode="json")}
+
+    @app.post("/api/plan/{plan_id}/confirm")
+    async def confirm_plan(
+        plan_id: int, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """I-6.3 Confirm: bestaetigter Plan -> verketteter Gesamt-DAG in die Queue
+        (build_dag, modellfrei) + Plan als confirmed vermerkt (supersedet). large
+        = weiche Warnung (I-2.7-Vertrag; grosser Plan wird trotzdem enqueued)."""
+        current = _load_current_plan(plan_id)
+        plan = plan_from_content(current.content)
+        dag = build_dag(plan, scope_resolver=RepoScopeResolver(repo), cache_query=None)
+        task_ids = queue.enqueue(dag, _CONFIRM_MODEL, owner=owner)
+        confirmed = build_plan_artifact(
+            current.content.get("prompt", ""),
+            plan,
+            root=source_root or Path("."),
+            producer="manual",
+            status=STATUS_CONFIRMED,
+        )
+        confirmed_id = repo.put_artifact(confirmed)
+        return {
+            "dag_id": dag.dag_id,
+            "task_ids": task_ids,
+            "large": plan.large,
+            "plan_id": confirmed_id,
+        }
+
+    @app.post("/api/plan/{plan_id}/discard")
+    async def discard_plan(
+        plan_id: int, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """I-6.3 Discard: Plan verwerfen -> Status-Artefakt (discarded), das den
+        Vorgaenger supersedet. Kein Enqueue."""
+        current = _load_current_plan(plan_id)
+        plan = plan_from_content(current.content)
+        discarded = build_plan_artifact(
+            current.content.get("prompt", ""),
+            plan,
+            root=source_root or Path("."),
+            producer="manual",
+            status=STATUS_DISCARDED,
+        )
+        new_id = repo.put_artifact(discarded)
+        return {"status": STATUS_DISCARDED, "plan_id": new_id}
 
     @app.get("/api/patches")
     async def list_patches(owner: str = Depends(_require_owner)) -> dict[str, Any]:

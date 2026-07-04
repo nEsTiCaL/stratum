@@ -712,3 +712,135 @@ class TestIntentEndpoint:
             r2 = c.post("/api/intent", json={"prompt": "Baue Cache"}, headers=AUTH)
         assert r2.json()["cached"] is False
         assert model.calls == 2
+
+    def test_intent_returns_plan_id(self, conn):
+        with TestClient(self._app(conn, _CountingModel(_GOALS_JSON))) as c:
+            r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+        assert isinstance(r.json()["id"], int)
+
+
+def _plan_client(conn):
+    return TestClient(
+        create_app(
+            Queue(conn),
+            Repository(conn),
+            decompose_model=_CountingModel(_GOALS_JSON),
+            decompose_producer="fake",
+        )
+    )
+
+
+def _create_plan(c) -> int:
+    r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+_EXPLAIN_GOAL = {
+    "task_type": "explain",
+    "scope": "file:core/queue.py",
+    "depends_on": [],
+}
+
+
+class TestPlanEditChain:
+    """I-6.3: PUT /api/plan/{id} -> neue Edition supersedet Vorgaenger."""
+
+    def test_requires_auth(self, conn):
+        with _plan_client(conn) as c:
+            assert c.put("/api/plan/1", json={"goals": []}).status_code == 401
+
+    def test_no_current_plan_404(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.put("/api/plan/1", json={"goals": []}, headers=AUTH)
+            assert r.status_code == 404
+
+    def test_edit_creates_superseding_edition(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r = c.put(f"/api/plan/{pid}", json={"goals": [_EXPLAIN_GOAL]}, headers=AUTH)
+            assert r.status_code == 200
+            assert r.json()["id"] != pid
+            assert r.json()["plan"]["content"]["goals"] == [_EXPLAIN_GOAL]
+
+    def test_chain_traceable_n_editions(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r1 = c.put(
+                f"/api/plan/{pid}", json={"goals": [_EXPLAIN_GOAL]}, headers=AUTH
+            )
+            c.put(
+                f"/api/plan/{r1.json()['id']}",
+                json={"goals": [_EXPLAIN_GOAL]},
+                headers=AUTH,
+            )
+        total = conn.execute(
+            "SELECT count(*) FROM artifacts WHERE artifact_type='plan'"
+        ).fetchone()[0]
+        superseded = conn.execute(
+            "SELECT count(*) FROM artifacts "
+            "WHERE artifact_type='plan' AND superseded=true"
+        ).fetchone()[0]
+        # 3 Editionen (create + 2 Edits), superseded = N-1.
+        assert total == 3
+        assert superseded == 2
+
+    def test_stale_id_conflict_409(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            c.put(f"/api/plan/{pid}", json={"goals": [_EXPLAIN_GOAL]}, headers=AUTH)
+            # pid ist jetzt superseded -> erneuter Edit darauf = 409.
+            r = c.put(f"/api/plan/{pid}", json={"goals": [_EXPLAIN_GOAL]}, headers=AUTH)
+            assert r.status_code == 409
+
+    def test_invalid_task_type_400(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r = c.put(
+                f"/api/plan/{pid}",
+                json={"goals": [{"task_type": "nope", "scope": "repo:"}]},
+                headers=AUTH,
+            )
+            assert r.status_code == 400
+
+
+class TestPlanConfirmDiscard:
+    """I-6.3: Confirm -> DAG in Queue; Discard -> Status-Artefakt."""
+
+    def test_confirm_enqueues_dag_and_marks_confirmed(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["task_ids"]  # nicht leer
+        assert body["large"] is False
+        queued = conn.execute("SELECT count(*) FROM queue").fetchone()[0]
+        assert queued == len(body["task_ids"])
+        current = Repository(conn).get_current("repo:", "plan")
+        assert current.content["status"] == "confirmed"
+
+    def test_confirm_large_plan_warns(self, conn):
+        big = {"goals": [_EXPLAIN_GOAL for _ in range(5)]}
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            edited = c.put(f"/api/plan/{pid}", json=big, headers=AUTH).json()["id"]
+            r = c.post(f"/api/plan/{edited}/confirm", headers=AUTH)
+        assert r.json()["large"] is True
+
+    def test_discard_marks_discarded(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            r = c.post(f"/api/plan/{pid}/discard", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["status"] == "discarded"
+        current = Repository(conn).get_current("repo:", "plan")
+        assert current.content["status"] == "discarded"
+        assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 0
+
+    def test_confirm_stale_id_409(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            c.post(f"/api/plan/{pid}/discard", headers=AUTH)  # supersedet pid
+            r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+            assert r.status_code == 409

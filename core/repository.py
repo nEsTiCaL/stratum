@@ -143,6 +143,20 @@ class Repository:
             row = cur.fetchone()
         return _row_to_result(row) if row is not None else None
 
+    def get_current_id(self, scope: str, artifact_type: str) -> int | None:
+        """DB-id des aktuellen (nicht superseded) Artefakts, oder None.
+
+        Adress-Handle fuer die Plan-Edit-Kette (I-6.3): PUT/confirm/discard
+        pruefen {id} == aktuelle id (optimistische Concurrency -> 409 bei stale),
+        da das Result-Modell selbst keine DB-id traegt.
+        """
+        row = self._conn.execute(
+            "SELECT id FROM artifacts "
+            "WHERE scope = %s AND artifact_type = %s AND superseded = false",
+            (scope, str(artifact_type)),
+        ).fetchone()
+        return row[0] if row is not None else None
+
     def list_current_scopes(self, artifact_type: str) -> list[str]:
         """Alle scopes mit einem aktuellen (nicht superseded) Artefakt dieses
         Typs, deterministisch geordnet. Fuer das Apply-Gate (I-7.5): welche

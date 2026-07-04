@@ -85,6 +85,58 @@ def _leaf_ids(nodes: list[DagNode]) -> set[str]:
     return {n.id for n in nodes} - depended_on
 
 
+def build_dag(
+    plan: Plan,
+    *,
+    scope_resolver: ScopeResolver,
+    cache_query: Callable[[str, str], bool] | None = None,
+) -> TaskDag:
+    """Bestaetigte Goals -> verketteter Gesamt-DAG (det, modellfrei).
+
+    Cross-DAG-Kanten: Wurzelknoten eines Sub-DAGs erhalten die Blatt-IDs aller
+    Goals, von denen das jeweilige Goal abhaengt, als depends_on. Modul-Funktion
+    (kein Modell noetig) -- so kann die Confirm-Schale (I-6.3) sie aufrufen, ohne
+    einen IntentDecomposer/Model zu halten.
+    """
+    if not plan.goals:
+        return TaskDag(dag_id=str(uuid.uuid4()), nodes=[])
+
+    all_nodes: list[DagNode] = []
+    accumulated_leaves: list[set[str]] = []
+
+    for i, goal in enumerate(plan.goals):
+        prefix = f"g{i}_"
+        sub = decompose(
+            goal.task_type,
+            goal.scope,
+            scope_resolver=scope_resolver,
+            cache_query=cache_query,
+        )
+        prefixed = _prefix_dag(sub, prefix)
+
+        extra_deps = tuple(
+            sorted(
+                leaf
+                for dep_idx in goal.depends_on
+                for leaf in accumulated_leaves[dep_idx]
+            )
+        )
+        if extra_deps:
+            nodes: list[DagNode] = [
+                dataclasses.replace(n, depends_on=n.depends_on + extra_deps)
+                if not n.depends_on
+                else n
+                for n in prefixed.nodes
+            ]
+        else:
+            nodes = list(prefixed.nodes)
+
+        accumulated_leaves.append(_leaf_ids(nodes))
+        all_nodes.extend(nodes)
+
+    return TaskDag(dag_id=str(uuid.uuid4()), nodes=all_nodes)
+
+
 class IntentDecomposer:
     def __init__(
         self, model: Model, large_threshold: int = LARGE_PLAN_THRESHOLD
@@ -107,45 +159,6 @@ class IntentDecomposer:
         scope_resolver: ScopeResolver,
         cache_query: Callable[[str, str], bool] | None = None,
     ) -> TaskDag:
-        """Bestaetigte Goals -> verketteter Gesamt-DAG.
-
-        Cross-DAG-Kanten: Wurzelknoten eines Sub-DAGs erhalten die Blatt-IDs
-        aller Goals, von denen das jeweilige Goal abhaengt, als depends_on.
-        """
-        if not plan.goals:
-            return TaskDag(dag_id=str(uuid.uuid4()), nodes=[])
-
-        all_nodes: list[DagNode] = []
-        accumulated_leaves: list[set[str]] = []
-
-        for i, goal in enumerate(plan.goals):
-            prefix = f"g{i}_"
-            sub = decompose(
-                goal.task_type,
-                goal.scope,
-                scope_resolver=scope_resolver,
-                cache_query=cache_query,
-            )
-            prefixed = _prefix_dag(sub, prefix)
-
-            extra_deps = tuple(
-                sorted(
-                    leaf
-                    for dep_idx in goal.depends_on
-                    for leaf in accumulated_leaves[dep_idx]
-                )
-            )
-            if extra_deps:
-                nodes: list[DagNode] = [
-                    dataclasses.replace(n, depends_on=n.depends_on + extra_deps)
-                    if not n.depends_on
-                    else n
-                    for n in prefixed.nodes
-                ]
-            else:
-                nodes = list(prefixed.nodes)
-
-            accumulated_leaves.append(_leaf_ids(nodes))
-            all_nodes.extend(nodes)
-
-        return TaskDag(dag_id=str(uuid.uuid4()), nodes=all_nodes)
+        """Bestaetigte Goals -> verketteter Gesamt-DAG. Delegiert an die
+        modellfreie Modul-Funktion build_dag (I-2.7-API bleibt erhalten)."""
+        return build_dag(plan, scope_resolver=scope_resolver, cache_query=cache_query)

@@ -68,6 +68,20 @@ Akzeptanz (det): Edit-Kette nachvollziehbar (N Editionen, superseded=N-1);
 Klasse  : det
 ```
 
+Ist (fertig 2026-07-04): drei Endpoints in app.py. `{id}` = Artefakt-Row-id des
+aktuellen Plans via neuem `repo.get_current_id(scope, type)` (Result traegt keine
+id); `_load_current_plan` prueft 404 (kein Plan) / 409 (id != aktuell = stale,
+optimistische Concurrency). PUT /api/plan/{id}: editierte Goals -> `build_plan_
+artifact(status=proposed)` -> put_artifact supersedet (Kette N/N-1). POST /api/
+plan/{id}/confirm: `plan_from_content` -> `planner.build_dag` (aus der Methode in
+eine MODELLFREIE Modul-Funktion extrahiert, damit die Schale ohne Model/Decomposer
+verkettet; Methode delegiert weiter) mit `RepoScopeResolver` -> `queue.enqueue`
+(_CONFIRM_MODEL=phi4-mini, Worker re-routet), dann Plan->confirmed; Response traegt
+large (weiche Warnung). POST /api/plan/{id}/discard: Plan->discarded-Status-Artefakt.
+`core/scope_resolver.RepoScopeResolver.files_in` = symbol_index-Scopes gefiltert
+(repo:->alle, module:X->Praefix auf "/", file:->sich selbst; pre-S4, ab S4 graph
+_edges denkbar). /api/intent traegt jetzt zusaetzlich "id".
+
 ## I-6.4  Metadaten-Anreicherung (det)
 
 ```

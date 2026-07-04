@@ -20,8 +20,9 @@ import hashlib
 from pathlib import Path
 
 from core.models.result_prob_schema import ArtifactType, ResultProb
-from core.planner import Plan
+from core.planner import GoalItem, Plan
 from core.provenance_stamp import build_prob_provenance
+from core.router import TaskType
 
 # Plaene sind repo-weit (I-6.1-Vertrag: scope "repo:"). Die Edit-Kette (I-6.3)
 # laeuft ueber die superseded-Mechanik desselben (scope, artifact_type).
@@ -30,6 +31,8 @@ PLAN_ARTIFACT_TYPE = "plan"
 
 # Plan-Status im content. proposed -> (confirmed | discarded) via I-6.3.
 STATUS_PROPOSED = "proposed"
+STATUS_CONFIRMED = "confirmed"
+STATUS_DISCARDED = "discarded"
 
 # Vertrauensstufe eines vorgeschlagenen Plans. Die Zerlegungsqualitaet wird
 # dev-verifiziert (prob); der Nutzer bestaetigt/editiert den Plan noch -> fester
@@ -85,4 +88,23 @@ def build_plan_artifact(
         content=content,
         confidence=PLAN_CONFIDENCE,
         provenance=prov,
+    )
+
+
+def plan_from_content(content: dict) -> Plan:
+    """Rueckrichtung von build_plan_artifact: plan-content -> Plan (I-6.3).
+
+    Fuer Confirm (build_dag) und Discard, die den gespeicherten Plan
+    rekonstruieren. Wirft ValueError bei unbekanntem task_type (via TaskType).
+    """
+    return Plan(
+        goals=tuple(
+            GoalItem(
+                task_type=TaskType(g["task_type"]),
+                scope=g["scope"],
+                depends_on=tuple(g.get("depends_on", ())),
+            )
+            for g in content.get("goals", ())
+        ),
+        large=bool(content.get("large", False)),
     )

@@ -14,6 +14,7 @@ from core.plan_artifact import (
     PLAN_SCOPE,
     STATUS_PROPOSED,
     build_plan_artifact,
+    plan_from_content,
     plan_input_hash,
 )
 from core.planner import GoalItem, Plan
@@ -94,3 +95,23 @@ class TestBuildPlanArtifact:
             "p", Plan(goals=(), large=False), root=_ROOT, producer="fake"
         )
         assert art.content["goals"] == []
+
+
+class TestPlanFromContent:
+    """I-6.3: Rueckrichtung content -> Plan (fuer Confirm/Discard)."""
+
+    def test_roundtrip(self):
+        original = _plan()
+        art = build_plan_artifact("p", original, root=_ROOT, producer="fake")
+        assert plan_from_content(art.content) == original
+
+    def test_missing_goals_empty(self):
+        assert plan_from_content({"prompt": "p", "status": "proposed"}) == Plan(
+            goals=(), large=False
+        )
+
+    def test_invalid_task_type_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError):
+            plan_from_content({"goals": [{"task_type": "nope", "scope": "repo:"}]})
