@@ -54,6 +54,13 @@ from core.db import apply_migrations
 from core.ingest import ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
+from core.plan_artifact import (
+    PLAN_ARTIFACT_TYPE,
+    PLAN_SCOPE,
+    build_plan_artifact,
+    plan_input_hash,
+)
+from core.planner import IntentDecomposer
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
@@ -61,7 +68,7 @@ from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
 from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.template_registry import DagNode, TaskDag
-from core.validator import Validator
+from core.validator import Model, Validator
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -203,6 +210,10 @@ class ApplyBody(BaseModel):
     confirm: bool = False
 
 
+class IntentBody(BaseModel):
+    prompt: str
+
+
 def create_app(
     queue: Queue,
     repo: Repository,
@@ -214,11 +225,17 @@ def create_app(
     progress_store: dict | None = None,
     capacity: ResolvedCapacity | None = None,
     apply_policy: ApplyPolicy | None = None,
+    decompose_model: Model | None = None,
+    decompose_producer: str = "unknown",
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
 
     capacity (optional): aufgeloeste Laufzeit-Kapazitaet fuer das Live-Status-
     Kapazitaets-Panel (I-5.1); None -> Feld wird als null geliefert.
+
+    decompose_model (optional, I-6.2): Model-Seam fuer POST /api/intent (Prompt
+    -> Plan). None -> Endpoint 503 (Profil D ohne Cloud: Zerlegung via Cloud
+    oder manuell). decompose_producer = Modellname fuer die Plan-Provenance.
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
     resolved_apply_policy = apply_policy or ApplyPolicy()  # fail-safe Default
@@ -395,6 +412,46 @@ def create_app(
             item_id, {"prompt": _review_prompt(body.task_type, body.scope, body.prompt)}
         )
         return {"id": item_id}
+
+    @app.post("/api/intent", status_code=201)
+    async def create_intent(
+        body: IntentBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """I-6.2: freier Prompt -> Plan-Artefakt (status=proposed).
+
+        Cache-first (artifact-first): gleicher Prompt -> gleicher input_hash ->
+        Store-Hit -> derselbe Plan OHNE Modellaufruf. Sonst Zerlegung ueber den
+        injizierten Model-Seam (Routing: Cloud/human), Ergebnis als plan-Artefakt
+        gespeichert. Antwort: {"cached": bool, "plan": <artefakt>}.
+        """
+        prompt = body.prompt.strip()
+        if not prompt:
+            raise HTTPException(status_code=422, detail="prompt fehlt")
+
+        input_hash = plan_input_hash(prompt)
+        if repo.staleness_lookup(PLAN_SCOPE, PLAN_ARTIFACT_TYPE, input_hash):
+            cached = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+            if cached is not None:
+                return {"cached": True, "plan": cached.model_dump(mode="json")}
+
+        if decompose_model is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Zerlegung nicht verfuegbar: kein Modell konfiguriert "
+                    "(Profil D -> Cloud-Tier oder manuell)."
+                ),
+            )
+
+        plan = IntentDecomposer(decompose_model).decompose(prompt)
+        artifact = build_plan_artifact(
+            prompt,
+            plan,
+            root=source_root or Path("."),
+            producer=decompose_producer,
+        )
+        repo.put_artifact(artifact)
+        return {"cached": False, "plan": artifact.model_dump(mode="json")}
 
     @app.get("/api/patches")
     async def list_patches(owner: str = Depends(_require_owner)) -> dict[str, Any]:

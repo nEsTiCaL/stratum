@@ -626,3 +626,89 @@ class TestDevHarnessEndpoints:
         data = r.json()
         assert data["artifact_type"] == "dependency_graph"
         assert data["scope"] == "file:simple.py"
+
+
+class _CountingModel:
+    """Model-Seam-Double, das Aufrufe zaehlt (Cache-Hit-Nachweis I-6.2)."""
+
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.calls = 0
+
+    def complete(self, prompt: str) -> str:
+        self.calls += 1
+        return self.response
+
+
+_GOALS_JSON = json.dumps(
+    [
+        {"task_type": "architecture", "scope": "repo:", "depends_on": []},
+        {"task_type": "review", "scope": "file:core/auth.py", "depends_on": [0]},
+    ]
+)
+
+
+class TestIntentEndpoint:
+    """I-6.2: POST /api/intent -> Plan-Artefakt (Prompt->Plan) + input_hash-Cache."""
+
+    def _app(self, conn, model):
+        queue = Queue(conn)
+        repo = Repository(conn)
+        return create_app(
+            queue, repo, decompose_model=model, decompose_producer="fake-model"
+        )
+
+    def test_requires_auth(self, conn):
+        with TestClient(self._app(conn, _CountingModel(_GOALS_JSON))) as c:
+            assert c.post("/api/intent", json={"prompt": "x"}).status_code == 401
+
+    def test_empty_prompt_422(self, conn):
+        with TestClient(self._app(conn, _CountingModel(_GOALS_JSON))) as c:
+            r = c.post("/api/intent", json={"prompt": "   "}, headers=AUTH)
+            assert r.status_code == 422
+
+    def test_no_model_returns_503(self, conn):
+        queue, repo = Queue(conn), Repository(conn)
+        with TestClient(create_app(queue, repo)) as c:  # kein decompose_model
+            r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+            assert r.status_code == 503
+
+    def test_creates_plan_artifact(self, conn):
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            r = c.post(
+                "/api/intent", json={"prompt": "Baue ein REST-API"}, headers=AUTH
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["cached"] is False
+        plan = body["plan"]
+        assert plan["artifact_type"] == "plan"
+        assert plan["scope"] == "repo:"
+        assert plan["content"]["status"] == "proposed"
+        assert plan["content"]["prompt"] == "Baue ein REST-API"
+        assert plan["content"]["goals"] == [
+            {"task_type": "architecture", "scope": "repo:", "depends_on": []},
+            {"task_type": "review", "scope": "file:core/auth.py", "depends_on": [0]},
+        ]
+        assert plan["provenance"]["producer"] == "fake-model"
+        assert model.calls == 1
+
+    def test_same_prompt_hits_cache_without_model_call(self, conn):
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            first = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+            second = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+        assert first.json()["cached"] is False
+        assert second.json()["cached"] is True
+        # gleicher Plan aus dem Store, Modell nur einmal aufgerufen (Cache-Hit).
+        assert second.json()["plan"]["content"] == first.json()["plan"]["content"]
+        assert model.calls == 1
+
+    def test_different_prompt_misses_cache(self, conn):
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+            r2 = c.post("/api/intent", json={"prompt": "Baue Cache"}, headers=AUTH)
+        assert r2.json()["cached"] is False
+        assert model.calls == 2

@@ -44,6 +44,19 @@ Dev-verif: reale Zerlegungsqualitaet (Cloud bzw. manual)
 Klasse  : gemischt
 ```
 
+Ist (fertig 2026-07-04): `core/plan_artifact.py` (PLAN_SCOPE="repo:", PLAN_
+ARTIFACT_TYPE="plan", `plan_input_hash` = SHA-256 des Prompts, `build_plan_artifact`
+Plan->ResultProb status=proposed, content {prompt,status,large,goals[]}). `POST
+/api/intent` {prompt} -> {"cached":bool,"plan":<artefakt>}: Cache-Check via
+`repo.staleness_lookup(PLAN_SCOPE,"plan",input_hash)` + get_current -> Store-Hit
+ohne Modellaufruf; sonst IntentDecomposer(decompose_model).decompose -> put_artifact.
+Model-Seam `decompose_model`/`decompose_producer` in create_app injiziert (None
+-> 503). serve baut den Seam nur bei Cloud (Router routet architecture -> erster
+is_cloud-Kandidat -> CloudAdapter mit guard/on_cost); Profil D=None. `build_prob_
+provenance` hat einen optionalen `input_hash`-Override (Prompt-Hash statt
+Quelldatei-Hash). Cache-Semantik: staleness_lookup trifft nur, wenn der AKTUELLE
+plan denselben input_hash hat -> anderer Prompt supersedet + verfehlt korrekt.
+
 ## I-6.3  Plan-Edit + Confirm/Discard
 
 ```

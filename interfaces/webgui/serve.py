@@ -31,7 +31,7 @@ from core.metrics import InferenceSample, MetricsStore
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
-from core.router import MODEL_CAPABILITIES, Provider, Router
+from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
 from core.secret_scan import EgressPolicy
 from core.template_registry import DagNode, TaskDag
 from core.verify_worker import VerifyWorker
@@ -113,7 +113,13 @@ def _seed(conn: psycopg.Connection) -> None:
 
 def _make_worker_loop(
     worker_conn: psycopg.Connection, worker_repo: Repository
-) -> WorkerLoop:
+) -> tuple[WorkerLoop, object | None, str]:
+    """Baut den WorkerLoop und (I-6.2) den Decompose-Seam fuer POST /api/intent.
+
+    Rueckgabe: (loop, decompose_model, decompose_producer). Der Decompose-Seam
+    ist nur gesetzt, wenn eine Cloud konfiguriert ist (ANTHROPIC_API_KEY); auf
+    Profil D bleibt er None -> /api/intent 503 (Zerlegung via Cloud/manuell).
+    """
     router = Router()
 
     ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -191,8 +197,29 @@ def _make_worker_loop(
         unsafe_test_egress=os.environ.get("STRATUM_UNSAFE_EGRESS") == "1",
     )
 
+    # Decompose-Seam (I-6.2): Intent-Zerlegung ist reasoning-schwer -> der Router
+    # routet sie (task_type architecture) auf einen Cloud-Kandidaten; auf Profil D
+    # hat sie lokal keinen. Nur mit aktiver Cloud einen CloudAdapter bauen (teilt
+    # guard/on_cost -> Tageskappung + Kosten-Telemetrie gelten auch hier).
+    decompose_model: object | None = None
+    decompose_producer = "unknown"
+    if cloud_sender is not None:
+        from core.cloud_adapter import CloudAdapter, resolve_spec
+
+        for cand in router.candidates(TaskType.architecture):
+            if cand.is_cloud and (spec := resolve_spec(cand.model)) is not None:
+                decompose_model = CloudAdapter(
+                    spec=spec,
+                    sender=cloud_sender,
+                    guard=cloud_guard,
+                    on_cost=cloud_on_cost,
+                )
+                decompose_producer = cand.model
+                print(f"[intent] Decompose-Modell: {cand.model} (Cloud)")
+                break
+
     root = Path(__file__).parent.parent.parent
-    return WorkerLoop(
+    loop = WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
         det_worker=DetWorker(root=root),
@@ -209,6 +236,7 @@ def _make_worker_loop(
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
     )
+    return loop, decompose_model, decompose_producer
 
 
 def _run_worker(loop: WorkerLoop, models: list[str]) -> None:
@@ -256,7 +284,9 @@ def main() -> None:
     worker_repo = Repository(worker_conn)
 
     print("Worker-Thread starten …")
-    worker_loop = _make_worker_loop(worker_conn, worker_repo)
+    worker_loop, decompose_model, decompose_producer = _make_worker_loop(
+        worker_conn, worker_repo
+    )
     worker_thread = threading.Thread(
         target=_run_worker,
         args=(worker_loop, ["phi4-mini"]),
@@ -276,6 +306,8 @@ def main() -> None:
         apply_policy=ApplyPolicy(
             allow_apply=os.environ.get("STRATUM_UNSAFE_APPLY") == "1"
         ),
+        decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
+        decompose_producer=decompose_producer,
     )
 
     print(f"Dashboard: http://{args.host}:{args.port}/")
