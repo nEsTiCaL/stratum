@@ -193,7 +193,7 @@ ID      Haeppchen                      Kl    dep       Detail
 I-6.1   Artefakttyp plan + Codegen     det   I-1.0     S6             fertig
 I-6.2   POST /api/intent -> Plan-Art.  gem   I-6.1     S6, `spec_i-2-1-router`   fertig
 I-6.3   Plan-Edit + Confirm -> DAG     det   I-6.2     S6             fertig
-I-6.4   Metadaten det (Kalibr.-Lookup) det   I-6.1     S6, R5         offen
+I-6.4   Metadaten det (Kalibr.-Lookup) det   I-6.1     S6, R5         fertig
 I-6.5   Dashboard Plan-Viewer/Editor   gem   I-6.2/6.3 S6             offen
 ```
 

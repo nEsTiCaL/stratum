@@ -844,3 +844,44 @@ class TestPlanConfirmDiscard:
             c.post(f"/api/plan/{pid}/discard", headers=AUTH)  # supersedet pid
             r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
             assert r.status_code == 409
+
+
+class TestPlanMetadata:
+    """I-6.4: GET /api/plan/{id}/metadata (Prioritaet/Dauer/Aufwand, det)."""
+
+    def test_requires_auth(self, conn):
+        with _plan_client(conn) as c:
+            assert c.get("/api/plan/1/metadata").status_code == 401
+
+    def test_unknown_without_metrics(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            md = c.get(f"/api/plan/{pid}/metadata", headers=AUTH).json()["metadata"]
+        # _GOALS_JSON: architecture (dep []), review (dep [0]) -> Topo 0,1.
+        assert [m["priority"] for m in md] == [0, 1]
+        # keine Messdaten -> "unbekannt", NIE geraten.
+        assert all(m["estimated_seconds"] is None for m in md)
+        assert all(m["effort_class"] == "unknown" for m in md)
+
+    def test_uses_calibration_metrics(self, conn):
+        from core.metrics import InferenceSample, MetricsStore
+
+        # 100 Tokens / 2 tok_s = 50 s -> effort "medium" fuer architecture.
+        MetricsStore(conn).record(
+            InferenceSample("phi4-mini", 2.0, 100, task_type="architecture")
+        )
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            md = c.get(f"/api/plan/{pid}/metadata", headers=AUTH).json()["metadata"]
+        arch = next(m for m in md if m["task_type"] == "architecture")
+        assert arch["estimated_seconds"] == 50.0
+        assert arch["effort_class"] == "medium"
+        # review hat weiter keine Daten -> unbekannt.
+        review = next(m for m in md if m["task_type"] == "review")
+        assert review["estimated_seconds"] is None
+
+    def test_stale_id_409(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            c.post(f"/api/plan/{pid}/discard", headers=AUTH)
+            assert c.get(f"/api/plan/{pid}/metadata", headers=AUTH).status_code == 409

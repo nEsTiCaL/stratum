@@ -93,6 +93,18 @@ Akzeptanz (det): injizierte Metrik-Fixtures -> erwartete Schaetzwerte;
 Klasse  : det
 ```
 
+Ist (fertig 2026-07-04): `core/plan_metadata.py` (rein, fixture-injizierbar).
+`enrich_plan(plan, durations: dict[task_type,sec]) -> [GoalMetadata{task_type,
+scope, priority, estimated_seconds, effort_class}]`. priority = `topo_priority`
+(Kahn ueber depends_on-Indizes, stabil kleinster-Index-zuerst, Zyklus defensiv
+statt Wurf). estimated_seconds = durations.get(task_type) -> None wenn fehlt
+("unbekannt", NIE geraten). effort_class = Bucket der GEMESSENEN Dauer
+(EFFORT_SMALL_MAX_S=30, MEDIUM=120, sonst large; None->unknown). Endpoint GET
+/api/plan/{id}/metadata (thin, _load_current_plan + durations aus
+repo.task_type_stats avg_time_s). Bewusst task_type-Ebene: Plan-Knoten tragen vor
+dem Routing kein Modell; die (task_type,model)-Verfeinerung ist post-Routing
+moeglich (model_metrics haelt beide Spalten).
+
 ## I-6.5  Dashboard: Plan-Viewer + Editor
 
 ```

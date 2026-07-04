@@ -64,6 +64,7 @@ from core.plan_artifact import (
     plan_from_content,
     plan_input_hash,
 )
+from core.plan_metadata import enrich_plan
 from core.planner import (
     LARGE_PLAN_THRESHOLD,
     GoalItem,
@@ -577,6 +578,25 @@ def create_app(
         )
         new_id = repo.put_artifact(discarded)
         return {"status": STATUS_DISCARDED, "plan_id": new_id}
+
+    @app.get("/api/plan/{plan_id}/metadata")
+    async def plan_metadata(
+        plan_id: int, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """I-6.4: deterministische Metadaten je Plan-Knoten (Prioritaet =
+        Topo-Ordnung, geschaetzte Dauer = Kalibrierungs-Lookup je task_type,
+        Aufwandsklasse). Fehlende Datenlage -> estimated_seconds=null
+        ('unbekannt', NIE geraten). Rein lesend."""
+        current = _load_current_plan(plan_id)
+        plan = plan_from_content(current.content)
+        durations = {
+            r["task_type"]: r["avg_time_s"]
+            for r in repo.task_type_stats()
+            if r.get("avg_time_s") is not None
+        }
+        return {
+            "metadata": [dataclasses.asdict(m) for m in enrich_plan(plan, durations)]
+        }
 
     @app.get("/api/patches")
     async def list_patches(owner: str = Depends(_require_owner)) -> dict[str, Any]:
