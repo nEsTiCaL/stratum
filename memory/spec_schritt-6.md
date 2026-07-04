@@ -21,6 +21,62 @@ der Zusatzleistungs-Analyse (Chat-Vorlage vs. Bestand).
 - Bewusst NICHT uebernommen: User-Profile, Skill-Metadaten, eigene
   ML-Schaetzmodelle (YAGNI; Kalibrierungsdaten SIND das Schaetzmodell).
 
+## Planbarkeit: was ist ein akzeptabler Prompt (Schaerfung 2026-07-04)
+
+Tiefe ist NICHT die Grenze: der flache Goal-DAG mit depends_on drueckt
+beliebige Zerlegungstiefe aus (jeder Baum laesst sich flachklopfen, z.B.
+"Feature ueber 5 Dateien" = 5 implement-Goals mit Abhaengigkeiten). Die echte
+Grenze ist statisch vs. dynamisch. Ein Prompt ist planbar, wenn die Zerlegung
+VOR der Ausfuehrung vollstaendig bestimmbar ist:
+
+1. jedes Teilziel bildet sich auf (einen der 14 task_types x konkreten scope) ab
+2. Abhaengigkeiten sind vorab benennbar (depends_on)
+3. keine Zwischenergebnisse noetig ("was zu tun ist" haengt nicht vom Ausgang
+   frueherer Tasks ab)
+
+Drei Arten "zu gross" und ihre Antworten:
+
+```
+zu viele Goals     -> large-Flag (>=5, weiche Warnung), kein Blocker
+nicht abbildbar    -> not_covered: der Verstaendnis-Schritt sagt ehrlich, WAS er
+  (kein task_type,    nicht planen konnte und WARUM; nie still weglassen, nie
+  kein konkr. scope)  einen task_type halluzinieren
+dynamischer Plan   -> haeufigster Fall geloest (Rueckkante verify->implement,
+  ("fixe was das      I-7.4); Rest: not_covered + Hinweis Zweiphasen-Nutzung
+  Review findet")     (erst review laufen lassen, dann neuer Auftrag)
+```
+
+Erweiterungspunkt replan (FESTGESCHRIEBEN 2026-07-04, bewusst NICHT gebaut):
+falls statische Planung zu eng wird (not_covered-Faelle haeufen sich, die ein
+Nachplanen loesen wuerde), kommt ein task_type `replan` -- ein prob-Task, dessen
+ERGEBNIS eine neue Plan-Edition ist (Zwischenergebnis als Kontext). Rekursion
+lebt dann in der Artefakt-Kette (Plan supersedet Plan), NICHT in einem
+rekursiven DAG: Queue bleibt flach, kein zweites Planungsvokabular -- derselbe
+Mechanismus wie die verify-Rueckkante, auf Plan-Ebene gehoben. Entscheidung
+spaeter datengetrieben; nichts im heutigen Entwurf verbaut den Weg.
+
+## Intent = Verstaendnis-Rueckfrage (Entwurfsentscheidung fuer I-6.5)
+
+Das System sagt, was es verstanden hat; der Nutzer revidiert/schaerft nach.
+EIN Modellaufruf liefert beides (erweitertes _PROMPT_TEMPLATE in core/planner):
+
+```
+{"understanding": "<2-3 Saetze: was wurde verstanden>",
+ "not_covered":   ["<Anteil + Grund, warum nicht planbar>", ...],
+ "goals":         [{"task_type","scope","depends_on"}, ...]}
+```
+
+plan-Content traegt understanding + not_covered zusaetzlich. Revision =
+Korrekturtext -> erneuter Decompose mit prompt+Korrektur -> NEUE Plan-Edition
+(superseded-Kette; neuer input_hash -> Cache bleibt korrekt). Der manuelle
+Copy-Paste-Pfad verlangt dasselbe JSON zurueck.
+
+Backend-Ergaenzungen (VOR dem UI, test-driven):
+- _PROMPT_TEMPLATE liefert understanding + not_covered + goals
+- POST /api/intent: optional `revision` (wird an den Prompt angehaengt);
+  optional `understanding`+`goals` direkt uebergeben (manueller Pfad; loest
+  zugleich das 503-Henne/Ei auf Profil D -- ohne Modell kein erster Plan)
+
 ## I-6.1  Artefakttyp plan + Schema/Codegen
 
 ```
@@ -115,3 +171,47 @@ Akzeptanz : dev-verifiziert am laufenden Server (Profil D: Zerlegung via
           model:human moeglich)
 Klasse  : gemischt
 ```
+
+### UI-Konzept (festgelegt 2026-07-04, Diskussion mit Nutzer)
+
+Obere Bildschirmhaelfte vertikal geteilt: LINKS die Eingabe (folgt der
+Auswahl), RECHTS der Plan als Uebersicht UND einziges Navigationsinstrument.
+Das "wandernde Highlight" ist die Default-Selektion (vorderster offener
+Schritt); ein Klick auf ein anderes Element uebersteuert sie -- EIN Mechanismus
+statt zwei. Untere Haelfte = bestehende Task-Tabelle + Claim/Submit-Panel =
+Ausfuehrungsflaeche der Subtasks (kein Neubau, wird Eingabe-Kontext).
+
+Baum-Hierarchie rechts (4 Ebenen):
+
+```
+Prompt   -> Intent (Verstaendnis-Text als Knoten-Inhalt, not_covered sichtbar)
+         -> Tasks (Goals; editierbar, Metadaten-Badges aus I-6.4)
+         -> Subtasks (Template-Knoten + Fan-out aus build_dag; det = auto)
+```
+
+- det-Subtasks laufen automatisch (auto-Badge, Haken wandert von selbst); nur
+  prob-Knoten fordern je nach Profil eine Aktion. Macht "det vor prob" erlebbar.
+- Modus-Badge je prob-Schritt (lokal · <modell> / Cloud · <modell> / manuell),
+  aus dem Router abgeleitet -- macht das Capacity-Profil sichtbar (Profil D:
+  Zerlegung + review manuell; andere Hosts rechnen mehr allein, gleiche UI).
+- Task->Subtask ist DETERMINISTISCH (Template-Zerlegung, kein Modell, keine
+  Modus-Wahl); die Modus-Wahl faellt nur bei Intent-Zerlegung und bei der
+  Ausfuehrung der prob-Subtasks an.
+
+Selektion rechts -> Eingabe-Kontext links:
+
+```
+Intent-Knoten      -> Verstaendnis-Anzeige + Korrektur-Textfeld ("Passt" /
+                      "Neu zerlegen" -> revision -> neue Edition)
+Task-Karte (Goal)  -> Inline-Editor (task_type-Dropdown, scope, depends_on-
+                      Chips, Add/Remove; Speichern -> PUT -> neue Edition)
+prob-Subtask       -> bestehendes Claim/Copy-Paste/Submit-Panel
+det-Subtask        -> read-only "laeuft automatisch"
+```
+
+Weitere Festlegungen: Ghost-Skelett vor erster Eingabe (Stufen + Beispielbaum
+ausgegraut, Prompt aktiv); Confirm -> Tasks in Queue, Baum spiegelt den
+Queue-Status live (Polling); neuer Auftrag bei vorhandenem aktiven Plan ->
+Rueckfrage (ersetzt aktuellen Plan); large -> weiche Warnung inline;
+Metadaten je Goal aus GET /api/plan/{id}/metadata (Dauer bzw. ehrlich
+"unbekannt", Aufwandsklasse farbcodiert).
