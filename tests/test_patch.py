@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.diff_extract import extract_diff
+from core.diff_extract import build_patch_prompt, extract_diff
 from core.queue import QueueItem
 from core.router import Router, TaskType
 from core.template_registry import decompose
@@ -81,6 +81,39 @@ class TestDiffExtract:
     def test_prose_without_diff_raises(self):
         with pytest.raises(ValueError):
             extract_diff("Ich wuerde folgendes aendern: foo zurueckgeben.")
+
+
+class TestBuildPatchPrompt:
+    """implement/fix-Prompt: fordert Unified-Diff, Greenfield -> neue Datei."""
+
+    def test_greenfield_marks_new_file(self):
+        p = build_patch_prompt(
+            "implement", "file:scripts/cam.gd", "", instruction="Kamerazoom x5"
+        )
+        assert "scripts/cam.gd" in p  # Zieldatei aus dem scope
+        assert "Kamerazoom x5" in p  # Absicht (Plan-Prompt)
+        assert "existiert noch nicht" in p  # Greenfield-Hinweis
+        assert "Unified-Diff" in p
+
+    def test_existing_source_embedded(self):
+        p = build_patch_prompt(
+            "fix", "file:core/x.py", "def a():\n    pass\n", instruction="Bug X"
+        )
+        assert "def a():" in p
+        assert "existiert noch nicht" not in p
+
+    def test_feedback_included(self):
+        p = build_patch_prompt(
+            "implement", "file:a.py", "", feedback="pytest rot: test_a"
+        )
+        assert "pytest rot: test_a" in p
+
+    def test_example_diff_survives_extract(self):
+        # Der im Prompt gezeigte Beispiel-Diff muss dem Vertrag von extract_diff
+        # genuegen (gleiche Wahrheitsquelle) -> kleine Modelle bekommen ein
+        # parsebares Vorbild.
+        p = build_patch_prompt("implement", "file:a.py", "")
+        assert extract_diff(p).count("@@") >= 1
 
 
 class TestPatchValidation:

@@ -320,3 +320,19 @@ class TestDiscardDag:
 
     def test_unknown_dag_returns_zero(self, conn):
         assert Queue(conn).discard_dag("does-not-exist") == 0
+
+
+class TestGetTaskInfoPayload:
+    """get_task_info liefert payload -> Anzeige-Endpoints lesen den echten Prompt."""
+
+    def test_payload_returned(self, conn):
+        q = Queue(conn)
+        ids = q.enqueue(_dag("d", [_node("n1")]), model="phi4-mini")
+        q.update_payload(ids[0], {"prompt": "der echte Prompt"})
+        info = q.get_task_info(ids[0])
+        assert info["payload"]["prompt"] == "der echte Prompt"
+
+    def test_payload_empty_dict_when_unset(self, conn):
+        q = Queue(conn)
+        ids = q.enqueue(_dag("d", [_node("n1")]), model="phi4-mini")
+        assert q.get_task_info(ids[0])["payload"] == {}

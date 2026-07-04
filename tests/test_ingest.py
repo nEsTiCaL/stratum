@@ -81,6 +81,56 @@ class TestIngestContent:
             assert cur.fetchone()[0] == 6
 
 
+class TestMissingFile:
+    """Greenfield (implement auf noch nicht existierende Datei): missing_ok."""
+
+    def test_default_raises_on_missing(self, conn, tmp_path):
+        import pytest
+
+        repo = Repository(conn)
+        with pytest.raises(FileNotFoundError):
+            ingest_file(repo, tmp_path, "nope.py", source_hash="h")
+
+    def test_missing_ok_ingests_empty_index(self, conn, tmp_path):
+        repo = Repository(conn)
+        result = ingest_file(
+            repo, tmp_path, "scripts/newcam.gd", source_hash="h", missing_ok=True
+        )
+        # Kein Wurf; leerer, aber vollstaendiger Artefakt-Satz ("noch keine Symbole").
+        assert set(result.artifact_ids) == set(_ARTIFACT_TYPES)
+        assert result.scope == "file:scripts/newcam.gd"
+        symbols = repo.get_current("file:scripts/newcam.gd", "symbol_index").content
+        assert symbols.get("symbols", []) == []
+
+    def test_missing_ok_ignored_when_file_exists(self, conn, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text(_SAMPLE, encoding="utf-8")
+        repo = Repository(conn)
+        ingest_file(repo, tmp_path, "m.py", source_hash="h", missing_ok=True)
+        symbols = repo.get_current("file:m.py", "symbol_index").content
+        assert len(symbols.get("symbols", [])) > 0  # echte Datei -> echte Symbole
+
+
+class TestDetWorkerDefaultIngest:
+    """DetWorker-Default (echtes ingest_file): Greenfield end-to-end, kein KeyError."""
+
+    def test_default_ingest_fn_on_missing_file(self, conn, tmp_path):
+        from core.worker import DetWorker
+
+        repo = Repository(conn)
+        worker = DetWorker(root=tmp_path)  # Default-ingest_fn (nicht injiziert)
+        item = _QueueItemStub(scope="file:scripts/newcam.gd")
+        # Fruher: FileNotFoundError; danach latenter KeyError auf artifact_ids[0].
+        art_ref = worker.run(item, repo)
+        assert isinstance(art_ref, str) and art_ref != ""
+        assert repo.get_current("file:scripts/newcam.gd", "symbol_index") is not None
+
+
+class _QueueItemStub:
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+
+
 class TestTriggersIdentical:
     def test_watch_and_hook_produce_identical_store(self, conn, tmp_path):
         f = tmp_path / "m.py"

@@ -295,6 +295,22 @@ class TestEscalationLoopProb:
         )
         assert outcome.status == "unresolved"
 
+    def test_all_candidates_unavailable_is_graceful(self):
+        # Alle Kandidaten nicht verfuegbar (factory -> None), z.B. implement auf
+        # Profil D: nur nicht-installierte qwen-Kandidaten. Frueher: AssertionError.
+        loop = EscalationLoop(Validator())
+        outcome = loop.run(
+            task_type=TaskType.implement,
+            producer_class="prob",
+            prompt="p",
+            candidates=[_candidate("qwen3-8b"), _candidate("qwen2.5-coder")],
+            model_factory=lambda _: None,
+        )
+        assert outcome.status == "unresolved"
+        assert outcome.validation_result == "escalated"
+        assert outcome.trigger == "no_candidate"
+        assert outcome.final_model is None
+
     def test_outcome_trace_fields_present(self):
         loop = EscalationLoop(Validator())
         outcome = loop.run(

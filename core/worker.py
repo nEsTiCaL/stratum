@@ -53,8 +53,14 @@ class DetWorker:
             from core.ingest import ingest_file
 
             def _default(repo: Repository, root: Path, path: str) -> str:
-                result = ingest_file(repo, root, path)
-                return result.artifact_ids[0] if result.artifact_ids else ""
+                # missing_ok: Greenfield-Ziel (implement auf noch nicht
+                # existierende Datei) -> leerer Index statt FileNotFoundError.
+                result = ingest_file(repo, root, path, missing_ok=True)
+                # artifact_ids ist dict[artifact_type -> id]; symbol_index ist der
+                # Leitartefakttyp (immer im Builder-Set). Rueckgabe nur informativ
+                # (WorkerLoop nutzt sie nicht) -> leer, wenn nichts erzeugt wurde.
+                ids = result.artifact_ids
+                return str(ids.get("symbol_index", next(iter(ids.values()), "")))
 
             self.ingest_fn = _default
 
@@ -99,9 +105,21 @@ class LlmWorker:
         local = [c for c in candidates if not c.is_cloud]
         cloud = [c for c in candidates if c.is_cloud]
 
-        outcome = self._local_phase(task_type, item.payload["prompt"], local)
+        # Rueckkante (I-7.4): reopen_after_verify legt verify_feedback ins Payload;
+        # es an den Prompt zu haengen ist der Punkt, an dem der naechste Versuch
+        # den vorherigen Verify-Fehler tatsaechlich sieht.
+        prompt = item.payload["prompt"]
+        feedback = item.payload.get("verify_feedback")
+        if feedback:
+            prompt = (
+                f"{prompt}\n\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}"
+            )
+
+        outcome = self._local_phase(task_type, prompt, local)
         if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:
-            cloud_outcome = self._cloud_phase(item, repo, task_type, sensitivity, cloud)
+            cloud_outcome = self._cloud_phase(
+                item, repo, task_type, sensitivity, cloud, prompt
+            )
             if cloud_outcome is not None:
                 prior = outcome.attempts if outcome is not None else 0
                 outcome = replace(
@@ -152,14 +170,15 @@ class LlmWorker:
         task_type: TaskType,
         sensitivity: Sensitivity,
         cloud: list,
+        prompt: str,
     ) -> EscalationOutcome | None:
         """Bundle + Redaction-Gate, dann Cloud-Kandidaten mit dem Bundle-Tail.
         BLOCK -> None (Knoten bleibt eskaliert/unresolved). Trace schreibt der
-        Worker (Gate ist IO-frei)."""
+        Worker (Gate ist IO-frei). prompt = effektiver Prompt inkl. Feedback."""
         egress = prepare_cloud_egress(
             repo,
             item.scope,
-            question=item.payload["prompt"],
+            question=prompt,
             sensitivity=sensitivity,
             policy=self.egress_policy,
             source_provider=self._read_source,

@@ -146,13 +146,22 @@ def ingest_file(
     scan: SecretScan | None = None,
     session_id: str = "ingest",
     invalidate: bool = False,
+    missing_ok: bool = False,
 ) -> IngestResult:
     """Liest eine Datei aus dem Working Tree und ingestiert sie. Gemeinsamer
     Einstieg fuer Watch und git-Hook (identische Ingestion). invalidate=True
-    reicht die differenzierte Invalidierung durch (I-4.4, inkrementell)."""
+    reicht die differenzierte Invalidierung durch (I-4.4, inkrementell).
+
+    missing_ok=True: existiert die Datei (noch) nicht, wird leerer Inhalt
+    indexiert statt zu werfen -- ein leerer Index ("noch keine Symbole") fuer
+    Greenfield-Ziele (implement auf eine erst zu erstellende Datei). Watch und
+    ingest_repo lassen es aus (dort ist eine fehlende Datei ein echter Fehler)."""
     root = Path(repo_root)
     abs_path = root / rel_path
-    content = abs_path.read_bytes()
+    if missing_ok and not abs_path.exists():
+        content = b""
+    else:
+        content = abs_path.read_bytes()
     norm = abs_path.resolve().relative_to(root.resolve()).as_posix()
     return ingest_content(
         repo,

@@ -51,6 +51,7 @@ from core.apply_gate import ApplyPolicy, apply_confirmed_patch
 from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
+from core.diff_extract import build_patch_prompt
 from core.ingest import ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
@@ -79,7 +80,7 @@ from core.queue import Queue
 from core.repository import Repository
 from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
-from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
+from core.router import TASK_REQUIREMENTS, TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.template_registry import DagNode, TaskDag
 from core.validator import Model, Validator
@@ -418,18 +419,35 @@ def create_app(
             raise HTTPException(status_code=404, detail="Kein Ergebnis verfuegbar")
         return result.model_dump(mode="json")
 
-    def _review_prompt(task_type: str, scope: str, extra_prompt: str = "") -> str:
-        """Prompt fuer prob-Tasks: Quellcode (falls file:-Scope) + Graph-Kontext
-        (I-5.6: Testdatei/Aufrufer) + Leitfragen. Eine Quelle fuer alle drei
-        Aufrufer (create/claim/prompt-Anzeige), damit Worker- und Human-Pfad
-        denselben Prompt sehen."""
-        source_code = ""
+    def _scope_source(scope: str) -> str:
         if source_root is not None and scope.startswith("file:"):
             src = source_root / scope[5:]
             if src.exists():
-                source_code = src.read_text(encoding="utf-8")
+                return src.read_text(encoding="utf-8")
+        return ""
+
+    def _node_prompt(
+        task_type: str, scope: str, instruction: str = "", feedback: str = ""
+    ) -> str:
+        """Prob-Prompt je task_type -- eine Quelle fuer Worker- UND Human-Pfad.
+
+        implement/fix -> Patch-Prompt (Unified-Diff, Greenfield = neue Datei);
+        alle anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope
+        existiert) + Graph-Kontext (I-5.6). instruction = natuerlichsprachige
+        Absicht (Plan-Prompt bzw. /api/task-Hinweis); ein Goal traegt sie nicht,
+        daher explizit durchgereicht."""
+        source_code = _scope_source(scope)
         context = gather_context(repo, scope, source_root=source_root)
-        return build_review_prompt(task_type, scope, source_code, extra_prompt, context)
+        if task_type in ("implement", "fix"):
+            return build_patch_prompt(
+                task_type,
+                scope,
+                source_code,
+                instruction=instruction,
+                context=context,
+                feedback=feedback,
+            )
+        return build_review_prompt(task_type, scope, source_code, instruction, context)
 
     @app.post("/api/task", status_code=201)
     async def create_task(
@@ -462,7 +480,7 @@ def create_app(
         ids = queue.enqueue(dag, body.model, owner=owner)
         item_id = ids[0]
         queue.update_payload(
-            item_id, {"prompt": _review_prompt(body.task_type, body.scope, body.prompt)}
+            item_id, {"prompt": _node_prompt(body.task_type, body.scope, body.prompt)}
         )
         return {"id": item_id}
 
@@ -631,6 +649,20 @@ def create_app(
         plan = plan_from_content(current.content)
         dag = build_dag(plan, scope_resolver=RepoScopeResolver(repo), cache_query=None)
         task_ids = queue.enqueue(dag, _CONFIRM_MODEL, owner=owner)
+        # Prob-Knoten brauchen einen Prompt im Payload (der Worker liest ihn); die
+        # Zerlegung liefert je Goal nur task_type/scope -> die natuerlichsprachige
+        # Absicht kommt aus dem Plan-Prompt. det-Knoten (index) + verify laufen
+        # ohne Prompt. enqueue ueberspringt done-Knoten -> gleiche Reihenfolge.
+        instruction = current.content.get("prompt", "")
+        enqueued = [n for n in dag.nodes if n.status != "done"]
+        for node, tid in zip(enqueued, task_ids, strict=True):
+            if node.task_type == TaskType.verify.value:
+                continue
+            if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
+                continue  # det (index) -> DetWorker, kein Prompt
+            queue.update_payload(
+                tid, {"prompt": _node_prompt(node.task_type, node.scope, instruction)}
+            )
         confirmed = build_plan_artifact(
             current.content.get("prompt", ""),
             plan,
@@ -739,11 +771,14 @@ def create_app(
                 detail="Task nicht verfuegbar (nicht pending oder nicht gefunden)",
             )
 
+        # Gespeicherter Payload-Prompt ist autoritativ (traegt die Plan-Instruktion
+        # + ggf. Verify-Feedback); Fallback nur, falls keiner gesetzt wurde.
+        stored = item.payload.get("prompt")
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "prompt": _review_prompt(item.task_type, item.scope),
+            "prompt": stored or _node_prompt(item.task_type, item.scope),
         }
 
     @app.get("/api/prompt/{task_id}")
@@ -754,11 +789,12 @@ def create_app(
         info = _check_task_owner(task_id, owner)
         scope = info["scope"]
         task_type = info["task_type"]
+        stored = info["payload"].get("prompt")
         return {
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "prompt": _review_prompt(task_type, scope),
+            "prompt": stored or _node_prompt(task_type, scope),
         }
 
     @app.post("/api/validate")

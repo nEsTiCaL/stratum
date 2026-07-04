@@ -998,6 +998,45 @@ class TestPlanConfirmDiscard:
             r = c.post(f"/api/plan/{pid}/discard", headers=AUTH)
         assert r.json()["discarded_tasks"] == 0
 
+    def test_confirm_sets_prob_node_prompts(self, conn):
+        # Prob-Knoten brauchen einen Prompt im Payload (Worker liest ihn); det
+        # (index) nicht. Frueher: KeyError 'prompt' beim Worker.
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+        rows = conn.execute(
+            "SELECT task_type, payload->>'prompt' FROM queue ORDER BY id"
+        ).fetchall()
+        by_type = {tt: prompt for tt, prompt in rows}
+        assert by_type["review"]  # prob -> Prompt gesetzt
+        assert by_type["index"] is None  # det -> kein Prompt
+
+    def test_confirm_implement_uses_patch_prompt(self, conn):
+        instruction = "Kamerazoom um Faktor 5 vergroessern"
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={
+                    "prompt": instruction,
+                    "goals": [
+                        {
+                            "task_type": "implement",
+                            "scope": "file:scripts/cam.gd",
+                            "depends_on": [],
+                        }
+                    ],
+                },
+                headers=AUTH,
+            )
+            pid = r.json()["id"]
+            c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+        prompt = conn.execute(
+            "SELECT payload->>'prompt' FROM queue WHERE task_type='implement'"
+        ).fetchone()[0]
+        assert "Unified-Diff" in prompt  # Patch-Prompt, nicht Review
+        assert instruction in prompt  # Plan-Absicht durchgereicht
+        assert "existiert noch nicht" in prompt  # Greenfield erkannt
+
 
 class TestCurrentPlan:
     """I-6.5: GET /api/plan/current (Cockpit-Viewer, Reload/Polling)."""

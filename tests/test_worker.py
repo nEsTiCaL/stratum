@@ -297,6 +297,37 @@ class TestLlmWorker:
         assert "Bug" in content.get("findings", "")
         assert "validieren" in content.get("recommendations", "")
 
+    def test_verify_feedback_appended_to_prompt(self):
+        # Rueckkante I-7.4: reopen legt verify_feedback ins Payload -> der naechste
+        # Versuch muss den vorherigen Verify-Fehler im Prompt sehen.
+        seen: dict[str, str] = {}
+
+        class _Rec:
+            def complete(self, prompt: str) -> str:
+                seen["p"] = prompt
+                return _prob_response()
+
+        worker = LlmWorker(router=Router(), model_factory=lambda name: _Rec())
+        item = _item(
+            payload={"prompt": "Basis-Prompt", "verify_feedback": "pytest rot: test_x"}
+        )
+        worker.run(item, _FakeRepo())
+        assert "Basis-Prompt" in seen["p"]
+        assert "pytest rot: test_x" in seen["p"]
+
+    def test_no_feedback_leaves_prompt_clean(self):
+        seen: dict[str, str] = {}
+
+        class _Rec:
+            def complete(self, prompt: str) -> str:
+                seen["p"] = prompt
+                return _prob_response()
+
+        worker = LlmWorker(router=Router(), model_factory=lambda name: _Rec())
+        worker.run(_item(payload={"prompt": "Nur Basis"}), _FakeRepo())
+        assert "Nur Basis" in seen["p"]
+        assert "Verify-Fehler" not in seen["p"]
+
     def test_unstructured_response_all_in_text(self):
         """Antwort ohne die festen Ueberschriften -> alles in content.text."""
         worker = self._make_worker(FakeModel(responses=[_prob_response()]))

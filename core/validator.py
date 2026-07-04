@@ -252,7 +252,19 @@ class EscalationLoop:
                         response=last_response,
                     )
 
-        assert last_result is not None
+        if last_result is None:
+            # Alle Kandidaten uebersprungen (kein installiertes/verfuegbares
+            # Modell -- z.B. implement auf Profil D: nur nicht-installierte
+            # qwen-Kandidaten). Graceful eskaliert statt Absturz -> der Aufrufer
+            # (LlmWorker) kann noch Cloud versuchen bzw. terminal failen.
+            return EscalationOutcome(
+                status="unresolved",
+                validation_result="escalated",
+                trigger="no_candidate",
+                attempts=attempts,
+                final_model=None,
+                response=None,
+            )
         return EscalationOutcome(
             status="unresolved",
             validation_result="escalated",
