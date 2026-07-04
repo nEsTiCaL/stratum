@@ -53,10 +53,12 @@ propose a reasonable target path as the scope (e.g. file:player/camera.gd).
 - architecture/cross_module/crypto_audit: cross-cutting analysis
 - index/symbol_lookup/dependency_map: structural queries
 
-A goal must map to exactly one task_type AND one concrete scope. For implement \
-goals the scope may be a proposed (not yet existing) file path. For all other \
-task types, if there is no matching task_type or no concrete scope, do NOT \
-invent one — list it in not_covered with a short reason instead.
+Scope rules:
+- implement: scope is the target file path; invent a sensible path if the file \
+does not exist yet (greenfield). This is expected and required, not an error.
+- all other task types: scope must refer to something that plausibly exists. \
+If no task_type fits OR no existing scope can be determined, list it in \
+not_covered — do NOT invent a task_type or scope.
 
 Return one goal for a simple single-step request. Reply with the JSON object \
 only.
