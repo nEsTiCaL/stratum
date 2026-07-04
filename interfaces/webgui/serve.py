@@ -113,12 +113,14 @@ def _seed(conn: psycopg.Connection) -> None:
 
 def _make_worker_loop(
     worker_conn: psycopg.Connection, worker_repo: Repository
-) -> tuple[WorkerLoop, object | None, str]:
+) -> tuple[WorkerLoop, object | None, str, bool]:
     """Baut den WorkerLoop und (I-6.2) den Decompose-Seam fuer POST /api/intent.
 
-    Rueckgabe: (loop, decompose_model, decompose_producer). Der Decompose-Seam
-    ist nur gesetzt, wenn eine Cloud konfiguriert ist (ANTHROPIC_API_KEY); auf
-    Profil D bleibt er None -> /api/intent 503 (Zerlegung via Cloud/manuell).
+    Rueckgabe: (loop, decompose_model, decompose_producer, code_capable). Der
+    Decompose-Seam ist nur gesetzt, wenn eine Cloud konfiguriert ist
+    (ANTHROPIC_API_KEY); auf Profil D bleibt er None -> /api/intent 503
+    (Zerlegung via Cloud/manuell). code_capable steuert das Schreib-Routing
+    (Schritt 7): False -> implement/fix laufen ueber model:human.
     """
     router = Router()
 
@@ -218,6 +220,18 @@ def _make_worker_loop(
                 print(f"[intent] Decompose-Modell: {cand.model} (Cloud)")
                 break
 
+    # code_capable (Schritt 7): gibt es einen erreichbaren Kandidaten fuer
+    # Schreib-Tasks (implement/fix, Router-Kappung code>=55)? Cloud aktiv ODER
+    # ein installierter lokaler Coder. Auf Profil D ohne Cloud: False -> die App
+    # routet implement/fix auf model:human (Dashboard-Einreichpfad).
+    local_coder = any(
+        not cand.is_cloud
+        for cand in router.candidates(
+            TaskType.implement, installed=frozenset(installed)
+        )
+    )
+    code_capable = cloud_sender is not None or local_coder
+
     root = Path(__file__).parent.parent.parent
     loop = WorkerLoop(
         queue=Queue(worker_conn),
@@ -236,7 +250,7 @@ def _make_worker_loop(
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
     )
-    return loop, decompose_model, decompose_producer
+    return loop, decompose_model, decompose_producer, code_capable
 
 
 def _run_worker(loop: WorkerLoop, models: list[str]) -> None:
@@ -284,7 +298,7 @@ def main() -> None:
     worker_repo = Repository(worker_conn)
 
     print("Worker-Thread starten …")
-    worker_loop, decompose_model, decompose_producer = _make_worker_loop(
+    worker_loop, decompose_model, decompose_producer, code_capable = _make_worker_loop(
         worker_conn, worker_repo
     )
     worker_thread = threading.Thread(
@@ -308,6 +322,7 @@ def main() -> None:
         ),
         decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
         decompose_producer=decompose_producer,
+        code_capable=code_capable,  # Schritt 7: False -> implement/fix -> human
     )
 
     print(f"Dashboard: http://{args.host}:{args.port}/")

@@ -239,6 +239,20 @@ class Queue:
                 row = cur.fetchone()
         return _row_to_item(row) if row is not None else None
 
+    def set_model(self, item_id: int, model: str) -> None:
+        """Setzt den Claim-Key (model) eines pending-Eintrags nach enqueue.
+
+        Der model-Wert entscheidet, welcher Worker-Loop einen Knoten claimt
+        (claim() filtert q.model = model). Wird genutzt, um Schreib-Tasks auf
+        einem Host ohne code-faehigen Kandidaten auf 'human' umzurouten (der
+        LLM-Loop laesst sie dann liegen, der Dashboard-Einreichpfad greift)."""
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue SET model = %s WHERE id = %s",
+                    (model, item_id),
+                )
+
     def update_payload(self, item_id: int, payload: dict) -> None:
         """Setzt das payload-Feld eines Queue-Eintrags (nach enqueue)."""
         with self._conn.transaction():

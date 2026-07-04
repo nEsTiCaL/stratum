@@ -1037,6 +1037,63 @@ class TestPlanConfirmDiscard:
         assert instruction in prompt  # Plan-Absicht durchgereicht
         assert "existiert noch nicht" in prompt  # Greenfield erkannt
 
+    @staticmethod
+    def _confirm_implement_plan(c) -> None:
+        """Legt einen Plan mit einem implement-Knoten an und bestaetigt ihn."""
+        r = c.post(
+            "/api/intent",
+            json={
+                "prompt": "Kamera-Skript",
+                "goals": [
+                    {
+                        "task_type": "implement",
+                        "scope": "file:scripts/cam.gd",
+                        "depends_on": [],
+                    }
+                ],
+            },
+            headers=AUTH,
+        )
+        c.post(f"/api/plan/{r.json()['id']}/confirm", headers=AUTH)
+
+    def test_confirm_routes_write_task_to_human_without_code_candidate(self, conn):
+        # Profil D ohne Cloud (code_capable=False): implement hat keinen
+        # code-faehigen Worker -> Claim-Key model:human, damit der phi4-mini-Loop
+        # ihn liegen laesst und der Dashboard-Einreichpfad greift.
+        app = create_app(Queue(conn), Repository(conn), code_capable=False)
+        with TestClient(app) as c:
+            self._confirm_implement_plan(c)
+        model = conn.execute(
+            "SELECT model FROM queue WHERE task_type='implement'"
+        ).fetchone()[0]
+        assert model == "human"
+
+    def test_confirm_keeps_write_model_with_code_candidate(self, conn):
+        # Mit erreichbarem Kandidaten (code_capable, Default) bleibt der
+        # regulaere Claim-Key -> der LlmWorker eskaliert selbst.
+        app = create_app(Queue(conn), Repository(conn))  # code_capable=True
+        with TestClient(app) as c:
+            self._confirm_implement_plan(c)
+        model = conn.execute(
+            "SELECT model FROM queue WHERE task_type='implement'"
+        ).fetchone()[0]
+        assert model == "phi4-mini"
+
+    def test_task_routes_write_task_to_human_without_code_candidate(self, conn):
+        # Gleiche Umleitung auf dem Einzeltask-Pfad (POST /api/task).
+        app = create_app(Queue(conn), Repository(conn), code_capable=False)
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/task",
+                json={"task_type": "implement", "scope": "file:scripts/cam.gd"},
+                headers=AUTH,
+            )
+            item_id = r.json()["id"]
+        model = conn.execute(
+            "SELECT model FROM queue WHERE id=%s", (item_id,)
+        ).fetchone()[0]
+        assert model == "human"
+
 
 class TestCurrentPlan:
     """I-6.5: GET /api/plan/current (Cockpit-Viewer, Reload/Polling)."""

@@ -254,6 +254,15 @@ class PlanEditBody(BaseModel):
 # routet je Knoten per Router (TASK_REQUIREMENTS), das Feld ist nur der Claim-Key.
 _CONFIRM_MODEL = "phi4-mini"
 
+# Claim-Key fuer Knoten ohne automatischen Worker: der LLM-Loop laesst sie liegen,
+# der Nutzer claimt sie im Dashboard (claim_by_id). Schreib-Tasks landen hier,
+# wenn kein code-faehiger Kandidat erreichbar ist (Profil D ohne Cloud).
+_HUMAN_MODEL = "human"
+
+# Schreibende task_types (Schritt 7): brauchen einen code-faehigen Kandidaten
+# (Router-Kappung code>=55) -> auf Profil D ohne Cloud nur ueber den Human-Pfad.
+_WRITE_TASK_TYPES = frozenset({TaskType.implement.value, TaskType.fix.value})
+
 
 def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
     """PlanGoalBody-Liste -> GoalItems. ValueError bei unbekanntem task_type
@@ -281,6 +290,7 @@ def create_app(
     apply_policy: ApplyPolicy | None = None,
     decompose_model: Model | None = None,
     decompose_producer: str = "unknown",
+    code_capable: bool = True,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
 
@@ -290,6 +300,12 @@ def create_app(
     decompose_model (optional, I-6.2): Model-Seam fuer POST /api/intent (Prompt
     -> Plan). None -> Endpoint 503 (Profil D ohne Cloud: Zerlegung via Cloud
     oder manuell). decompose_producer = Modellname fuer die Plan-Provenance.
+
+    code_capable (Schritt 7): ob ein code-faehiger Kandidat erreichbar ist
+    (lokaler Coder installiert ODER Cloud aktiv). False (Profil D ohne Cloud)
+    -> Schreib-Tasks (implement/fix) werden auf model:human geroutet, damit der
+    Dashboard-Einreichpfad greift statt der phi4-mini-Loop sie an der
+    Router-Kappung (code>=55) graceful failen zu lassen.
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
     resolved_apply_policy = apply_policy or ApplyPolicy()  # fail-safe Default
@@ -449,6 +465,16 @@ def create_app(
             )
         return build_review_prompt(task_type, scope, source_code, instruction, context)
 
+    def _claim_model(task_type: str, requested: str) -> str:
+        """Claim-Key (Worker-Auswahl) fuer einen Knoten. Ohne code-faehigen
+        Kandidaten (code_capable=False, Profil D ohne Cloud) haben Schreib-Tasks
+        keinen Worker, der sie erfolgreich abschliesst -> auf model:human routen,
+        sodass der Dashboard-Einreichpfad greift. Sonst bleibt der angeforderte
+        Claim-Key (der LlmWorker eskaliert selbst zu Cloud/lokalem Coder)."""
+        if not code_capable and task_type in _WRITE_TASK_TYPES:
+            return _HUMAN_MODEL
+        return requested
+
     @app.post("/api/task", status_code=201)
     async def create_task(
         body: TaskCreateBody, owner: str = Depends(_require_owner)
@@ -477,7 +503,9 @@ def create_app(
                 )
             ],
         )
-        ids = queue.enqueue(dag, body.model, owner=owner)
+        ids = queue.enqueue(
+            dag, _claim_model(body.task_type, body.model), owner=owner
+        )
         item_id = ids[0]
         queue.update_payload(
             item_id, {"prompt": _node_prompt(body.task_type, body.scope, body.prompt)}
@@ -660,6 +688,13 @@ def create_app(
                 continue
             if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
                 continue  # det (index) -> DetWorker, kein Prompt
+            # Schreib-Tasks ohne code-faehigen Kandidaten -> model:human, sonst
+            # wuerde der phi4-mini-Loop sie claimen und graceful failen. enqueue
+            # setzt _CONFIRM_MODEL; hier je Knoten umrouten (implement/fix
+            # haengen an einem index-Knoten -> vorm Claim ohnehin nicht faellig).
+            claim_model = _claim_model(node.task_type, _CONFIRM_MODEL)
+            if claim_model != _CONFIRM_MODEL:
+                queue.set_model(tid, claim_model)
             queue.update_payload(
                 tid, {"prompt": _node_prompt(node.task_type, node.scope, instruction)}
             )
