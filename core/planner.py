@@ -44,7 +44,8 @@ cross_module crypto_audit implement fix>",
 
 Task type guidance (use the best fit):
 - implement: create new code or a new file from scratch (e.g. a new script, \
-feature, or module)
+feature, or module). For greenfield requests the file does not exist yet — \
+propose a reasonable target path as the scope (e.g. file:player/camera.gd).
 - fix: correct a bug or broken behaviour in existing code
 - refactor_suggest: restructure existing code without changing behaviour
 - test_gen: generate tests for existing code
@@ -52,9 +53,10 @@ feature, or module)
 - architecture/cross_module/crypto_audit: cross-cutting analysis
 - index/symbol_lookup/dependency_map: structural queries
 
-A goal must map to exactly one task_type AND one concrete scope. If part of \
-the request has no matching task_type or no concrete scope, do NOT invent one \
-— list it in not_covered with a short reason instead.
+A goal must map to exactly one task_type AND one concrete scope. For implement \
+goals the scope may be a proposed (not yet existing) file path. For all other \
+task types, if there is no matching task_type or no concrete scope, do NOT \
+invent one — list it in not_covered with a short reason instead.
 
 Return one goal for a simple single-step request. Reply with the JSON object \
 only.
