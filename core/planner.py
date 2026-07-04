@@ -42,6 +42,16 @@ cross_module crypto_audit implement fix>",
   ]
 }}
 
+Task type guidance (use the best fit):
+- implement: create new code or a new file from scratch (e.g. a new script, \
+feature, or module)
+- fix: correct a bug or broken behaviour in existing code
+- refactor_suggest: restructure existing code without changing behaviour
+- test_gen: generate tests for existing code
+- review/debug/explain/document/summarize: analysis and reading tasks
+- architecture/cross_module/crypto_audit: cross-cutting analysis
+- index/symbol_lookup/dependency_map: structural queries
+
 A goal must map to exactly one task_type AND one concrete scope. If part of \
 the request has no matching task_type or no concrete scope, do NOT invent one \
 — list it in not_covered with a short reason instead.

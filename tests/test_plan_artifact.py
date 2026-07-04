@@ -46,6 +46,14 @@ class TestPlanInputHash:
         h = plan_input_hash("x")
         assert len(h) == 64 and all(c in "0123456789abcdef" for c in h)
 
+    def test_hash_includes_template_fingerprint(self):
+        # Template-Aenderungen muessen den Cache-Schluessel aendern; sonst
+        # liefert staleness_lookup veraltete Plaene mit falschen not_covered.
+        import hashlib
+
+        plain_prompt_hash = hashlib.sha256(b"x").hexdigest()
+        assert plan_input_hash("x") != plain_prompt_hash
+
 
 class TestBuildPlanArtifact:
     def test_envelope(self):

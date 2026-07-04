@@ -20,9 +20,16 @@ import hashlib
 from pathlib import Path
 
 from core.models.result_prob_schema import ArtifactType, ResultProb
+from core.planner import _PROMPT_TEMPLATE as _PLANNER_TEMPLATE
 from core.planner import GoalItem, Plan
 from core.provenance_stamp import build_prob_provenance
 from core.router import TaskType
+
+# Template-Fingerprint: aendert sich _PROMPT_TEMPLATE, aendert sich dieser Wert
+# -> alle bisherigen Cache-Eintraege verfallen automatisch (neuer input_hash).
+_TEMPLATE_FINGERPRINT = hashlib.sha256(_PLANNER_TEMPLATE.encode("utf-8")).hexdigest()[
+    :16
+]
 
 # Plaene sind repo-weit (I-6.1-Vertrag: scope "repo:"). Die Edit-Kette (I-6.3)
 # laeuft ueber die superseded-Mechanik desselben (scope, artifact_type).
@@ -41,12 +48,15 @@ PLAN_CONFIDENCE = 0.9
 
 
 def plan_input_hash(prompt: str) -> str:
-    """Cache-Schluessel eines Plans = SHA-256 des Prompts (nicht einer Quelldatei).
+    """Cache-Schluessel eines Plans = SHA-256(template_fingerprint + prompt).
 
-    Gleicher Prompt -> gleicher Hash -> staleness_lookup-Treffer -> Plan aus dem
-    Store, ohne das Modell erneut aufzurufen.
+    Der Template-Fingerprint (erster 16 Hex-Zeichen des Template-SHA-256) stellt
+    sicher, dass Aenderungen am Decompose-Prompt automatisch alle bisherigen
+    Cache-Eintraege bustenn: gleicher Nutzer-Prompt + neues Template -> neuer Hash
+    -> neuer Modellaufruf statt veraltetem Store-Hit.
     """
-    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    combined = f"{_TEMPLATE_FINGERPRINT}:{prompt}"
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
 def build_plan_artifact(
