@@ -21,6 +21,31 @@ from core.validator import Model
 
 LARGE_PLAN_THRESHOLD = 5
 
+# Einzige Wahrheitsquelle der planbaren (nutzer-auswaehlbaren) task_types:
+# speist die "one of: ..."-Zeile im Prompt UND den Cockpit-Dropdown (ueber
+# GET /api/intent/task-types). verify fehlt bewusst -- det VerifyWorker-Typ,
+# kein vom Nutzer waehlbares Goal.
+PLANNER_TASK_TYPES: tuple[TaskType, ...] = (
+    TaskType.index,
+    TaskType.symbol_lookup,
+    TaskType.dependency_map,
+    TaskType.explain,
+    TaskType.document,
+    TaskType.summarize,
+    TaskType.review,
+    TaskType.test_gen,
+    TaskType.refactor_suggest,
+    TaskType.debug,
+    TaskType.architecture,
+    TaskType.cross_module,
+    TaskType.crypto_audit,
+    TaskType.implement,
+    TaskType.fix,
+)
+_TASK_TYPE_LIST = " ".join(t.value for t in PLANNER_TASK_TYPES)
+
+# Sentinel __TASK_TYPES__ statt {task_types}, damit die spaetere .format(prompt=)
+# nicht kollidiert (Template escaped literale Braces als {{ }}).
 _PROMPT_TEMPLATE = """\
 You are a software-engineering assistant. First understand what the user \
 actually wants, then break it into ordered sub-goals.
@@ -33,9 +58,7 @@ own language; this is shown back to the user to confirm or correct>",
 goal, each with a short reason; empty list if everything is covered>],
   "goals": [
     {{
-      "task_type": "<one of: index symbol_lookup dependency_map explain \
-document summarize review test_gen refactor_suggest debug architecture \
-cross_module crypto_audit implement fix>",
+      "task_type": "<one of: __TASK_TYPES__>",
       "scope": "<scope string, e.g. module:auth or file:auth/login.py>",
       "depends_on": [<0-based indices of goals this depends on, empty if none>]
     }}
@@ -64,7 +87,17 @@ Return one goal for a simple single-step request. Reply with the JSON object \
 only.
 
 Task:
-{prompt}"""
+{prompt}""".replace("__TASK_TYPES__", _TASK_TYPE_LIST)
+
+
+def build_decompose_prompt(prompt: str) -> str:
+    """Fertiger Zerlegungs-Prompt fuer einen Nutzer-Auftrag.
+
+    Einzige Wahrheitsquelle: dieselbe Funktion speist den lokalen Modell-Pfad
+    (IntentDecomposer.decompose) UND den manuellen Copy-Paste-Pfad im Cockpit
+    (ueber POST /api/intent/prompt). Kein zweites Template im Frontend mehr.
+    """
+    return _PROMPT_TEMPLATE.format(prompt=prompt)
 
 
 @dataclass(frozen=True)
@@ -173,7 +206,7 @@ class IntentDecomposer:
         self._large_threshold = large_threshold
 
     def decompose(self, prompt: str) -> Plan:
-        raw = self._model.complete(_PROMPT_TEMPLATE.format(prompt=prompt))
+        raw = self._model.complete(build_decompose_prompt(prompt))
         data = _load_json(raw)
         # Neu (I-6.5): Objekt {understanding, not_covered, goals}. Tolerant zum
         # alten Format (bare Array = nur goals), damit aeltere Modelle/Fixtures

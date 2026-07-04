@@ -520,6 +520,7 @@
     const slowPoll = () => { fetchMetrics(); fetchStats(); fetchCalibration(); };
     fetchTasks();
     fetchLive();
+    fetchTaskTypes();   // einmalig: Cockpit-Dropdown aus dem Backend (Single-Source)
     // Plan einmalig laden (user-getrieben; NICHT im Interval -> keine Eingabe-
     // Ueberschreibung waehrend des Tippens). Aktualisiert nach jeder Aktion.
     fetchPlan();
@@ -862,30 +863,15 @@
 
   // ── Plan-Cockpit (I-6.5) ────────────────────────────────────────────────────
 
-  const TASK_TYPES = ['index','symbol_lookup','dependency_map','explain','document',
-    'summarize','review','test_gen','refactor_suggest','debug','architecture',
-    'cross_module','crypto_audit','implement','fix'];
+  // Cockpit-Dropdown + Zerlegungs-Prompt kommen aus dem Backend (core.planner),
+  // damit es keine driftende Frontend-Kopie gibt (Single-Source). TASK_TYPES wird
+  // per fetchTaskTypes() einmalig beim Verbinden gefuellt.
+  let TASK_TYPES = [];
 
-  // Spiegelt core/planner._PROMPT_TEMPLATE (bewusste kleine Duplizierung fuer den
-  // manuellen Copy-Paste-Pfad; Format ist in spec_schritt-6 dokumentiert).
-  const DECOMPOSE_INSTRUCTION =
-    'You are a software-engineering assistant. First understand what the user '+
-    'wants, then break it into ordered sub-goals. Reply with a JSON object only:\n'+
-    '{"understanding":"<2-3 sentences restating the request in the user\'s '+
-    'language>","not_covered":["<parts with no matching task_type/scope, with '+
-    'reason; empty if none>"],"goals":[{"task_type":"<one of: index '+
-    'symbol_lookup dependency_map explain document summarize review test_gen '+
-    'refactor_suggest debug architecture cross_module crypto_audit implement '+
-    'fix>","scope":"<e.g. module:auth or file:auth/login.py>","depends_on":'+
-    '[<0-based indices>]}]}\n'+
-    'Scope rules:\n'+
-    '- implement: create new code/a new file from scratch (e.g. a new script). '+
-    'The scope is the target file path; invent a sensible path if the file does '+
-    'not exist yet (greenfield). This is expected and required, not an error.\n'+
-    '- fix: correct a bug in existing code.\n'+
-    '- all other task types: the scope must refer to something that plausibly '+
-    'exists. If no task_type fits OR no existing scope can be determined, list '+
-    'it in not_covered — do NOT invent a task_type or scope.';
+  async function fetchTaskTypes() {
+    const r = await apiFetch('/api/intent/task-types');
+    if (r.ok) TASK_TYPES = (await r.json()).task_types || [];
+  }
 
   let _plan = null, _planId = null, _meta = [];
   let _sel = null;              // {kind:'prompt'|'intent'|'goal', i}
@@ -1063,10 +1049,15 @@
     await fetchPlan(); pcMsg('Plan erstellt.', 'ok');
   }
 
-  function copyDecomposePrompt() {
+  async function copyDecomposePrompt() {
     const p = (document.getElementById('pc-prompt') || {}).value || _pendingPrompt || '';
-    navigator.clipboard.writeText(DECOMPOSE_INSTRUCTION + '\n\nTask:\n' + p)
-      .then(()=> pcMsg('Zerlegungs-Prompt kopiert.', 'ok'));
+    const r = await apiFetch('/api/intent/prompt', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: p }),
+    });
+    if (!r.ok) { pcMsg('Prompt nicht verfügbar (' + r.status + ').', 'err'); return; }
+    await navigator.clipboard.writeText((await r.json()).prompt);
+    pcMsg('Zerlegungs-Prompt kopiert.', 'ok');
   }
 
   async function submitManual() {

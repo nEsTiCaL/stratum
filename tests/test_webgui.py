@@ -806,6 +806,44 @@ class TestIntentEndpoint:
         assert r.status_code == 400
 
 
+class TestIntentPromptEndpoints:
+    """I-6.5: Backend als einzige Prompt-/task_type-Quelle (kein Frontend-Duplikat)."""
+
+    def _c(self, conn):
+        return TestClient(create_app(Queue(conn), Repository(conn)))
+
+    def test_task_types_requires_auth(self, conn):
+        with self._c(conn) as c:
+            assert c.get("/api/intent/task-types").status_code == 401
+
+    def test_task_types_from_planner_source(self, conn):
+        from core.planner import PLANNER_TASK_TYPES
+
+        with self._c(conn) as c:
+            body = c.get("/api/intent/task-types", headers=AUTH).json()
+        assert body["task_types"] == [t.value for t in PLANNER_TASK_TYPES]
+        assert "implement" in body["task_types"]
+        assert "verify" not in body["task_types"]  # det-Typ, nicht waehlbar
+
+    def test_prompt_requires_auth(self, conn):
+        with self._c(conn) as c:
+            r = c.post("/api/intent/prompt", json={"prompt": "x"})
+            assert r.status_code == 401
+
+    def test_prompt_matches_build_decompose_prompt(self, conn):
+        from core.planner import build_decompose_prompt
+
+        with self._c(conn) as c:
+            body = c.post(
+                "/api/intent/prompt",
+                json={"prompt": "Erstelle ein Kamera-Skript"},
+                headers=AUTH,
+            ).json()
+        # Exakt derselbe String wie im lokalen Modell-Pfad (eine Quelle).
+        assert body["prompt"] == build_decompose_prompt("Erstelle ein Kamera-Skript")
+        assert "Erstelle ein Kamera-Skript" in body["prompt"]
+
+
 def _plan_client(conn):
     return TestClient(
         create_app(

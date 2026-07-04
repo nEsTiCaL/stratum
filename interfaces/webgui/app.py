@@ -67,10 +67,12 @@ from core.plan_artifact import (
 from core.plan_metadata import enrich_plan
 from core.planner import (
     LARGE_PLAN_THRESHOLD,
+    PLANNER_TASK_TYPES,
     GoalItem,
     IntentDecomposer,
     Plan,
     build_dag,
+    build_decompose_prompt,
 )
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
@@ -226,6 +228,10 @@ class PlanGoalBody(BaseModel):
     task_type: str
     scope: str
     depends_on: list[int] = []
+
+
+class DecomposePromptBody(BaseModel):
+    prompt: str
 
 
 class IntentBody(BaseModel):
@@ -530,6 +536,28 @@ def create_app(
 
         plan = IntentDecomposer(decompose_model).decompose(effective)
         return _store_plan(effective, plan, producer=decompose_producer)
+
+    @app.get("/api/intent/task-types")
+    async def intent_task_types(
+        owner: str = Depends(_require_owner),
+    ) -> dict[str, list[str]]:
+        """Nutzer-auswaehlbare task_types fuer den Cockpit-Dropdown (I-6.5).
+
+        Einzige Quelle = core.planner.PLANNER_TASK_TYPES (dieselbe Liste, aus der
+        der Zerlegungs-Prompt seine 'one of: ...'-Zeile baut) -> kein driftendes
+        Frontend-Array mehr."""
+        return {"task_types": [t.value for t in PLANNER_TASK_TYPES]}
+
+    @app.post("/api/intent/prompt")
+    async def intent_prompt(
+        body: DecomposePromptBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, str]:
+        """Fertiger Zerlegungs-Prompt fuer den manuellen Copy-Paste-Pfad (I-6.5).
+
+        Liefert exakt den String, den auch der lokale Modell-Pfad an das Modell
+        gibt (core.planner.build_decompose_prompt) -> Frontend haelt keine zweite
+        Prompt-Kopie mehr."""
+        return {"prompt": build_decompose_prompt(body.prompt.strip())}
 
     @app.get("/api/plan/current")
     async def current_plan(owner: str = Depends(_require_owner)) -> dict[str, Any]:

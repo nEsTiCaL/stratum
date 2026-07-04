@@ -199,3 +199,38 @@ def test_prompt_template_contains_implement_and_fix():
 
     assert "implement" in _PROMPT_TEMPLATE
     assert "fix" in _PROMPT_TEMPLATE
+
+
+def test_planner_task_types_source_of_truth():
+    from core.planner import PLANNER_TASK_TYPES
+
+    # Nutzer-auswaehlbare Typen: implement/fix drin, det VerifyWorker-Typ raus.
+    assert TaskType.implement in PLANNER_TASK_TYPES
+    assert TaskType.fix in PLANNER_TASK_TYPES
+    assert TaskType.verify not in PLANNER_TASK_TYPES
+
+
+def test_build_decompose_prompt_embeds_task_and_types():
+    from core.planner import PLANNER_TASK_TYPES, build_decompose_prompt
+
+    p = build_decompose_prompt("Erstelle ein Kamera-Skript")
+    assert "Erstelle ein Kamera-Skript" in p
+    assert "__TASK_TYPES__" not in p  # Sentinel wurde ersetzt
+    # "one of: ..."-Zeile wird aus PLANNER_TASK_TYPES gebaut.
+    for tt in PLANNER_TASK_TYPES:
+        assert tt.value in p
+
+
+def test_decompose_uses_build_decompose_prompt():
+    # Der lokale Modell-Pfad und der Copy-Paste-Pfad teilen denselben Prompt.
+    from core.planner import build_decompose_prompt
+
+    class _Recorder:
+        seen = ""
+
+        def complete(self, prompt: str) -> str:
+            _Recorder.seen = prompt
+            return _goals_resp(_goal())
+
+    IntentDecomposer(_Recorder()).decompose("mach was")
+    assert _Recorder.seen == build_decompose_prompt("mach was")
