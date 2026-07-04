@@ -200,6 +200,71 @@
   #submit-msg { font-size: .8rem; margin-left: .2rem; }
   .ok  { color: #4f4; }
   .err { color: #f44; }
+
+  /* ── Plan-Cockpit (I-6.5) ── */
+  #plan-cockpit { display: none; margin-bottom: 1.75rem; }
+  #plan-cockpit.active { display: block; }
+  .pc-title { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+              color: #aab0c0; margin-bottom: .5rem; }
+  .pc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; align-items: start; }
+  @media (max-width: 720px) { .pc-grid { grid-template-columns: 1fr; } }
+  .pc-panel { border: 1px solid #333; border-radius: 6px; background: #16161a;
+              padding: .85rem 1rem; min-height: 180px; }
+  .pc-panel h3 { font-size: .8rem; color: #cdd2dc; margin-bottom: .7rem; font-weight: normal; }
+
+  /* Flow-Rail (Prompt -> Intent -> Tasks -> Subtasks) */
+  .pc-rail { display: flex; gap: .3rem; margin-bottom: .8rem; flex-wrap: wrap; }
+  .pc-stage { flex: 1; min-width: 70px; text-align: center; font-size: .64rem;
+              letter-spacing: .05em; text-transform: uppercase; color: #667;
+              padding: .3rem .2rem; border: 1px solid #262626; border-radius: 4px;
+              background: #111; }
+  .pc-stage.done   { color: #6ec46e; border-color: #2a4a2a; }
+  .pc-stage.active { color: #6af; border-color: #2a5a8a; background: #12203050; }
+
+  /* Baum-Knoten */
+  .pc-node { border: 1px solid #242424; border-left: 3px solid #333; border-radius: 4px;
+             padding: .5rem .7rem; margin-bottom: .45rem; cursor: pointer; background: #131316; }
+  .pc-node:hover { background: #191920; }
+  .pc-node.sel { border-left-color: #5aa0e8; background: #14202e; }
+  .pc-node.ghost { opacity: .4; cursor: default; }
+  .pc-node-head { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #dde3ee; }
+  .pc-node-sub { font-size: .72rem; color: #99a; margin-top: .25rem; line-height: 1.4; }
+  .pc-tasks { margin-left: .8rem; border-left: 1px solid #262626; padding-left: .6rem; }
+
+  .pc-badge { font-size: .62rem; padding: .1rem .4rem; border-radius: 3px; white-space: nowrap; }
+  .b-mode-manual { background: #2a1a1a; color: #f88; }
+  .b-mode-model  { background: #1a2233; color: #7ab0ff; }
+  .b-auto        { background: #14210f; color: #8fce6a; }
+  .b-eff-small   { background: #14210f; color: #8fce6a; }
+  .b-eff-medium  { background: #2a2410; color: #e0b84f; }
+  .b-eff-large   { background: #2a1a0a; color: #f0975a; }
+  .b-eff-unknown { background: #1c1c1c; color: #778; }
+  .pc-dur { font-size: .68rem; color: #8a93a6; font-variant-numeric: tabular-nums; }
+  .pc-notcov { border-left: 3px solid #7a5a2a; background: #1c160c; color: #e0b84f;
+               font-size: .72rem; padding: .4rem .6rem; border-radius: 4px; margin-top: .5rem; }
+
+  .pc-in { width: 100%; background: #0b0b0b; color: #e0e0e0; border: 1px solid #2a2a2a;
+           border-radius: 3px; padding: .45rem .6rem; font-family: monospace; font-size: .8rem;
+           outline: none; margin-bottom: .5rem; }
+  .pc-in:focus { border-color: #3a3a4a; }
+  textarea.pc-in { resize: vertical; min-height: 60px; }
+  select.pc-in { cursor: pointer; }
+  .pc-row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin-top: .3rem; }
+  .pc-lbl { font-size: .66rem; color: #778; letter-spacing: .04em; text-transform: uppercase;
+            margin: .3rem 0 .2rem; }
+  .btn-pc      { background: #1e3a5a; color: #6af; }
+  .btn-pc:hover { background: #244870; }
+  .btn-pc-ghost { background: #1a1a1a; color: #99a; border: 1px solid #2a2a2a; }
+  .btn-pc-ghost:hover { background: #222; color: #ccc; }
+  .btn-pc-danger { background: #2a1e1e; color: #f66; }
+  .btn-pc-danger:hover { background: #3a2020; }
+  .btn-pc-go   { background: #1e3a1e; color: #6f6; }
+  .btn-pc-go:hover { background: #234a23; }
+  .pc-hint { font-size: .7rem; color: #667; margin-top: .5rem; }
+  .pc-understanding { font-size: .82rem; color: #cdd6e6; line-height: 1.5;
+                      border-left: 3px solid #2a5a8a; padding: .3rem .7rem; background: #10161e;
+                      border-radius: 4px; margin-bottom: .6rem; }
+  #pc-msg { font-size: .76rem; margin-top: .4rem; min-height: 1em; }
 </style>
 
 <!-- ── Login-Overlay ── -->
@@ -279,6 +344,21 @@
       </tr></thead>
       <tbody id="cal-conf-body"></tbody>
     </table>
+  </div>
+</div>
+
+<div id="plan-cockpit">
+  <div class="pc-title">Auftrag &amp; Plan</div>
+  <div class="pc-grid">
+    <div class="pc-panel" id="pc-input">
+      <h3>Eingabe</h3>
+      <div id="pc-input-body"></div>
+      <div id="pc-msg"></div>
+    </div>
+    <div class="pc-panel" id="pc-tree">
+      <div class="pc-rail" id="pc-rail"></div>
+      <div id="pc-tree-body"></div>
+    </div>
   </div>
 </div>
 
@@ -415,6 +495,7 @@
     _apiKey = null;
     stopPolling();
     cancelClaim();
+    _plan = _planId = _sel = null; _manual = false; _pendingPrompt = '';
     document.getElementById('task-body').innerHTML =
       '<tr><td colspan="7" id="empty-msg">Verbinde …</td></tr>';
     showLogin();
@@ -435,9 +516,13 @@
 
   function startPolling() {
     document.getElementById('monitor').classList.add('active');
+    document.getElementById('plan-cockpit').classList.add('active');
     const slowPoll = () => { fetchMetrics(); fetchStats(); fetchCalibration(); };
     fetchTasks();
     fetchLive();
+    // Plan einmalig laden (user-getrieben; NICHT im Interval -> keine Eingabe-
+    // Ueberschreibung waehrend des Tippens). Aktualisiert nach jeder Aktion.
+    fetchPlan();
     slowPoll();
     // Live-Status im Sekundentakt (leicht), Aggregate periodisch (teurer, R5).
     _pollTimer = setInterval(() => { fetchTasks(); fetchLive(); }, 2000);
@@ -448,6 +533,7 @@
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     if (_slowTimer) { clearInterval(_slowTimer); _slowTimer = null; }
     document.getElementById('monitor').classList.remove('active');
+    document.getElementById('plan-cockpit').classList.remove('active');
   }
 
   async function fetchTasks() {
@@ -772,6 +858,294 @@
     document.getElementById('claim-panel').style.display = 'none';
     document.getElementById('response-box').value = '';
     document.getElementById('submit-msg').textContent = '';
+  }
+
+  // ── Plan-Cockpit (I-6.5) ────────────────────────────────────────────────────
+
+  const TASK_TYPES = ['index','symbol_lookup','dependency_map','explain','document',
+    'summarize','review','test_gen','refactor_suggest','debug','architecture',
+    'cross_module','crypto_audit'];
+
+  // Spiegelt core/planner._PROMPT_TEMPLATE (bewusste kleine Duplizierung fuer den
+  // manuellen Copy-Paste-Pfad; Format ist in spec_schritt-6 dokumentiert).
+  const DECOMPOSE_INSTRUCTION =
+    'You are a software-engineering assistant. First understand what the user '+
+    'wants, then break it into ordered sub-goals. Reply with a JSON object only:\n'+
+    '{"understanding":"<2-3 sentences restating the request in the user\'s '+
+    'language>","not_covered":["<parts with no matching task_type/scope, with '+
+    'reason; empty if none>"],"goals":[{"task_type":"<one of: index '+
+    'symbol_lookup dependency_map explain document summarize review test_gen '+
+    'refactor_suggest debug architecture cross_module crypto_audit>","scope":'+
+    '"<e.g. module:auth or file:auth/login.py>","depends_on":[<0-based indices>]}]}\n'+
+    'A goal must map to one task_type AND one concrete scope; otherwise list it '+
+    'in not_covered instead of inventing one.';
+
+  let _plan = null, _planId = null, _meta = [];
+  let _sel = null;              // {kind:'prompt'|'intent'|'goal', i}
+  let _manual = false;          // manueller Zerlegungs-Pfad sichtbar
+  let _pendingPrompt = '';      // gemerkt fuer den manuellen Pfad
+
+  function _active() { return _plan && _plan.content.status !== 'discarded'; }
+
+  function pcMsg(t, cls) {
+    const el = document.getElementById('pc-msg');
+    el.textContent = t || ''; el.className = cls || '';
+  }
+
+  async function fetchPlan() {
+    const r = await apiFetch('/api/plan/current');
+    if (!r.ok) return;
+    const d = await r.json();
+    _plan = d.plan; _planId = d.id;
+    if (_plan) {
+      const m = await apiFetch(`/api/plan/${_planId}/metadata`);
+      _meta = m.ok ? (await m.json()).metadata : [];
+    } else { _meta = []; }
+    if (!_sel) _sel = { kind: _active() ? 'intent' : 'prompt' };
+    renderCockpit();
+  }
+
+  function selNode(kind, i) { _sel = { kind, i }; renderCockpit(); }
+  function newAuftrag() { _manual = false; _sel = { kind: 'prompt' }; renderCockpit(); }
+
+  function renderCockpit() { renderRail(); renderTree(); renderInput(); }
+
+  function renderRail() {
+    const status = _plan ? _plan.content.status : null;
+    const stages = ['Prompt','Intent','Tasks','Subtasks'];
+    let ai;
+    if (!_active()) ai = 0;
+    else if (status === 'confirmed') ai = 3;
+    else ai = (_sel && _sel.kind === 'goal') ? 2 : 1;
+    document.getElementById('pc-rail').innerHTML = stages.map((s,i)=>{
+      const cls = i < ai ? 'done' : (i === ai ? 'active' : '');
+      return `<div class="pc-stage ${cls}">${s}</div>`;
+    }).join('');
+  }
+
+  function renderTree() {
+    const body = document.getElementById('pc-tree-body');
+    if (!_active()) { body.innerHTML = _ghostTree(); return; }
+    const c = _plan.content;
+    const producer = (_plan.provenance && _plan.provenance.producer) || '';
+    const modeBadge = producer === 'manual'
+      ? '<span class="pc-badge b-mode-manual">manuell</span>'
+      : `<span class="pc-badge b-mode-model">Modell · ${esc(producer)}</span>`;
+    const isConf = c.status === 'confirmed';
+    let h = `<div class="pc-node${_sel&&_sel.kind==='intent'?' sel':''}" onclick="selNode('intent')">
+      <div class="pc-node-head">Intent ${modeBadge}
+        <span class="pc-badge" style="background:#1c1c1c;color:#889">${esc(c.status)}</span></div>
+      <div class="pc-node-sub">${c.understanding ? esc(c.understanding) : '<i>kein Verständnis-Text</i>'}</div>
+    </div>`;
+    if (c.not_covered && c.not_covered.length)
+      h += `<div class="pc-notcov">Nicht abgedeckt: ${c.not_covered.map(esc).join(' · ')}</div>`;
+    h += '<div class="pc-tasks">';
+    (c.goals||[]).forEach((g,i)=>{
+      const m = _meta[i] || {};
+      const sel = _sel && _sel.kind==='goal' && _sel.i===i ? ' sel' : '';
+      const dur = m.estimated_seconds==null ? 'unbekannt' : '~'+Math.round(m.estimated_seconds)+'s';
+      const eff = m.effort_class || 'unknown';
+      const deps = (g.depends_on||[]).length
+        ? 'hängt an: '+g.depends_on.map(x=>'#'+(x+1)).join(', ') : 'keine Abhängigkeit';
+      h += `<div class="pc-node${sel}" onclick="selNode('goal',${i})">
+        <div class="pc-node-head">#${i+1} ${esc(g.task_type)}
+          <span class="pc-dur">${dur}</span>
+          <span class="pc-badge b-eff-${eff}">${eff}</span></div>
+        <div class="pc-node-sub">${esc(g.scope)} · ${deps}</div>
+      </div>`;
+    });
+    h += '</div>';
+    h += `<div class="pc-hint">Subtasks entstehen beim Bestätigen — deterministische Schritte laufen automatisch und erscheinen in der Aufgaben-Tabelle unten.</div>`;
+    if (isConf) {
+      h += `<div class="pc-row" style="margin-top:.6rem">
+        <span class="ok" style="font-size:.78rem">✓ Bestätigt — läuft in der Queue.</span>
+        <button class="btn-pc-ghost" onclick="newAuftrag()">Neuer Auftrag</button></div>`;
+    } else {
+      h += `<div class="pc-row" style="margin-top:.6rem">
+        <button class="btn-pc-go" onclick="confirmPlan()">Bestätigen → Queue</button>
+        <button class="btn-pc-ghost" onclick="addGoal()">+ Ziel</button>
+        <button class="btn-pc-danger" onclick="discardPlan()">Verwerfen</button>
+        <button class="btn-pc-ghost" onclick="newAuftrag()">Neuer Auftrag</button></div>`;
+    }
+    body.innerHTML = h;
+  }
+
+  function _ghostTree() {
+    const note = (_plan && _plan.content.status === 'discarded')
+      ? '<div class="pc-hint">Letzter Plan verworfen. Neuer Auftrag links.</div>' : '';
+    return note + `
+      <div class="pc-node ghost"><div class="pc-node-head">Intent</div>
+        <div class="pc-node-sub">Das verstandene Ziel erscheint hier.</div></div>
+      <div class="pc-tasks">
+        <div class="pc-node ghost"><div class="pc-node-head">#1 …</div>
+          <div class="pc-node-sub">Ziele erscheinen nach der Zerlegung.</div></div>
+        <div class="pc-node ghost"><div class="pc-node-head">#2 …</div>
+          <div class="pc-node-sub">…</div></div>
+      </div>`;
+  }
+
+  function renderInput() {
+    const body = document.getElementById('pc-input-body');
+    const kind = (_active() && _sel) ? _sel.kind : 'prompt';
+    if (kind === 'intent') body.innerHTML = _inputIntent();
+    else if (kind === 'goal') body.innerHTML = _inputGoal(_sel.i);
+    else body.innerHTML = _inputPrompt();
+  }
+
+  function _inputPrompt() {
+    let h = `<div class="pc-lbl">Auftrag in natürlicher Sprache</div>
+      <textarea class="pc-in" id="pc-prompt" placeholder="Beschreibe, was getan werden soll…">${esc(_pendingPrompt)}</textarea>
+      <div class="pc-row"><button class="btn-pc" onclick="submitIntent()">Zerlegen ▸</button></div>`;
+    if (_manual) {
+      h += `<div class="pc-lbl" style="margin-top:.8rem">Manuelle Zerlegung — kein Modell verfügbar</div>
+        <div class="pc-hint">① Prompt kopieren → externes LLM. ② Antwort-JSON unten einfügen.</div>
+        <div class="pc-row" style="margin-top:.3rem"><button class="btn-pc-ghost" onclick="copyDecomposePrompt()">📋 Zerlegungs-Prompt kopieren</button></div>
+        <div class="pc-lbl" style="margin-top:.5rem">JSON {understanding, not_covered, goals}</div>
+        <textarea class="pc-in" id="pc-manual-json" placeholder='{"understanding":"…","not_covered":[],"goals":[{"task_type":"review","scope":"file:core/x.py","depends_on":[]}]}'></textarea>
+        <div class="pc-row"><button class="btn-pc-go" onclick="submitManual()">Plan erstellen ▸</button></div>`;
+    }
+    return h;
+  }
+
+  function _inputIntent() {
+    const c = _plan.content;
+    let h = `<div class="pc-lbl">Verstanden haben wir</div>
+      <div class="pc-understanding">${c.understanding ? esc(c.understanding) : '<i>—</i>'}</div>`;
+    if (c.large) h += `<div class="pc-notcov">⚠ Großer Plan (≥5 Ziele) — wird trotzdem eingereiht.</div>`;
+    if (c.status !== 'confirmed') {
+      h += `<div class="pc-lbl" style="margin-top:.6rem">Nicht ganz getroffen? Nachschärfen:</div>
+        <textarea class="pc-in" id="pc-revision" placeholder="Nein, ich meinte…"></textarea>
+        <div class="pc-row"><button class="btn-pc" onclick="reviseIntent()">Neu zerlegen ▸</button></div>
+        <div class="pc-hint">Bestätigen / Verwerfen rechts im Plan.</div>`;
+    }
+    return h;
+  }
+
+  function _inputGoal(i) {
+    const g = _plan.content.goals[i];
+    const opts = TASK_TYPES.map(t=>`<option ${t===g.task_type?'selected':''}>${t}</option>`).join('');
+    const deps = _plan.content.goals.map((_,j)=> j===i ? '' :
+      `<label style="font-size:.72rem;color:#99a;margin-right:.7rem">
+        <input type="checkbox" ${(g.depends_on||[]).includes(j)?'checked':''} data-dep="${j}"> #${j+1}</label>`).join('');
+    return `<div class="pc-lbl">Ziel #${i+1} bearbeiten</div>
+      <div class="pc-lbl">task_type</div>
+      <select class="pc-in" id="pc-g-type">${opts}</select>
+      <div class="pc-lbl">scope</div>
+      <input class="pc-in" id="pc-g-scope" value="${esc(g.scope)}">
+      <div class="pc-lbl">hängt ab von</div>
+      <div id="pc-g-deps">${deps || '<span class="pc-hint">keine anderen Ziele</span>'}</div>
+      <div class="pc-row" style="margin-top:.6rem">
+        <button class="btn-pc" onclick="saveGoal(${i})">Speichern</button>
+        <button class="btn-pc-danger" onclick="removeGoal(${i})">Entfernen</button></div>`;
+  }
+
+  // ── Aktionen ──
+  async function submitIntent() {
+    const prompt = document.getElementById('pc-prompt').value.trim();
+    if (!prompt) { pcMsg('Bitte einen Auftrag eingeben.', 'err'); return; }
+    if (_active() && !confirm('Ersetzt den aktuellen Plan. Fortfahren?')) return;
+    _pendingPrompt = prompt;
+    pcMsg('Zerlege …', '');
+    const r = await apiFetch('/api/intent', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt }),
+    });
+    if (r.status === 503) { _manual = true; renderInput(); pcMsg('Kein Modell — manueller Pfad.', ''); return; }
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    _manual = false; _pendingPrompt = ''; _sel = { kind:'intent' };
+    await fetchPlan(); pcMsg('Plan erstellt.', 'ok');
+  }
+
+  function copyDecomposePrompt() {
+    const p = (document.getElementById('pc-prompt') || {}).value || _pendingPrompt || '';
+    navigator.clipboard.writeText(DECOMPOSE_INSTRUCTION + '\n\nTask:\n' + p)
+      .then(()=> pcMsg('Zerlegungs-Prompt kopiert.', 'ok'));
+  }
+
+  async function submitManual() {
+    const prompt = ((document.getElementById('pc-prompt') || {}).value || _pendingPrompt || '').trim();
+    if (!prompt) { pcMsg('Prompt fehlt.', 'err'); return; }
+    let obj;
+    try { obj = JSON.parse(document.getElementById('pc-manual-json').value.trim()); }
+    catch(e) { pcMsg('Kein valides JSON: ' + e.message, 'err'); return; }
+    const r = await apiFetch('/api/intent', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt, understanding: obj.understanding || '',
+        not_covered: obj.not_covered || [], goals: obj.goals || [] }),
+    });
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    _manual = false; _pendingPrompt = ''; _sel = { kind:'intent' };
+    await fetchPlan(); pcMsg('Plan erstellt.', 'ok');
+  }
+
+  async function reviseIntent() {
+    const rev = document.getElementById('pc-revision').value.trim();
+    if (!rev) { pcMsg('Bitte eine Korrektur eingeben.', 'err'); return; }
+    pcMsg('Zerlege neu …', '');
+    const r = await apiFetch('/api/intent', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: _plan.content.prompt, revision: rev }),
+    });
+    if (r.status === 503) { pcMsg('Kein Modell für Revision — Ziele bitte manuell editieren.', 'err'); return; }
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    _sel = { kind:'intent' }; await fetchPlan(); pcMsg('Neu zerlegt.', 'ok');
+  }
+
+  function _collectGoals() {
+    return (_plan.content.goals || []).map(g => ({
+      task_type: g.task_type, scope: g.scope, depends_on: (g.depends_on || []).slice(),
+    }));
+  }
+
+  async function _putGoals(goals, okMsg) {
+    const r = await apiFetch(`/api/plan/${_planId}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ goals }),
+    });
+    if (r.status === 409) { pcMsg('Plan wurde geändert — neu geladen.', 'err'); await fetchPlan(); return; }
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    await fetchPlan(); pcMsg(okMsg || 'Gespeichert.', 'ok');
+  }
+
+  function saveGoal(i) {
+    const goals = _collectGoals();
+    goals[i].task_type = document.getElementById('pc-g-type').value;
+    goals[i].scope = document.getElementById('pc-g-scope').value.trim();
+    goals[i].depends_on = Array.from(document.querySelectorAll('#pc-g-deps input:checked'))
+      .map(el => parseInt(el.dataset.dep, 10));
+    _putGoals(goals, 'Ziel gespeichert.');
+  }
+
+  function removeGoal(i) {
+    const goals = _collectGoals();
+    goals.splice(i, 1);
+    goals.forEach(g => { g.depends_on = g.depends_on.filter(d => d !== i).map(d => d > i ? d - 1 : d); });
+    _sel = { kind:'intent' };
+    _putGoals(goals, 'Ziel entfernt.');
+  }
+
+  function addGoal() {
+    const goals = _collectGoals();
+    goals.push({ task_type:'review', scope:'repo:', depends_on:[] });
+    _putGoals(goals, 'Ziel hinzugefügt.');
+  }
+
+  async function confirmPlan() {
+    const r = await apiFetch(`/api/plan/${_planId}/confirm`, { method:'POST' });
+    if (r.status === 409) { pcMsg('Plan geändert — neu geladen.', 'err'); await fetchPlan(); return; }
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    const d = await r.json();
+    _sel = { kind:'intent' };
+    await fetchPlan(); fetchTasks();
+    pcMsg(`Bestätigt: ${d.task_ids.length} Aufgaben eingereiht.`, 'ok');
+  }
+
+  async function discardPlan() {
+    if (!confirm('Plan verwerfen?')) return;
+    const r = await apiFetch(`/api/plan/${_planId}/discard`, { method:'POST' });
+    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+    _sel = { kind:'prompt' }; _pendingPrompt = '';
+    await fetchPlan(); pcMsg('Verworfen.', 'ok');
   }
 
   // ── Utils ──────────────────────────────────────────────────────────────────

@@ -30,6 +30,16 @@ def _goals_resp(*goals: dict) -> str:
     return json.dumps(list(goals))
 
 
+def _plan_resp(understanding: str, not_covered: list[str], *goals: dict) -> str:
+    return json.dumps(
+        {
+            "understanding": understanding,
+            "not_covered": not_covered,
+            "goals": list(goals),
+        }
+    )
+
+
 def _goal(
     task_type: str = "explain",
     scope: str = "module:auth",
@@ -78,6 +88,27 @@ def test_plan_below_threshold_not_large():
     model = FakeModel(responses=[_goals_resp(*goals)])
     plan = IntentDecomposer(model).decompose("x")
     assert plan.large is False
+
+
+def test_plan_object_format_understanding_and_not_covered():
+    resp = _plan_resp(
+        "Du willst ein Auth-Modul.",
+        ["deploy: kein passender task_type"],
+        _goal("explain", "module:auth"),
+    )
+    plan = IntentDecomposer(FakeModel(responses=[resp])).decompose("x")
+    assert plan.understanding == "Du willst ein Auth-Modul."
+    assert plan.not_covered == ("deploy: kein passender task_type",)
+    assert len(plan.goals) == 1
+    assert plan.goals[0].task_type == TaskType.explain
+
+
+def test_bare_array_stays_backward_compatible():
+    # Altes Format (nur Array) -> understanding/not_covered leer, Goals parsen.
+    plan = IntentDecomposer(FakeModel(responses=[_goals_resp(_goal())])).decompose("x")
+    assert plan.understanding == ""
+    assert plan.not_covered == ()
+    assert len(plan.goals) == 1
 
 
 # ---------------------------------------------------------------------------

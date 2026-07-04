@@ -115,3 +115,19 @@ class TestPlanFromContent:
 
         with pytest.raises(ValueError):
             plan_from_content({"goals": [{"task_type": "nope", "scope": "repo:"}]})
+
+    def test_understanding_not_covered_roundtrip(self):
+        plan = Plan(
+            goals=(
+                GoalItem(task_type=TaskType.architecture, scope="repo:", depends_on=()),
+            ),
+            large=False,
+            understanding="Verstanden: Auth-Modul.",
+            not_covered=("deploy: kein task_type",),
+        )
+        art = build_plan_artifact("p", plan, root=_ROOT, producer="fake")
+        assert art.content["understanding"] == "Verstanden: Auth-Modul."
+        assert art.content["not_covered"] == ["deploy: kein task_type"]
+        back = plan_from_content(art.content)
+        assert back.understanding == "Verstanden: Auth-Modul."
+        assert back.not_covered == ("deploy: kein task_type",)

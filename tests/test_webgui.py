@@ -168,6 +168,22 @@ class TestDashboardHtml:
         ):
             assert marker in html, f"Marker fehlt im Dashboard-HTML: {marker}"
 
+    def test_index_serves_plan_cockpit(self, client):
+        # I-6.5: das Plan-Cockpit + seine Verdrahtung sind ausgeliefert.
+        html = client.get("/").text
+        for marker in (
+            'id="plan-cockpit"',
+            "pc-rail",
+            "renderTree",
+            "fetchPlan",
+            "submitIntent",
+            "confirmPlan",
+            "discardPlan",
+            "/api/plan/current",
+            "/api/intent",
+        ):
+            assert marker in html, f"Cockpit-Marker fehlt: {marker}"
+
 
 class TestAggregateEndpoints:
     def test_metrics_requires_auth(self, client):
@@ -718,6 +734,77 @@ class TestIntentEndpoint:
             r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
         assert isinstance(r.json()["id"], int)
 
+    def test_understanding_and_not_covered_surfaced(self, conn):
+        obj = json.dumps(
+            {
+                "understanding": "Verstanden: Auth-Modul.",
+                "not_covered": ["deploy: kein task_type"],
+                "goals": [
+                    {"task_type": "architecture", "scope": "repo:", "depends_on": []}
+                ],
+            }
+        )
+        with TestClient(self._app(conn, _CountingModel(obj))) as c:
+            plan = c.post(
+                "/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH
+            ).json()["plan"]
+        assert plan["content"]["understanding"] == "Verstanden: Auth-Modul."
+        assert plan["content"]["not_covered"] == ["deploy: kein task_type"]
+
+    def test_revision_creates_new_edition(self, conn):
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            first = c.post(
+                "/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH
+            ).json()
+            second = c.post(
+                "/api/intent",
+                json={"prompt": "Baue Auth", "revision": "mit JWT"},
+                headers=AUTH,
+            ).json()
+        # Korrektur -> anderer effektiver Prompt -> Cache-Miss -> neue Edition.
+        assert second["cached"] is False
+        assert model.calls == 2
+        assert second["id"] != first["id"]
+
+    def test_manual_goals_path_without_model(self, conn):
+        # Ohne decompose_model waere der Modell-Pfad 503; der manuelle Pfad
+        # (goals direkt) umgeht das (model:human, Profil D).
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={
+                    "prompt": "Baue Auth",
+                    "understanding": "Auth-Modul mit Login.",
+                    "goals": [
+                        {
+                            "task_type": "architecture",
+                            "scope": "repo:",
+                            "depends_on": [],
+                        }
+                    ],
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        content = r.json()["plan"]["content"]
+        assert content["understanding"] == "Auth-Modul mit Login."
+        assert content["goals"] == [
+            {"task_type": "architecture", "scope": "repo:", "depends_on": []}
+        ]
+
+    def test_manual_goals_invalid_task_type_400(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={
+                    "prompt": "x",
+                    "goals": [{"task_type": "nope", "scope": "repo:"}],
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 400
+
 
 def _plan_client(conn):
     return TestClient(
@@ -844,6 +931,36 @@ class TestPlanConfirmDiscard:
             c.post(f"/api/plan/{pid}/discard", headers=AUTH)  # supersedet pid
             r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
             assert r.status_code == 409
+
+
+class TestCurrentPlan:
+    """I-6.5: GET /api/plan/current (Cockpit-Viewer, Reload/Polling)."""
+
+    def test_requires_auth(self, conn):
+        with _plan_client(conn) as c:
+            assert c.get("/api/plan/current").status_code == 401
+
+    def test_null_when_no_plan(self, conn):
+        with _plan_client(conn) as c:
+            body = c.get("/api/plan/current", headers=AUTH).json()
+        assert body == {"id": None, "plan": None}
+
+    def test_returns_current_plan(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            body = c.get("/api/plan/current", headers=AUTH).json()
+        assert body["id"] == pid
+        assert body["plan"]["artifact_type"] == "plan"
+
+    def test_reflects_latest_edition(self, conn):
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            new_id = c.put(
+                f"/api/plan/{pid}", json={"goals": [_EXPLAIN_GOAL]}, headers=AUTH
+            ).json()["id"]
+            body = c.get("/api/plan/current", headers=AUTH).json()
+        assert body["id"] == new_id  # aktuelle, nicht die superseded Edition
+        assert body["plan"]["content"]["goals"] == [_EXPLAIN_GOAL]
 
 
 class TestPlanMetadata:

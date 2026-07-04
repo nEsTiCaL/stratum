@@ -215,3 +215,19 @@ Queue-Status live (Polling); neuer Auftrag bei vorhandenem aktiven Plan ->
 Rueckfrage (ersetzt aktuellen Plan); large -> weiche Warnung inline;
 Metadaten je Goal aus GET /api/plan/{id}/metadata (Dauer bzw. ehrlich
 "unbekannt", Aufwandsklasse farbcodiert).
+
+Ist (fertig 2026-07-04): Backend-Erweiterung + Frontend im bestehenden
+Dashboard (interfaces/webgui/static/index.html, ein #plan-cockpit oberhalb der
+Task-Tabelle). Backend: Plan.understanding/not_covered (planner, tolerant zum
+alten bare-Array-Format); _PROMPT_TEMPLATE liefert Objekt; POST /api/intent
+nimmt `revision` (angehaengt -> neue Edition) und optional `goals`+
+`understanding`+`not_covered` (manueller Pfad ohne Modell -> loest 503-Henne/Ei);
+GET /api/plan/current (Cockpit-Load/Reload). Frontend: linke pc-Eingabe folgt
+der Selektion, rechte Baum-Navigation (Rail + Intent/Goal-Knoten), Modus-Badge
+(manuell/Modell aus provenance.producer), Metadaten-Badges, det-Subtask-Hinweis;
+Plan wird EINMALIG geladen (nicht im Interval -> keine Eingabe-Ueberschreibung).
+Manueller Copy-Paste: DECOMPOSE_INSTRUCTION im Frontend spiegelt
+_PROMPT_TEMPLATE (kleine bewusste Duplizierung). Live dev-verifiziert auf einer
+Temp-Instanz (:8001, kein Cloud-Key = Profil-D-Fall): manueller Pfad 201,
+current/metadata/edit/discard, Revision->503, Selektion->Editor, Metadaten aus
+echten Kalibrierungsdaten (~289s/large fuer explain). SCHRITT 6 VOLLSTAENDIG.

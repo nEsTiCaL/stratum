@@ -222,14 +222,21 @@ class ApplyBody(BaseModel):
     confirm: bool = False
 
 
-class IntentBody(BaseModel):
-    prompt: str
-
-
 class PlanGoalBody(BaseModel):
     task_type: str
     scope: str
     depends_on: list[int] = []
+
+
+class IntentBody(BaseModel):
+    prompt: str
+    # I-6.5: Korrekturtext -> an den Prompt angehaengt -> neue Plan-Edition.
+    revision: str = ""
+    # Manueller Pfad (model:human): vorab-verfasste Zerlegung direkt uebergeben
+    # (ohne Modell). goals=None -> Modell-Pfad; gesetzt -> Direkt-Submit.
+    goals: list[PlanGoalBody] | None = None
+    understanding: str = ""
+    not_covered: list[str] = []
 
 
 class PlanEditBody(BaseModel):
@@ -239,6 +246,19 @@ class PlanEditBody(BaseModel):
 # Enqueue-Modell fuer einen bestaetigten Plan (I-6.3). Wie /api/task: der Worker
 # routet je Knoten per Router (TASK_REQUIREMENTS), das Feld ist nur der Claim-Key.
 _CONFIRM_MODEL = "phi4-mini"
+
+
+def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
+    """PlanGoalBody-Liste -> GoalItems. ValueError bei unbekanntem task_type
+    (via TaskType) -- der Aufrufer uebersetzt das in 400."""
+    return tuple(
+        GoalItem(
+            task_type=TaskType(g.task_type),
+            scope=g.scope,
+            depends_on=tuple(g.depends_on),
+        )
+        for g in items
+    )
 
 
 def create_app(
@@ -440,22 +460,55 @@ def create_app(
         )
         return {"id": item_id}
 
+    def _store_plan(prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
+        artifact = build_plan_artifact(
+            prompt, plan, root=source_root or Path("."), producer=producer
+        )
+        new_id = repo.put_artifact(artifact)
+        return {"cached": False, "id": new_id, "plan": artifact.model_dump(mode="json")}
+
     @app.post("/api/intent", status_code=201)
     async def create_intent(
         body: IntentBody, owner: str = Depends(_require_owner)
     ) -> dict[str, Any]:
-        """I-6.2: freier Prompt -> Plan-Artefakt (status=proposed).
+        """I-6.2/6.5: freier Prompt -> Plan-Artefakt (status=proposed).
 
-        Cache-first (artifact-first): gleicher Prompt -> gleicher input_hash ->
-        Store-Hit -> derselbe Plan OHNE Modellaufruf. Sonst Zerlegung ueber den
-        injizierten Model-Seam (Routing: Cloud/human), Ergebnis als plan-Artefakt
-        gespeichert. Antwort: {"cached": bool, "plan": <artefakt>}.
+        Drei Wege:
+        - Manuell (body.goals gesetzt): vorab-verfasste Zerlegung direkt speichern,
+          OHNE Modell (model:human; loest das 503-Henne/Ei auf Profil D). Kein
+          Cache -- es gibt keinen Modellaufruf zu sparen.
+        - Modell + Revision (body.revision): Korrektur an den Prompt anhaengen ->
+          neuer effektiver Prompt -> neuer input_hash -> neue Edition.
+        - Modell (Cache-first, artifact-first): gleicher Prompt -> Store-Hit ->
+          derselbe Plan OHNE Modellaufruf.
+        Antwort: {"cached": bool, "id": int, "plan": <artefakt>}.
         """
         prompt = body.prompt.strip()
         if not prompt:
             raise HTTPException(status_code=422, detail="prompt fehlt")
 
-        input_hash = plan_input_hash(prompt)
+        # ── Manueller Pfad (model:human): Ziele direkt uebernommen ──
+        if body.goals is not None:
+            try:
+                goals = _goals_from_bodies(body.goals)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"Ungueltiger task_type: {exc}"
+                ) from exc
+            plan = Plan(
+                goals=goals,
+                large=len(goals) >= LARGE_PLAN_THRESHOLD,
+                understanding=body.understanding,
+                not_covered=tuple(body.not_covered),
+            )
+            return _store_plan(prompt, plan, producer="manual")
+
+        # ── Modell-Pfad ── revision haengt eine Korrektur an -> neuer Prompt.
+        effective = prompt
+        if body.revision.strip():
+            effective = f"{prompt}\n\nKorrektur: {body.revision.strip()}"
+
+        input_hash = plan_input_hash(effective)
         if repo.staleness_lookup(PLAN_SCOPE, PLAN_ARTIFACT_TYPE, input_hash):
             cached = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
             if cached is not None:
@@ -471,19 +524,25 @@ def create_app(
                 status_code=503,
                 detail=(
                     "Zerlegung nicht verfuegbar: kein Modell konfiguriert "
-                    "(Profil D -> Cloud-Tier oder manuell)."
+                    "(Profil D -> manuell via goals oder Cloud-Tier)."
                 ),
             )
 
-        plan = IntentDecomposer(decompose_model).decompose(prompt)
-        artifact = build_plan_artifact(
-            prompt,
-            plan,
-            root=source_root or Path("."),
-            producer=decompose_producer,
-        )
-        new_id = repo.put_artifact(artifact)
-        return {"cached": False, "id": new_id, "plan": artifact.model_dump(mode="json")}
+        plan = IntentDecomposer(decompose_model).decompose(effective)
+        return _store_plan(effective, plan, producer=decompose_producer)
+
+    @app.get("/api/plan/current")
+    async def current_plan(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Aktueller (nicht superseded) Plan fuer den Cockpit-Viewer (I-6.5).
+
+        {"id": null, "plan": null} wenn keiner existiert -> Frontend zeigt das
+        Ghost-Skelett. Read-only; ueberlebt Reload und speist das Polling."""
+        pid = repo.get_current_id(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+        if pid is None:
+            return {"id": None, "plan": None}
+        plan = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
+        assert plan is not None
+        return {"id": pid, "plan": plan.model_dump(mode="json")}
 
     def _load_current_plan(plan_id: int) -> ResultProb:
         """Laedt den aktuellen Plan und prueft {id} == aktuelle id (I-6.3).
@@ -511,20 +570,18 @@ def create_app(
         ueber die vorhandene superseded-Mechanik."""
         current = _load_current_plan(plan_id)
         try:
-            goals = tuple(
-                GoalItem(
-                    task_type=TaskType(g.task_type),
-                    scope=g.scope,
-                    depends_on=tuple(g.depends_on),
-                )
-                for g in body.goals
-            )
+            goals = _goals_from_bodies(body.goals)
         except ValueError as exc:
             raise HTTPException(
                 status_code=400, detail=f"Ungueltiger task_type: {exc}"
             ) from exc
 
-        plan = Plan(goals=goals, large=len(goals) >= LARGE_PLAN_THRESHOLD)
+        plan = Plan(
+            goals=goals,
+            large=len(goals) >= LARGE_PLAN_THRESHOLD,
+            understanding=current.content.get("understanding", ""),
+            not_covered=tuple(current.content.get("not_covered", ())),
+        )
         artifact = build_plan_artifact(
             current.content.get("prompt", ""),
             plan,

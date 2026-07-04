@@ -73,6 +73,8 @@ def build_plan_artifact(
         "prompt": prompt,
         "status": status,
         "large": plan.large,
+        "understanding": plan.understanding,
+        "not_covered": list(plan.not_covered),
         "goals": [
             {
                 "task_type": goal.task_type.value,
@@ -107,4 +109,6 @@ def plan_from_content(content: dict) -> Plan:
             for g in content.get("goals", ())
         ),
         large=bool(content.get("large", False)),
+        understanding=str(content.get("understanding", "")),
+        not_covered=tuple(content.get("not_covered", ())),
     )

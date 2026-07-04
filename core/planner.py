@@ -22,24 +22,35 @@ from core.validator import Model
 LARGE_PLAN_THRESHOLD = 5
 
 _PROMPT_TEMPLATE = """\
-You are a software-engineering assistant. \
-Break the following task into ordered sub-goals.
-Reply with a JSON array only — no prose, no markdown fences.
+You are a software-engineering assistant. First understand what the user \
+actually wants, then break it into ordered sub-goals.
 
-Task:
-{prompt}
-
-JSON schema for each element:
+Reply with a JSON object only — no prose, no markdown fences:
 {{
-  "task_type": "<one of: index symbol_lookup dependency_map \
-explain document summarize review test_gen refactor_suggest \
-debug architecture cross_module crypto_audit>",
-  "scope": "<scope string, e.g. module:auth or file:auth/login.py>",
-  "depends_on": [<0-based indices of goals this one depends on, empty if none>]
+  "understanding": "<2-3 sentences restating what the user wants, in their \
+own language; this is shown back to the user to confirm or correct>",
+  "not_covered": [<strings: parts of the request you could NOT turn into a \
+goal, each with a short reason; empty list if everything is covered>],
+  "goals": [
+    {{
+      "task_type": "<one of: index symbol_lookup dependency_map explain \
+document summarize review test_gen refactor_suggest debug architecture \
+cross_module crypto_audit>",
+      "scope": "<scope string, e.g. module:auth or file:auth/login.py>",
+      "depends_on": [<0-based indices of goals this depends on, empty if none>]
+    }}
+  ]
 }}
 
-Return an array with one element for simple single-step requests.
-Reply with the JSON array only."""
+A goal must map to exactly one task_type AND one concrete scope. If part of \
+the request has no matching task_type or no concrete scope, do NOT invent one \
+— list it in not_covered with a short reason instead.
+
+Return one goal for a simple single-step request. Reply with the JSON object \
+only.
+
+Task:
+{prompt}"""
 
 
 @dataclass(frozen=True)
@@ -53,10 +64,13 @@ class GoalItem:
 class Plan:
     goals: tuple[GoalItem, ...]
     large: bool  # weiche Warnung (>= LARGE_PLAN_THRESHOLD goals)
+    # I-6.5: Verstaendnis-Rueckfrage + ehrliche Nicht-Abdeckung. Beide default
+    # leer -> abwaertskompatibel zu Plan(goals=, large=).
+    understanding: str = ""
+    not_covered: tuple[str, ...] = ()
 
 
-def _parse_goals(raw: str) -> list[GoalItem]:
-    items = _load_json(raw)
+def _parse_goals(items: list) -> list[GoalItem]:
     return [
         GoalItem(
             task_type=TaskType(g["task_type"]),
@@ -146,10 +160,22 @@ class IntentDecomposer:
 
     def decompose(self, prompt: str) -> Plan:
         raw = self._model.complete(_PROMPT_TEMPLATE.format(prompt=prompt))
-        goals = _parse_goals(raw)
+        data = _load_json(raw)
+        # Neu (I-6.5): Objekt {understanding, not_covered, goals}. Tolerant zum
+        # alten Format (bare Array = nur goals), damit aeltere Modelle/Fixtures
+        # weiter parsen.
+        if isinstance(data, list):
+            items, understanding, not_covered = data, "", ()
+        else:
+            items = data.get("goals", [])
+            understanding = str(data.get("understanding", ""))
+            not_covered = tuple(str(x) for x in data.get("not_covered", ()))
+        goals = _parse_goals(items)
         return Plan(
             goals=tuple(goals),
             large=len(goals) >= self._large_threshold,
+            understanding=understanding,
+            not_covered=not_covered,
         )
 
     def build_dag(
