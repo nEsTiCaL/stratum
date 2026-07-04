@@ -179,3 +179,23 @@ def test_build_dag_empty_plan():
         Plan(goals=(), large=False), scope_resolver=_FakeScopeResolver()
     )
     assert dag.nodes == []
+
+
+def test_decompose_implement_and_fix_are_valid_task_types():
+    # implement/fix wurden bei I-7.2 in Router+Templates eingebaut, fehlten aber
+    # im _PROMPT_TEMPLATE -> LLM landete generative Aufgaben in not_covered.
+    for tt in ("implement", "fix"):
+        resp = _plan_resp(
+            "Nutzer will Code schreiben.", [], _goal(tt, "file:camera.gd")
+        )
+        plan = IntentDecomposer(FakeModel(responses=[resp])).decompose("x")
+        assert len(plan.goals) == 1
+        assert plan.goals[0].task_type == TaskType(tt)
+        assert plan.not_covered == ()
+
+
+def test_prompt_template_contains_implement_and_fix():
+    from core.planner import _PROMPT_TEMPLATE
+
+    assert "implement" in _PROMPT_TEMPLATE
+    assert "fix" in _PROMPT_TEMPLATE

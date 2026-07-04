@@ -35,7 +35,7 @@ goal, each with a short reason; empty list if everything is covered>],
     {{
       "task_type": "<one of: index symbol_lookup dependency_map explain \
 document summarize review test_gen refactor_suggest debug architecture \
-cross_module crypto_audit>",
+cross_module crypto_audit implement fix>",
       "scope": "<scope string, e.g. module:auth or file:auth/login.py>",
       "depends_on": [<0-based indices of goals this depends on, empty if none>]
     }}
