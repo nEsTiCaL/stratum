@@ -1,128 +1,76 @@
-"""VerifyWorker (I-7.3): empirische Pruefung eines Patches.
+"""VerifyWorker (I-7.3): empirische Pruefung eines Patches -- git-frei.
 
-Der VerifyWorker ist ein EIGENER det-Worker (Entscheidung 2026-07-04): er
-wendet ein patch-Artefakt in einem EPHEMEREN git-Worktree an und laesst dort
-Verifikationskommandos (pytest/ruff) laufen. Ergebnis ist ein verify_report
-(det-Artefakt, confidence verboten). Er schreibt NIE in den echten Tree.
+Der VerifyWorker ist ein EIGENER det-Worker (Entscheidung 2026-07-04). Er wendet
+ein patch-Artefakt git-frei an (core.patch_apply, gegen den Working Tree --
+committed ODER nicht) und lintet die gepatchten Dateien. Ergebnis ist ein
+verify_report (det-Artefakt). Er schreibt NIE in den echten Tree.
 
-det/prob-Grenze: der Validator prueft Form + Vertrauen, der VerifyWorker prueft
-Empirie (kompiliert es, sind die Tests gruen). pytest/ruff sind reproduzierbar
--> det. Der Report wird IMMER erzeugt (auch bei rotem Patch) -- ein roter Verify
-ist ein erfolgreicher Lauf, der Misserfolg meldet; die Reaktion darauf
-(Rueckkante zu implement) ist die Queue-Sache I-7.4.
+Warum kein git/pytest mehr (Entscheidung 2026-07-05):
+- git-Worktree @HEAD sah nicht committete Dateien nicht -> Requirement verletzt;
+  ausserdem brauchte der Container git. patch_apply arbeitet direkt auf dem
+  Working-Tree-Inhalt, git faellt komplett weg.
+- pytest gehoert dem NUTZERPROJEKT, nicht Stratum: fremde, unbekannte, evtl.
+  langsame/destruktive Tests. Verify ist daher STATISCH: `Patch appliziert sauber`
+  + `Linter gruen`. pytest ist raus.
+- Der Linter ist per-Sprache. Fehlt fuer die Zielsprache einer -> die Datei ist
+  "skipped" (neutral), sie failt den Verify NICHT. passed = appliziert UND kein
+  Linter meldet Fehler. (Start: nur Python/ruff; andere Sprachen neutral.)
 
-Seam: die git-Worktree-/Subprocess-Mechanik steckt hinter run_in_worktree
-(injizierbare git_cmd/run_cmd). Tests fahren einen Fake-Sandbox-Runner
-(det, ohne git/pytest); die reale Mechanik wird dev-verifiziert -- analog
-OllamaAdapter (method_tdd: reale Ausfuehrung dev-verifiziert, Rahmen test-driven).
+Seam: die Subprocess-Mechanik (Linter-Aufruf) steckt hinter run_cmd, der
+Datei-Lesezugriff hinter read_current -- beide im Test injizierbar (kein echtes
+ruff/FS noetig).
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from core.models.provenance_schema import Provenance
 from core.models.result_det_schema import ResultDet
+from core.patch_apply import ReadCurrent, apply_diff
 from core.queue import QueueItem
 from core.repository import Repository
 
-# Default-Verifikationskommandos. Template-konfigurierbar je task_type
-# (spec_schritt-7: pytest, ruff, Build, spaeter Golden).
-DEFAULT_VERIFY_COMMANDS: tuple[tuple[str, ...], ...] = (
-    ("python", "-m", "pytest", "-q"),
-    ("ruff", "check", "."),
-)
+# Per-Sprache-Linter. Template-/spaeter erweiterbar; Start Python-only, andere
+# Sprachen -> skipped (neutral). NIE pytest (fremdes Projekt, siehe Modul-Doc).
+DEFAULT_LINTERS: Mapping[str, tuple[str, ...]] = {"python": ("ruff", "check")}
+_LANG_BY_EXT: Mapping[str, str] = {".py": "python"}
 DEFAULT_TIMEOUT_S = 300
 
 
 @dataclass(frozen=True)
 class VerifyOutcome:
-    """Ergebnis eines Verify-Laufs. passed = Patch angewandt UND alle Kommandos
-    exit 0. applied trennt 'Patch passte nicht' von 'Tests rot'."""
+    """Ergebnis eines Verify-Laufs. passed = Patch sauber appliziert UND kein
+    Linter rot. applied trennt 'Patch passte nicht' von 'Linter rot'."""
 
     passed: bool
     applied: bool
     summary: str
-    commands: tuple[dict, ...]  # [{"cmd": "...", "exit_code": int}]
+    commands: tuple[dict, ...]  # [{"file","linter","status","exit_code"}]
 
 
-def run_in_worktree(
-    diff: str,
-    commands: Sequence[Sequence[str]],
-    *,
-    root: Path,
-    timeout_s: int = DEFAULT_TIMEOUT_S,
-    git_cmd: Callable[[Sequence[str]], tuple[int, str]] | None = None,
-    run_cmd: Callable[[Sequence[str], Path, int], tuple[int, str]] | None = None,
-) -> VerifyOutcome:
-    """Legt einen ephemeren git-Worktree an, wendet den Diff an, fuehrt die
-    Kommandos aus und entfernt den Worktree IMMER (try/finally).
-
-    git_cmd(args) -> (rc, out): git-Aufruf an `root`.
-    run_cmd(args, cwd, timeout) -> (rc, out): Kommando in cwd, mit Timeout.
-    Beide default auf subprocess; im Test injizierbar (kein echtes git/pytest).
-    """
-    git_cmd = git_cmd or _default_git(root)
-    run_cmd = run_cmd or _default_run
-
-    wt = Path(tempfile.mkdtemp(prefix="stratum-verify-"))
-    try:
-        rc, out = git_cmd(["worktree", "add", "--detach", str(wt), "HEAD"])
-        if rc != 0:
-            return VerifyOutcome(
-                False, False, f"worktree add fehlgeschlagen: {out}", ()
-            )
-
-        patch_file = wt / ".stratum-patch.diff"
-        patch_file.write_text(diff, encoding="utf-8")
-        rc, out = git_cmd(["-C", str(wt), "apply", str(patch_file)])
-        if rc != 0:
-            return VerifyOutcome(False, False, f"git apply fehlgeschlagen: {out}", ())
-        patch_file.unlink(missing_ok=True)
-
-        results: list[dict] = []
-        passed = True
-        for cmd in commands:
-            try:
-                crc, cout = run_cmd(list(cmd), wt, timeout_s)
-            except subprocess.TimeoutExpired:
-                results.append({"cmd": " ".join(cmd), "exit_code": -1})
-                return VerifyOutcome(
-                    False,
-                    True,
-                    f"Timeout nach {timeout_s}s: {' '.join(cmd)}",
-                    tuple(results),
-                )
-            results.append({"cmd": " ".join(cmd), "exit_code": crc})
-            if crc != 0:
-                passed = False
-        summary = "alle Kommandos gruen" if passed else "mindestens ein Kommando rot"
-        return VerifyOutcome(passed, True, summary, tuple(results))
-    finally:
-        git_cmd(["worktree", "remove", "--force", str(wt)])
+def _language(path: str) -> str | None:
+    return _LANG_BY_EXT.get(Path(path).suffix)
 
 
-def _default_git(root: Path) -> Callable[[Sequence[str]], tuple[int, str]]:
-    def _git(args: Sequence[str]) -> tuple[int, str]:
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return proc.returncode, (proc.stdout + proc.stderr)
+def _read_root(root: Path) -> ReadCurrent:
+    def _read(rel: str) -> str | None:
+        try:
+            return (root / rel).read_text(encoding="utf-8")
+        except (FileNotFoundError, IsADirectoryError):
+            return None
 
-    return _git
+    return _read
 
 
-def _default_run(args: Sequence[str], cwd: Path, timeout: int) -> tuple[int, str]:
+def _default_run(args, cwd: Path, timeout: int) -> tuple[int, str]:
     proc = subprocess.run(
         list(args),
         cwd=cwd,
@@ -134,14 +82,87 @@ def _default_run(args: Sequence[str], cwd: Path, timeout: int) -> tuple[int, str
     return proc.returncode, (proc.stdout + proc.stderr)
 
 
+def lint_patch(
+    diff: str,
+    *,
+    root: Path,
+    linters: Mapping[str, tuple[str, ...]] = DEFAULT_LINTERS,
+    timeout_s: int = DEFAULT_TIMEOUT_S,
+    run_cmd: Callable[..., tuple[int, str]] | None = None,
+    read_current: ReadCurrent | None = None,
+) -> VerifyOutcome:
+    """Wendet den Diff git-frei an und lintet jede gepatchte Datei per-File.
+
+    Kein Worktree, kein tree-Snapshot (Entscheidung: per-File linten). Fehlt ein
+    Linter fuer die Zielsprache -> "skipped" (neutral). passed = appliziert UND
+    kein Linter rot.
+    """
+    run_cmd = run_cmd or _default_run
+    read_current = read_current or _read_root(root)
+
+    result = apply_diff(diff, read_current)
+    if not result.ok:
+        return VerifyOutcome(False, False, result.reason, ())
+
+    entries: list[dict] = []
+    passed = True
+    for chg in result.changes:
+        lang = _language(chg.path) if chg.kind != "delete" else None
+        linter = linters.get(lang) if lang else None
+        if linter is None:  # geloescht ODER keine Linter-Sprache -> neutral
+            entries.append(
+                {"file": chg.path, "linter": None, "status": "skipped", "exit_code": 0}
+            )
+            continue
+
+        fd, tmp = tempfile.mkstemp(suffix=Path(chg.path).suffix or ".txt")
+        os.close(fd)
+        try:
+            Path(tmp).write_text(chg.new_content or "", encoding="utf-8")
+            try:
+                rc, _out = run_cmd([*linter, tmp], Path(tmp).parent, timeout_s)
+            except subprocess.TimeoutExpired:
+                entries.append(
+                    {
+                        "file": chg.path,
+                        "linter": linter[0],
+                        "status": "failed",
+                        "exit_code": -1,
+                    }
+                )
+                return VerifyOutcome(
+                    False, True, f"Linter-Timeout: {chg.path}", tuple(entries)
+                )
+        finally:
+            Path(tmp).unlink(missing_ok=True)
+
+        status = "passed" if rc == 0 else "failed"
+        if rc != 0:
+            passed = False
+        entries.append(
+            {"file": chg.path, "linter": linter[0], "status": status, "exit_code": rc}
+        )
+
+    linted = sum(1 for e in entries if e["status"] != "skipped")
+    if not passed:
+        summary = "Linter meldet Fehler"
+    elif linted == 0:
+        summary = "sauber appliziert; kein Linter fuer Zielsprache (neutral)"
+    else:
+        summary = "sauber appliziert; Linter gruen"
+    return VerifyOutcome(passed, True, summary, tuple(entries))
+
+
 @dataclass
 class VerifyWorker:
-    """Laedt das patch-Artefakt eines scope, prueft es im Sandbox und schreibt
-    ein verify_report (det). sandbox ist injizierbar (Seam)."""
+    """Laedt das patch-Artefakt eines scope, prueft es git-frei und schreibt ein
+    verify_report (det). sandbox ist injizierbar (Seam)."""
 
     root: Path = field(default_factory=Path)
-    sandbox: Callable[..., VerifyOutcome] = run_in_worktree
-    verify_commands: Sequence[Sequence[str]] = DEFAULT_VERIFY_COMMANDS
+    sandbox: Callable[..., VerifyOutcome] = lint_patch
+    linters: Mapping[str, tuple[str, ...]] = field(
+        default_factory=lambda: dict(DEFAULT_LINTERS)
+    )
     timeout_s: int = DEFAULT_TIMEOUT_S
 
     def run(self, item: QueueItem, repo: Repository) -> VerifyOutcome:
@@ -152,10 +173,7 @@ class VerifyWorker:
         else:
             diff = patch.content.get("diff", "")
             outcome = self.sandbox(
-                diff,
-                self.verify_commands,
-                root=self.root,
-                timeout_s=self.timeout_s,
+                diff, root=self.root, linters=self.linters, timeout_s=self.timeout_s
             )
         self._store_report(item.scope, diff, outcome, repo)
         return outcome

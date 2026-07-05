@@ -1,7 +1,8 @@
-"""I-7.3: VerifyWorker (det, ephemerer Worktree).
+"""I-7.3: VerifyWorker (det, git-frei, per-File-Lint).
 
-det-testbar ohne echtes git/pytest (Sandbox-Seam):
-- run_in_worktree: apply-Fehler, gruene/rote Kommandos, Timeout, Cleanup-immer
+det-testbar ohne echtes ruff/FS (run_cmd + read_current injiziert):
+- lint_patch: gruen / apply-Fehler / Linter rot / neutral (keine Linter-Sprache)
+  / delete neutral / Timeout
 - VerifyWorker: patch vorhanden -> Sandbox + verify_report; kein patch -> Report
 """
 
@@ -11,96 +12,86 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.verify_worker import VerifyOutcome, VerifyWorker, run_in_worktree
+from core.verify_worker import VerifyOutcome, VerifyWorker, lint_patch
 
 _DIFF = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b\n"
+_DIFF_GD = "--- a/s.gd\n+++ b/s.gd\n@@ -1 +1 @@\n-a\n+b\n"
+_DEL = "--- a/x.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-a\n"
+_ROOT = Path(".")
 
 
-class _FakeGit:
-    """Zeichnet git-Aufrufe auf; add/remove/apply steuerbar ueber rc-Map."""
-
-    def __init__(self, apply_rc: int = 0):
-        self.calls: list[list[str]] = []
-        self._apply_rc = apply_rc
-
-    def __call__(self, args):
-        self.calls.append(list(args))
-        if "apply" in args:
-            return self._apply_rc, "" if self._apply_rc == 0 else "patch does not apply"
-        return 0, ""
-
-    def removed(self) -> bool:
-        return any("remove" in c for c in self.calls)
+def _reader(files: dict[str, str]):
+    return lambda p: files.get(p)
 
 
-def _run_ok(args, cwd, timeout):
-    return 0, "ok"
+def _boom(*_a, **_k):
+    raise AssertionError("run_cmd haette nicht aufgerufen werden duerfen")
 
 
-class TestRunInWorktree:
-    def test_green_commands_passed(self):
-        git = _FakeGit()
-        out = run_in_worktree(
+class TestLintPatch:
+    def test_clean_apply_green_linter(self):
+        out = lint_patch(
             _DIFF,
-            [("pytest",), ("ruff",)],
-            root=Path("."),
-            git_cmd=git,
-            run_cmd=_run_ok,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=lambda *_a: (0, "ok"),
         )
         assert out.passed and out.applied
-        assert len(out.commands) == 2
-        assert git.removed()  # Worktree entfernt
+        assert out.commands[0]["status"] == "passed"
+        assert out.commands[0]["linter"] == "ruff"
 
     def test_apply_failure_not_applied(self):
-        git = _FakeGit(apply_rc=1)
-        out = run_in_worktree(
-            _DIFF, [("pytest",)], root=Path("."), git_cmd=git, run_cmd=_run_ok
+        out = lint_patch(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({}),  # x.py fehlt
+            run_cmd=_boom,
         )
         assert not out.applied and not out.passed
-        assert git.removed()  # Cleanup auch bei apply-Fehler
+        assert "fehlt" in out.summary
 
-    def test_red_command_fails_but_applied(self):
-        git = _FakeGit()
-
-        def run_red(args, cwd, timeout):
-            return (1, "boom") if "pytest" in args else (0, "ok")
-
-        out = run_in_worktree(
+    def test_red_linter_fails_but_applied(self):
+        out = lint_patch(
             _DIFF,
-            [("pytest",), ("ruff",)],
-            root=Path("."),
-            git_cmd=git,
-            run_cmd=run_red,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=lambda *_a: (1, "E501 line too long"),
         )
         assert out.applied and not out.passed
+        assert out.commands[0]["status"] == "failed"
+
+    def test_no_linter_language_is_neutral(self):
+        out = lint_patch(
+            _DIFF_GD,
+            root=_ROOT,
+            read_current=_reader({"s.gd": "a\n"}),
+            run_cmd=_boom,  # darf nicht aufgerufen werden
+        )
+        assert out.passed and out.applied
+        assert out.commands[0]["status"] == "skipped"
+        assert "neutral" in out.summary
+
+    def test_delete_is_neutral(self):
+        out = lint_patch(
+            _DEL,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=_boom,
+        )
+        assert out.passed and out.applied
+        assert out.commands[0]["status"] == "skipped"
 
     def test_timeout_fails(self):
-        git = _FakeGit()
+        def _to(*_a):
+            raise subprocess.TimeoutExpired(cmd="ruff", timeout=1)
 
-        def run_timeout(args, cwd, timeout):
-            raise subprocess.TimeoutExpired(cmd=args, timeout=timeout)
-
-        out = run_in_worktree(
-            _DIFF, [("pytest",)], root=Path("."), git_cmd=git, run_cmd=run_timeout
+        out = lint_patch(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=_to,
         )
-        assert not out.passed
-        assert "Timeout" in out.summary
-        assert git.removed()  # Cleanup auch nach Timeout
-
-    def test_cleanup_runs_even_on_worktree_add_failure(self):
-        class _AddFails(_FakeGit):
-            def __call__(self, args):
-                self.calls.append(list(args))
-                if "add" in args:
-                    return 1, "add failed"
-                return 0, ""
-
-        git = _AddFails()
-        out = run_in_worktree(
-            _DIFF, [("pytest",)], root=Path("."), git_cmd=git, run_cmd=_run_ok
-        )
-        assert not out.applied
-        assert git.removed()
+        assert not out.passed and "Timeout" in out.summary
 
 
 class _FakeRepo:
@@ -129,13 +120,13 @@ class TestVerifyWorker:
         repo = _FakeRepo({"diff": _DIFF, "target_scope": "file:core/x.py"})
         captured = {}
 
-        def fake_sandbox(diff, cmds, *, root, timeout_s):
+        def fake_sandbox(diff, *, root, linters, timeout_s):
             captured["diff"] = diff
             return VerifyOutcome(
-                True, True, "gruen", ({"cmd": "pytest", "exit_code": 0},)
+                True, True, "gruen", ({"file": "x.py", "status": "passed"},)
             )
 
-        worker = VerifyWorker(root=Path("."), sandbox=fake_sandbox)
+        worker = VerifyWorker(root=_ROOT, sandbox=fake_sandbox)
         out = worker.run(_item(), repo)
 
         assert out.passed
@@ -151,7 +142,7 @@ class TestVerifyWorker:
         repo = _FakeRepo(None)
         called = []
         worker = VerifyWorker(
-            root=Path("."),
+            root=_ROOT,
             sandbox=lambda *a, **k: (
                 called.append(1) or VerifyOutcome(True, True, "x", ())
             ),

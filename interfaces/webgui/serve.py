@@ -25,7 +25,6 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
-from core.apply_gate import ApplyPolicy
 from core.db import apply_migrations
 from core.metrics import InferenceSample, MetricsStore
 from core.ollama_adapter import OllamaAdapter
@@ -36,6 +35,7 @@ from core.secret_scan import EgressPolicy
 from core.template_registry import DagNode, TaskDag
 from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
+from core.workspace import resolve_base, workspace_root
 from interfaces.webgui.app import create_app
 
 # Progress-Store: {task_id: {start, tokens, tok_s, model, task_type}}
@@ -233,6 +233,15 @@ def _make_worker_loop(
     code_capable = cloud_sender is not None or local_coder
 
     root = Path(__file__).parent.parent.parent
+    ws_base = resolve_base(root / ".workspaces")
+
+    def _resolve_root(item):
+        # Schritt 7: root pro API-Key. Kein Key (Seed/human/Alt-Tasks) -> None
+        # -> Worker-Default-root (Dogfooding: Stratum-Repo).
+        if getattr(item, "capability_id", None) is None:
+            return None
+        return workspace_root(item.owner, item.capability_id, base=ws_base)
+
     loop = WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
@@ -249,6 +258,7 @@ def _make_worker_loop(
         verify_worker=VerifyWorker(root=root),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
+        resolve_root=_resolve_root,
     )
     return loop, decompose_model, decompose_producer, code_capable
 
@@ -309,17 +319,17 @@ def main() -> None:
     )
     worker_thread.start()
 
+    source_root = Path(__file__).parent.parent.parent
     app = create_app(
         queue,
         repo,
-        source_root=Path(__file__).parent.parent.parent,
+        source_root=source_root,
         sse_queue=Queue(sse_conn),
         progress_store=_progress,
-        # Apply auf den echten Tree fail-safe: nur mit explizitem Opt-in
-        # (STRATUM_UNSAFE_APPLY=1), analog Egress. Default blockiert (I-7.5).
-        apply_policy=ApplyPolicy(
-            allow_apply=os.environ.get("STRATUM_UNSAFE_APPLY") == "1"
-        ),
+        # Schritt 7: Apply schreibt in den Workspace des API-Keys
+        # (<base>/<owner>/<capability_id>), nie in Stratums eigenen Baum. Gate =
+        # confirm + gruener verify_report (kein Opt-in-Flag mehr).
+        workspace_base=resolve_base(source_root / ".workspaces"),
         decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
         decompose_producer=decompose_producer,
         code_capable=code_capable,  # Schritt 7: False -> implement/fix -> human

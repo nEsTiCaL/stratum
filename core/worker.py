@@ -277,6 +277,9 @@ class WorkerLoop:
     on_item_fail: Callable[[QueueItem, str], None] | None = None
     canary_fraction: float = 0.0  # I-5.5a: Anteil canary; 0 = alles baseline
     verify_max_attempts: int = 2  # I-7.4: Rueckkanten-Kappung implement<-verify
+    # Schritt 7: root pro Item (Workspace je API-Key). None -> Worker-Default-root
+    # (Dogfooding: Stratum-Repo). replace() setzt den root nur fuer diesen Lauf.
+    resolve_root: Callable[[QueueItem], Path | None] | None = None
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -309,7 +312,7 @@ class WorkerLoop:
             },
         )
 
-    def _run_verify(self, item: QueueItem) -> None:
+    def _run_verify(self, item: QueueItem, root: Path | None = None) -> None:
         """verify-Knoten (I-7.3): VerifyWorker laeuft, erzeugt verify_report.
         passed -> Knoten done. Rot -> Rueckkante zu implement (I-7.4): Vorgaenger
         neu oeffnen (mit Feedback), bis Kappung -> dann verify terminal failed."""
@@ -319,7 +322,12 @@ class WorkerLoop:
                 item, validation_result="fail", trigger="no_verify_worker"
             )
             return
-        outcome = self.verify_worker.run(item, self.repo)
+        vw = (
+            replace(self.verify_worker, root=root)
+            if root is not None
+            else (self.verify_worker)
+        )
+        outcome = vw.run(item, self.repo)
         if outcome.passed:
             self.queue.complete(item.id)
             self._trace_result(
@@ -361,20 +369,23 @@ class WorkerLoop:
         if self.on_item_start is not None:
             self.on_item_start(item)
         try:
+            root = self.resolve_root(item) if self.resolve_root else None
             task_type = TaskType(item.task_type)
             if task_type == TaskType.verify:
-                self._run_verify(item)
+                self._run_verify(item, root)
                 return True
             is_det = TASK_REQUIREMENTS[task_type].deterministic_model is not None
             if is_det:
-                self.det_worker.run(item, self.repo)
+                det = replace(self.det_worker, root=root) if root else self.det_worker
+                det.run(item, self.repo)
                 self.queue.complete(item.id)
                 # det laeuft einmal, eskaliert nie -> pass.
                 self._trace_result(
                     item, validation_result="pass", final_model=item.model, attempts=1
                 )
             else:
-                outcome = self.llm_worker.run(item, self.repo)
+                llm = replace(self.llm_worker, root=root) if root else self.llm_worker
+                outcome = llm.run(item, self.repo)
                 if outcome.status == "done":
                     self.queue.complete(item.id)
                 else:

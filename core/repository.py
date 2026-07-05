@@ -240,6 +240,23 @@ class Repository:
         ).fetchone()
         return row[0] if row else None
 
+    def resolve_capability(self, key: str) -> tuple[str, int] | None:
+        """Owner + capability-id zu einem gueltigen API-Key, sonst None.
+
+        Wie verify_api_key, liefert aber zusaetzlich die capability-id -- die
+        Task-erzeugenden Endpunkte stempeln sie auf die Queue (Schritt 7:
+        Workspace-root pro Key)."""
+        from core.auth import hash_key
+
+        key_hash = hash_key(key)
+        row = self._conn.execute(
+            "SELECT owner, id FROM capabilities "
+            "WHERE key_hash = %s AND revoked = false "
+            "AND (expires_at IS NULL OR expires_at > now())",
+            (key_hash,),
+        ).fetchone()
+        return (row[0], row[1]) if row else None
+
     def register_capability(self, owner: str, key_hash: str, key_prefix: str) -> int:
         """Legt einen neuen API-Key an. Gibt die capability-id zurueck."""
         with self._conn.transaction():

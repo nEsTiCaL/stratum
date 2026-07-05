@@ -120,3 +120,42 @@ ephemeren Worktrees und sind ohne Gate gefahrlos.
   Repository.list_current_scopes(artifact_type).
 - Offen: kein realer Apply/Egress dev-verifiziert (Profil D, kein Chaining
   Prompt->DAG->patch -- das ist die Intent-Verdrahtung I-6.2..6.5).
+
+## Rework (2026-07-05): git-frei + Workspace pro API-Key
+
+Anlass: Verify crashte im Container (`FileNotFoundError: 'git'`). Tiefer: ein
+git-Worktree @HEAD sieht NICHT committete Dateien nicht -> verletzt das
+Requirement "nicht committete Dateien verarbeiten". Der ganze Substrat ist
+git-agnostisch (Ingest hasht Dateien auf Platte); nur der VerifyWorker griff nach
+git. Entscheidungen mit dem Nutzer (2026-07-05):
+
+- **git raus, eigener Applier.** `core/patch_apply.apply_diff` = reiner
+  Unified-Diff-Applier (modify/create/delete, Multi-File, EXAKTER Kontext-Match,
+  kein Fuzz -> nicht sauber = Verify-fail). Sprachagnostisch (reine Zeilenlogik).
+  `read_from_root` liest den Working Tree (committed ODER nicht). Kein
+  `patch`-Binary (nicht "unseres"), kein git im Container. Ersetzt git-Worktree
+  in `verify_worker` UND `git apply` in `apply_gate` (eine Quelle, gleiche Semantik).
+- **Verify jetzt STATISCH, nicht empirisch.** pytest RAUS: die Tests gehoeren dem
+  Nutzerprojekt (fremd/unbekannt/evtl. destruktiv). Verify = `apply sauber` +
+  `per-File-Linter gruen`. Linter per Sprache (`DEFAULT_LINTERS`, Start
+  ruff=python); fehlt einer -> "skipped"/NEUTRAL (failt Verify NICHT). passed =
+  appliziert UND kein Linter rot. Konsequenz: Apply-Gate-"gruener Report" heisst
+  jetzt "sauber appliziert + gelintet (soweit Linter vorhanden)".
+- **Apply-Gate ohne Opt-in-Flag.** `STRATUM_UNSAFE_APPLY`/`ApplyPolicy` entfernt
+  (Nutzer-Entscheidung "Flag brauchen wir nicht"). Gate = confirmed + gruener
+  verify_report. `_default_apply` schreibt git-frei, Re-Ingest je geaenderter
+  Datei (I-4.4). "Revertierbar via git" ist nun Sache des Nutzer-VCS, nicht unsere.
+- **Workspace pro API-Key.** Frueher EIN globaler root (Stratum-Repo =
+  Dogfooding) -> ein Nutzer-Apply haette in Stratums Baum geschrieben.
+  `core/workspace.workspace_root` = `<base>/<owner>/<capability_id>/` (owner
+  sanitisiert, key_id = stabile capability-id, nie roher Key; base =
+  STRATUM_WORKSPACES). `queue.capability_id` (mig 0010) + `repo.resolve_capability`
+  (auth stempelt sie); `QueueItem` traegt owner+capability_id; `WorkerLoop.
+  resolve_root` loest per Item auf (`dataclasses.replace(worker, root=...)`), None
+  bei fehlendem Key -> Default-root (Seed/human/Dogfooding). Apply-Endpoint
+  (`/api/apply`) nutzt denselben per-Key-root.
+
+Umsetzung: core/patch_apply + core/workspace (neu), verify_worker + apply_gate
+git-frei, worker.resolve_root-Seam, queue/repository/app/serve verdrahtet, mig
+0010. 837 Tests gruen (1 pre-existing red: test_webgui claim-Prompt-Assertion,
+unabhaengig), ruff check + format gruen.

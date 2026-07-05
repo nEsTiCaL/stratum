@@ -33,6 +33,8 @@ class QueueItem:
     payload: dict[str, Any]
     attempts: int
     status: str
+    owner: str = ""
+    capability_id: int | None = None  # Schritt 7: -> Workspace-root pro Key
 
 
 class Queue:
@@ -52,6 +54,7 @@ class Queue:
         model: str,
         *,
         owner: str = "",
+        capability_id: int | None = None,
         priority: int = 0,
     ) -> list[int]:
         """Schreibt alle pending-Knoten des DAG in die Queue.
@@ -69,8 +72,8 @@ class Queue:
                         """
                         INSERT INTO queue
                             (dag_id, node_id, task_type, scope, model,
-                             priority, depends_on, flags, owner)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             priority, depends_on, flags, owner, capability_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                         """,
                         (
@@ -83,6 +86,7 @@ class Queue:
                             json.dumps(list(node.depends_on)),
                             json.dumps(sorted(node.flags)),
                             owner,
+                            capability_id,
                         ),
                     )
                     row = cur.fetchone()
@@ -127,7 +131,8 @@ class Queue:
                         FOR UPDATE SKIP LOCKED
                     )
                     RETURNING id, dag_id, node_id, task_type, scope, model,
-                              depends_on, flags, payload, attempts, status
+                              depends_on, flags, payload, attempts, status,
+                              owner, capability_id
                     """,
                     (model,),
                 )
@@ -232,7 +237,8 @@ class Queue:
                     SET status = 'running', model = %s, claimed_at = now()
                     WHERE id = %s AND status = 'pending'
                     RETURNING id, dag_id, node_id, task_type, scope, model,
-                              depends_on, flags, payload, attempts, status
+                              depends_on, flags, payload, attempts, status,
+                              owner, capability_id
                     """,
                     (model, item_id),
                 )
@@ -382,6 +388,8 @@ def _row_to_item(row: tuple[Any, ...]) -> QueueItem:
         payload_j,
         attempts,
         status,
+        owner,
+        capability_id,
     ) = row
     return QueueItem(
         id=id_,
@@ -395,4 +403,6 @@ def _row_to_item(row: tuple[Any, ...]) -> QueueItem:
         payload=dict(payload_j) if payload_j else {},
         attempts=attempts,
         status=status,
+        owner=owner,
+        capability_id=capability_id,
     )

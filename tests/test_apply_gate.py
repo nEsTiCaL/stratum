@@ -1,8 +1,8 @@
-"""I-7.5: Apply-Gate (HARTES GATE, fail-safe).
+"""I-7.5: Apply-Gate (git-frei, ohne Opt-in-Flag).
 
-det-testbar ohne echtes git (git_apply/ingest_fn injiziert):
-- kein Schreibzugriff ohne confirm / ohne Policy-Opt-in / ohne gruenen Report
-- Erfolg: git apply + Re-Ingest (invalidate=True); Reihenfolge der Gates
+det-testbar ohne echtes Schreiben (apply_fn/ingest_fn injiziert):
+- kein Schreibzugriff ohne confirm / ohne gruenen Report
+- Erfolg: apply_fn schreibt, Re-Ingest je geaenderter Datei (invalidate=True)
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.apply_gate import ApplyPolicy, apply_confirmed_patch
+from core.apply_gate import apply_confirmed_patch
 
 _ROOT = Path(".")
 
@@ -38,14 +38,14 @@ class _Repo:
         return None
 
 
-def _spy_git(rc=0):
+def _spy_apply(ok=True, changed=("core/x.py",)):
     calls = []
 
-    def git_apply(diff, root):
+    def apply_fn(diff, root):
         calls.append((diff, root))
-        return rc, "" if rc == 0 else "conflict"
+        return (ok, "applied" if ok else "conflict", list(changed) if ok else [])
 
-    return git_apply, calls
+    return apply_fn, calls
 
 
 def _spy_ingest():
@@ -57,110 +57,98 @@ def _spy_ingest():
     return ingest_fn, calls
 
 
-_ALLOW = ApplyPolicy(allow_apply=True)
-
-
-class TestFailSafe:
+class TestGate:
     def test_not_confirmed_no_write(self):
-        git, gcalls = _spy_git()
+        apply_fn, acalls = _spy_apply()
         r = apply_confirmed_patch(
-            _Repo(),
-            _ROOT,
-            "file:core/x.py",
-            confirmed=False,
-            policy=_ALLOW,
-            git_apply=git,
+            _Repo(), _ROOT, "file:core/x.py", confirmed=False, apply_fn=apply_fn
         )
-        assert not r.applied and gcalls == []
-
-    def test_policy_blocks_no_write(self):
-        git, gcalls = _spy_git()
-        r = apply_confirmed_patch(
-            _Repo(),
-            _ROOT,
-            "file:core/x.py",
-            confirmed=True,
-            policy=ApplyPolicy(allow_apply=False),
-            git_apply=git,
-        )
-        assert not r.applied and gcalls == []
-        assert "fail-safe" in r.reason
+        assert not r.applied and acalls == []
 
     def test_no_patch_no_write(self):
-        git, gcalls = _spy_git()
+        apply_fn, acalls = _spy_apply()
         r = apply_confirmed_patch(
             _Repo(patch=False),
             _ROOT,
             "file:core/x.py",
             confirmed=True,
-            policy=_ALLOW,
-            git_apply=git,
+            apply_fn=apply_fn,
         )
-        assert not r.applied and gcalls == []
+        assert not r.applied and acalls == []
 
     def test_unverified_patch_no_write(self):
-        git, gcalls = _spy_git()
+        apply_fn, acalls = _spy_apply()
         r = apply_confirmed_patch(
             _Repo(verified=False),
             _ROOT,
             "file:core/x.py",
             confirmed=True,
-            policy=_ALLOW,
-            git_apply=git,
+            apply_fn=apply_fn,
         )
-        assert not r.applied and gcalls == []
+        assert not r.applied and acalls == []
         assert "verify_report" in r.reason
 
     def test_missing_report_no_write(self):
-        git, gcalls = _spy_git()
+        apply_fn, acalls = _spy_apply()
         r = apply_confirmed_patch(
             _Repo(verified=None),
             _ROOT,
             "file:core/x.py",
             confirmed=True,
-            policy=_ALLOW,
-            git_apply=git,
+            apply_fn=apply_fn,
         )
-        assert not r.applied and gcalls == []
+        assert not r.applied and acalls == []
 
 
 class TestApplySuccess:
     def test_applies_and_reingests(self):
-        git, gcalls = _spy_git()
+        apply_fn, acalls = _spy_apply(changed=("core/x.py",))
         ingest, icalls = _spy_ingest()
         r = apply_confirmed_patch(
             _Repo(),
             _ROOT,
             "file:core/x.py",
             confirmed=True,
-            policy=_ALLOW,
-            git_apply=git,
+            apply_fn=apply_fn,
             ingest_fn=ingest,
         )
         assert r.applied
-        assert gcalls == [("D", _ROOT)]  # git apply mit dem Diff
+        assert acalls == [("D", _ROOT)]  # apply_fn mit dem Diff + root
         assert icalls == [{"rel": "core/x.py", "invalidate": True}]  # I-4.4
 
-    def test_git_apply_failure_reports_no_reingest(self):
-        git, gcalls = _spy_git(rc=1)
+    def test_multi_file_reingests_each(self):
+        apply_fn, _ = _spy_apply(changed=("core/x.py", "core/y.py"))
         ingest, icalls = _spy_ingest()
         r = apply_confirmed_patch(
             _Repo(),
             _ROOT,
             "file:core/x.py",
             confirmed=True,
-            policy=_ALLOW,
-            git_apply=git,
+            apply_fn=apply_fn,
+            ingest_fn=ingest,
+        )
+        assert r.applied
+        assert [c["rel"] for c in icalls] == ["core/x.py", "core/y.py"]
+
+    def test_apply_failure_reports_no_reingest(self):
+        apply_fn, acalls = _spy_apply(ok=False)
+        ingest, icalls = _spy_ingest()
+        r = apply_confirmed_patch(
+            _Repo(),
+            _ROOT,
+            "file:core/x.py",
+            confirmed=True,
+            apply_fn=apply_fn,
             ingest_fn=ingest,
         )
         assert not r.applied
-        assert gcalls  # apply versucht
+        assert acalls  # apply versucht
         assert icalls == []  # aber kein Re-Ingest nach Fehler
 
 
 # --------------------------------------------------------------------------
-# REST /api/apply + /api/patches (nur die fail-safe-Ablehnungen -- der
-# Erfolgspfad wuerde den echten Tree beruehren und ist oben mit Fakes gedeckt)
+# REST /api/apply + /api/patches (nur die Ablehnungen -- der Erfolgspfad wuerde
+# den echten Tree beruehren und ist oben mit Fakes gedeckt)
 # --------------------------------------------------------------------------
 
 import pytest  # noqa: E402
@@ -217,12 +205,10 @@ def _put_report(repo, passed):
 
 @pytest.fixture
 def apply_client(conn, tmp_path):
-    # source_root = leeres tmp-Verzeichnis (nie der echte Tree); Policy erlaubt,
-    # damit die Ablehnungen NICHT nur an der Policy haengen.
+    # source_root = leeres tmp-Verzeichnis (nie der echte Tree); kein
+    # workspace_base -> Apply zielt auf source_root.
     repo = Repository(conn)
-    app = create_app(
-        Queue(conn), repo, source_root=tmp_path, apply_policy=ApplyPolicy(True)
-    )
+    app = create_app(Queue(conn), repo, source_root=tmp_path)
     with TestClient(app) as c:
         yield c, repo
 
@@ -251,19 +237,6 @@ class TestApplyRest:
         client, _ = apply_client
         r = client.post("/api/apply", json={"scope": _SCOPE, "confirm": True})
         assert r.status_code == 401
-
-    def test_default_policy_blocks_even_with_confirm(self, conn, tmp_path):
-        # Ohne Opt-in (Default-Policy) blockiert der Gate trotz confirm + gruen.
-        repo = Repository(conn)
-        _put_patch(repo)
-        _put_report(repo, passed=True)
-        app = create_app(Queue(conn), repo, source_root=tmp_path)  # fail-safe Default
-        with TestClient(app) as client:
-            r = client.post(
-                "/api/apply", json={"scope": _SCOPE, "confirm": True}, headers=_AUTH
-            )
-        assert r.status_code == 409
-        assert "fail-safe" in r.json()["detail"]
 
     def test_patches_lists_verified_flag(self, apply_client):
         client, repo = apply_client

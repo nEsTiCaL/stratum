@@ -47,7 +47,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core.apply_gate import ApplyPolicy, apply_confirmed_patch
+from core.apply_gate import apply_confirmed_patch
 from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
@@ -84,6 +84,7 @@ from core.router import TASK_REQUIREMENTS, TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.template_registry import DagNode, TaskDag
 from core.validator import Model, Validator
+from core.workspace import workspace_root
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -287,7 +288,7 @@ def create_app(
     sse_queue: Queue | None = None,
     progress_store: dict | None = None,
     capacity: ResolvedCapacity | None = None,
-    apply_policy: ApplyPolicy | None = None,
+    workspace_base: Path | None = None,
     decompose_model: Model | None = None,
     decompose_producer: str = "unknown",
     code_capable: bool = True,
@@ -308,20 +309,26 @@ def create_app(
     Router-Kappung (code>=55) graceful failen zu lassen.
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
-    resolved_apply_policy = apply_policy or ApplyPolicy()  # fail-safe Default
 
     # ── Auth-Dependency ────────────────────────────────────────────────────────
+
+    def _require_capability(
+        authorization: str | None = Header(default=None),
+    ) -> tuple[str, int]:
+        """Bearer-Token -> (owner, capability_id). Die capability_id stempelt die
+        Queue (Schritt 7: Workspace-root pro API-Key)."""
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authorization-Header fehlt")
+        resolved = repo.resolve_capability(authorization[7:])
+        if resolved is None:
+            raise HTTPException(status_code=401, detail="Ungültiger API-Key")
+        return resolved
 
     def _require_owner(
         authorization: str | None = Header(default=None),
     ) -> str:
         """Extrahiert Bearer-Token, validiert gegen capabilities, gibt Owner zurueck."""
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authorization-Header fehlt")
-        owner = repo.verify_api_key(authorization[7:])
-        if owner is None:
-            raise HTTPException(status_code=401, detail="Ungültiger API-Key")
-        return owner
+        return _require_capability(authorization)[0]
 
     def _check_task_owner(task_id: int, owner: str) -> dict[str, Any]:
         """Gibt task_info zurueck oder wirft 404/403."""
@@ -477,9 +484,10 @@ def create_app(
 
     @app.post("/api/task", status_code=201)
     async def create_task(
-        body: TaskCreateBody, owner: str = Depends(_require_owner)
+        body: TaskCreateBody, cap: tuple[str, int] = Depends(_require_capability)
     ) -> dict[str, int]:
         """Reiht einen neuen Task in die Queue ein."""
+        owner, capability_id = cap
         try:
             TaskType(body.task_type)
         except ValueError as exc:
@@ -504,7 +512,10 @@ def create_app(
             ],
         )
         ids = queue.enqueue(
-            dag, _claim_model(body.task_type, body.model), owner=owner
+            dag,
+            _claim_model(body.task_type, body.model),
+            owner=owner,
+            capability_id=capability_id,
         )
         item_id = ids[0]
         queue.update_payload(
@@ -668,15 +679,18 @@ def create_app(
 
     @app.post("/api/plan/{plan_id}/confirm")
     async def confirm_plan(
-        plan_id: int, owner: str = Depends(_require_owner)
+        plan_id: int, cap: tuple[str, int] = Depends(_require_capability)
     ) -> dict[str, Any]:
         """I-6.3 Confirm: bestaetigter Plan -> verketteter Gesamt-DAG in die Queue
         (build_dag, modellfrei) + Plan als confirmed vermerkt (supersedet). large
         = weiche Warnung (I-2.7-Vertrag; grosser Plan wird trotzdem enqueued)."""
+        owner, capability_id = cap
         current = _load_current_plan(plan_id)
         plan = plan_from_content(current.content)
         dag = build_dag(plan, scope_resolver=RepoScopeResolver(repo), cache_query=None)
-        task_ids = queue.enqueue(dag, _CONFIRM_MODEL, owner=owner)
+        task_ids = queue.enqueue(
+            dag, _CONFIRM_MODEL, owner=owner, capability_id=capability_id
+        )
         # Prob-Knoten brauchen einen Prompt im Payload (der Worker liest ihn); die
         # Zerlegung liefert je Goal nur task_type/scope -> die natuerlichsprachige
         # Absicht kommt aus dem Plan-Prompt. det-Knoten (index) + verify laufen
@@ -773,22 +787,20 @@ def create_app(
 
     @app.post("/api/apply")
     async def apply_patch(
-        body: ApplyBody, owner: str = Depends(_require_owner)
+        body: ApplyBody, cap: tuple[str, int] = Depends(_require_capability)
     ) -> dict[str, Any]:
-        """HARTES GATE (I-7.5): wendet einen bestaetigten, verifizierten Patch
-        auf den echten Tree an. Fail-safe -- ohne confirm ODER ohne Apply-Policy
-        ODER ohne gruenen verify_report kein Schreibzugriff (409)."""
-        if source_root is None:
-            raise HTTPException(
-                status_code=503, detail="source_root nicht konfiguriert"
-            )
-        result = apply_confirmed_patch(
-            repo,
-            source_root,
-            body.scope,
-            confirmed=body.confirm,
-            policy=resolved_apply_policy,
+        """HARTES GATE (I-7.5): wendet einen bestaetigten, verifizierten Patch auf
+        den Workspace des API-Keys an. Ohne confirm ODER ohne gruenen
+        verify_report kein Schreibzugriff (409)."""
+        owner, capability_id = cap
+        root = (
+            workspace_root(owner, capability_id, base=workspace_base)
+            if workspace_base is not None
+            else source_root
         )
+        if root is None:
+            raise HTTPException(status_code=503, detail="kein Schreibziel konfiguriert")
+        result = apply_confirmed_patch(repo, root, body.scope, confirmed=body.confirm)
         if not result.applied:
             raise HTTPException(status_code=409, detail=result.reason)
         return {"applied": True, "reason": result.reason, "scope": result.target_scope}
