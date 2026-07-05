@@ -107,20 +107,6 @@ def _capacity_dict(cap: ResolvedCapacity) -> dict[str, Any]:
     }
 
 
-# artifact_type je task_type
-_ARTIFACT_FOR_TASK: dict[str, str] = {
-    "summarize": "code_summary",
-    "explain": "code_explanation",
-    "review": "review_findings",
-    "document": "docstring",
-    "refactor_suggest": "refactor_plan",
-    "debug": "debug_analysis",
-    "test_gen": "test_generation",
-    "cross_module": "code_summary",
-    "architecture": "code_summary",
-    "crypto_audit": "review_findings",
-}
-
 _EXPECTED_TOKENS: dict[str, int] = {
     "summarize": 350,
     "explain": 250,
@@ -433,9 +419,18 @@ def create_app(
     async def get_task_result(
         task_id: int, owner: str = Depends(_require_owner)
     ) -> dict[str, Any]:
-        """Liefert das gespeicherte Artefakt eines abgeschlossenen Tasks."""
+        """Liefert das gespeicherte Artefakt eines abgeschlossenen Tasks.
+
+        artifact_type je task_type kommt aus der EINEN Quelle
+        TASK_TYPE_TO_ARTIFACT_TYPE (core.router) -- dieselbe Map, mit der Worker
+        UND Human-Pfad das Artefakt ABLEGEN. Eine fruehere lokale Kopie divergierte
+        (cross_module/architecture -> code_summary statt review_findings) und liess
+        deren Ergebnisse hier ins Leere laufen (404)."""
         info = _check_task_owner(task_id, owner)
-        artifact_type = _ARTIFACT_FOR_TASK.get(info["task_type"])
+        try:
+            artifact_type = TASK_TYPE_TO_ARTIFACT_TYPE.get(TaskType(info["task_type"]))
+        except ValueError:
+            artifact_type = None
         if artifact_type is None:
             raise HTTPException(status_code=404, detail="Kein Ergebnis verfuegbar")
         result = repo.get_current(info["scope"], artifact_type)

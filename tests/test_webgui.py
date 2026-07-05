@@ -46,6 +46,29 @@ _RESULT_PROB_JSON = json.dumps(
 )
 
 
+# gueltige ResultProb-JSON fuer eine review_findings-Analyse (architecture/
+# cross_module/review): das Artefakt, das Worker- UND Human-Pfad ablegen.
+_REVIEW_FINDINGS_JSON = json.dumps(
+    {
+        "artifact_type": "review_findings",
+        "scope": "file:core/queue.py",
+        "content": {"text": "Analyse der Queue.", "findings": "- Bug auf Zeile 42"},
+        "confidence": 0.85,
+        "provenance": {
+            "schema_version": "1",
+            "source_hash": "abc123",
+            "input_hash": "in-002",
+            "producer": "claude-sonnet-4-6",
+            "producer_version": "2026-07",
+            "producer_class": "prob",
+            "timestamp": "2026-07-01T12:00:00+00:00",
+            "artifact_type": "review_findings",
+            "scope": "file:core/queue.py",
+        },
+    }
+)
+
+
 def _dag(dag_id: str = "d1", task_type: str = "summarize") -> TaskDag:
     return TaskDag(
         dag_id=dag_id,
@@ -497,6 +520,27 @@ class TestResultEndpoint:
         c, item_id = client_with_task
         r = c.get(f"/api/result/{item_id}", headers=AUTH)
         assert r.status_code == 404
+
+    def test_result_resolves_review_findings_task(self, conn):
+        # Regression: architecture/cross_module -> review_findings (core.router,
+        # EINE Quelle). Frueher divergierte eine lokale App-Map (-> code_summary)
+        # und liess deren Ergebnisse hier ins Leere laufen (404).
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="architecture"), model="phi4-mini", owner=TEST_OWNER
+        )
+        with TestClient(create_app(queue, repo)) as c:
+            c.post(f"/api/claim/{item_id}", headers=AUTH)
+            r = c.post(
+                f"/api/submit/{item_id}",
+                json={"response": _REVIEW_FINDINGS_JSON, "task_type": "architecture"},
+                headers=AUTH,
+            )
+            assert r.status_code == 200
+            res = c.get(f"/api/result/{item_id}", headers=AUTH)
+            assert res.status_code == 200
+            assert res.json()["artifact_type"] == "review_findings"
 
 
 class TestCreateTaskEndpoint:
