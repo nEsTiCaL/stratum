@@ -57,19 +57,20 @@ _PROMPT_HEADER = (
     "## 2. Fehlerbehandlung & Robustheit\n"
     "## 3. Bugs & Schwachstellen\n"
     "## 4. Design & Verbesserungsvorschlaege\n\n"
-    "Beispiel (gekuerzt):\n"
+    "Beispiel (gekuerzt, sprach-neutral):\n"
     "## 1. Struktur & Verantwortlichkeiten\n"
-    "`Dispatcher.run()` iteriert ueber Jobs und delegiert per Typ an "
-    "`HandlerA` oder `HandlerB`. Rueckgabe: Anzahl verarbeiteter Items.\n"
+    "`Foo.run()` iteriert ueber Elemente und delegiert je Typ an `HandlerA` "
+    "oder `HandlerB`. Rueckgabe: Anzahl verarbeiteter Elemente.\n"
     "## 2. Fehlerbehandlung & Robustheit\n"
-    "`run()` faengt `Exception`, loggt und re-raisst (Z. 42). "
-    "Wenn der Cleanup-Handler selbst wirft, geht der Originalfehler verloren.\n"
+    "`run()` faengt Fehler, protokolliert und meldet weiter (Z. 42). "
+    "Faellt der Aufraeum-Schritt selbst aus, geht der urspruengliche Fehler "
+    "verloren.\n"
     "## 3. Bugs & Schwachstellen\n"
-    "`daemon=True` am Worker-Thread: laufender Job wird hart abgebrochen "
-    "wenn der Hauptprozess endet — kein sauberes Rollback.\n"
+    "Der Hintergrund-Vorgang wird beim Beenden hart abgebrochen — kein "
+    "sauberes Rollback des laufenden Vorgangs.\n"
     "## 4. Design & Verbesserungsvorschlaege\n"
-    "Cleanup-Handler sollte Fehler separat loggen; Original-Exception "
-    "als `__cause__` verketten.\n\n"
+    "Der Aufraeum-Schritt sollte Fehler separat protokollieren und den "
+    "urspruenglichen Fehler als Ursache erhalten.\n\n"
     "---"
 )
 
@@ -88,10 +89,14 @@ def build_review_prompt(
     optional) traegt Graph-Kontext (Testdatei, Aufrufer) nach dem Quellcode ein;
     leer -> keine Section.
     """
+    from core.ingest import source_language
+
     questions = _QUESTIONS.get(task_type, _QUESTIONS_DEFAULT)
     parts = [_PROMPT_HEADER, f"\nScope: {scope}"]
     if source_code:
-        parts.append(f"\n```python\n{source_code}\n```")
+        target = scope[len("file:") :] if scope.startswith("file:") else scope
+        fence = source_language(target) or ""
+        parts.append(f"\n```{fence}\n{source_code}\n```")
     if context:
         parts.append(f"\n{context}")
     if extra_prompt:

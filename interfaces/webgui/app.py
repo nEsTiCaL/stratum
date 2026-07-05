@@ -52,7 +52,7 @@ from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
 from core.diff_extract import build_patch_prompt
-from core.ingest import ingest_repo
+from core.ingest import ingest_file, ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.plan_artifact import (
@@ -82,6 +82,12 @@ from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
 from core.router import TASK_REQUIREMENTS, TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.scope_resolver import RepoScopeResolver
+from core.task_routing import (
+    CONFIRM_MODEL,
+    HUMAN_MODEL,
+    WRITE_TASK_TYPES,
+    claim_model,
+)
 from core.template_registry import DagNode, TaskDag
 from core.validator import Model, Validator
 from core.workspace import workspace_root
@@ -251,18 +257,13 @@ class PlanEditBody(BaseModel):
     goals: list[PlanGoalBody]
 
 
-# Enqueue-Modell fuer einen bestaetigten Plan (I-6.3). Wie /api/task: der Worker
-# routet je Knoten per Router (TASK_REQUIREMENTS), das Feld ist nur der Claim-Key.
-_CONFIRM_MODEL = "phi4-mini"
-
-# Claim-Key fuer Knoten ohne automatischen Worker: der LLM-Loop laesst sie liegen,
-# der Nutzer claimt sie im Dashboard (claim_by_id). Schreib-Tasks landen hier,
-# wenn kein code-faehiger Kandidat erreichbar ist (Profil D ohne Cloud).
-_HUMAN_MODEL = "human"
-
-# Schreibende task_types (Schritt 7): brauchen einen code-faehigen Kandidaten
-# (Router-Kappung code>=55) -> auf Profil D ohne Cloud nur ueber den Human-Pfad.
-_WRITE_TASK_TYPES = frozenset({TaskType.implement.value, TaskType.fix.value})
+# Claim-Key-Routing: eine Quelle (core.task_routing), geteilt mit dem
+# automatischen Review->Fix-Spawn im Worker. Enqueue-Modell fuer einen
+# bestaetigten Plan/Task = CONFIRM_MODEL; ohne code-faehigen Kandidaten werden
+# Schreib-Tasks auf HUMAN_MODEL geroutet (Dashboard-Einreichpfad).
+_CONFIRM_MODEL = CONFIRM_MODEL
+_HUMAN_MODEL = HUMAN_MODEL
+_WRITE_TASK_TYPES = WRITE_TASK_TYPES
 
 
 def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
@@ -442,25 +443,56 @@ def create_app(
             raise HTTPException(status_code=404, detail="Kein Ergebnis verfuegbar")
         return result.model_dump(mode="json")
 
-    def _scope_source(scope: str) -> str:
-        if source_root is not None and scope.startswith("file:"):
-            src = source_root / scope[5:]
+    def _prompt_root(owner: str, capability_id: int | None) -> Path | None:
+        """Lesepfad-Root SYMMETRISCH zum Schreibpfad (Schritt 7): der Workspace
+        des API-Keys (<base>/<owner>/<capability_id>), nicht Stratums eigener
+        Baum. Nur so loest ein file:-Scope des Nutzerprojekts (z.B.
+        scripts/camera_zoom.gd) zu Quellcode auf. Ohne workspace_base/-id (Seed/
+        Alt-Tasks) -> source_root (Dogfooding: Stratum-Repo)."""
+        if workspace_base is not None and capability_id is not None:
+            return workspace_root(owner, capability_id, base=workspace_base)
+        return source_root
+
+    def _ensure_indexed(root: Path | None, scope: str) -> None:
+        """Auto-Index (Schritt 7): den file:-Scope aus `root` in den Graph ziehen,
+        damit der Prompt Symbol-Umriss (symbol_index) UND Aufrufer (impact)
+        bekommt. Ohne Index bleibt jeder Graph-Kontext leer. missing_ok ->
+        Greenfield (noch nicht existierende Datei) = leerer Index statt Fehler.
+        Best-effort: ein Index-Fehler (unparsebar o.ae.) darf die Task-Anlage
+        nicht kippen."""
+        if root is None or not scope.startswith("file:"):
+            return
+        try:
+            ingest_file(repo, root, scope[len("file:") :], missing_ok=True)
+        except Exception:  # noqa: BLE001 - Index ist Beiwerk, nicht die Task-Anlage
+            pass
+
+    def _scope_source(scope: str, root: Path | None) -> str:
+        if root is not None and scope.startswith("file:"):
+            src = root / scope[5:]
             if src.exists():
                 return src.read_text(encoding="utf-8")
         return ""
 
     def _node_prompt(
-        task_type: str, scope: str, instruction: str = "", feedback: str = ""
+        task_type: str,
+        scope: str,
+        instruction: str = "",
+        feedback: str = "",
+        *,
+        root: Path | None = None,
     ) -> str:
         """Prob-Prompt je task_type -- eine Quelle fuer Worker- UND Human-Pfad.
 
         implement/fix -> Patch-Prompt (Unified-Diff, Greenfield = neue Datei);
-        alle anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope
-        existiert) + Graph-Kontext (I-5.6). instruction = natuerlichsprachige
-        Absicht (Plan-Prompt bzw. /api/task-Hinweis); ein Goal traegt sie nicht,
-        daher explizit durchgereicht."""
-        source_code = _scope_source(scope)
-        context = gather_context(repo, scope, source_root=source_root)
+        alle anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope in
+        `root` existiert) + Graph-Kontext (I-5.6). `root` = Workspace des API-Keys
+        (via _prompt_root); None -> source_root (Fallback fuer Anzeige ohne cap).
+        instruction = natuerlichsprachige Absicht (Plan-Prompt bzw. /api/task-
+        Hinweis); ein Goal traegt sie nicht, daher explizit durchgereicht."""
+        root = root if root is not None else source_root
+        source_code = _scope_source(scope, root)
+        context = gather_context(repo, scope, source_root=root)
         if task_type in ("implement", "fix"):
             return build_patch_prompt(
                 task_type,
@@ -473,14 +505,9 @@ def create_app(
         return build_review_prompt(task_type, scope, source_code, instruction, context)
 
     def _claim_model(task_type: str, requested: str) -> str:
-        """Claim-Key (Worker-Auswahl) fuer einen Knoten. Ohne code-faehigen
-        Kandidaten (code_capable=False, Profil D ohne Cloud) haben Schreib-Tasks
-        keinen Worker, der sie erfolgreich abschliesst -> auf model:human routen,
-        sodass der Dashboard-Einreichpfad greift. Sonst bleibt der angeforderte
-        Claim-Key (der LlmWorker eskaliert selbst zu Cloud/lokalem Coder)."""
-        if not code_capable and task_type in _WRITE_TASK_TYPES:
-            return _HUMAN_MODEL
-        return requested
+        """Claim-Key (Worker-Auswahl) fuer einen Knoten -- core.task_routing mit
+        dem app-weiten code_capable-Flag gebunden."""
+        return claim_model(task_type, requested, code_capable=code_capable)
 
     @app.post("/api/task", status_code=201)
     async def create_task(
@@ -518,9 +545,12 @@ def create_app(
             capability_id=capability_id,
         )
         item_id = ids[0]
-        queue.update_payload(
-            item_id, {"prompt": _node_prompt(body.task_type, body.scope, body.prompt)}
-        )
+        # Schritt 7: gegen den Workspace des Keys aufloesen + indexieren, damit
+        # der Prompt Quellcode + Symbol-/Aufrufer-Kontext traegt (statt leer).
+        root = _prompt_root(owner, capability_id)
+        _ensure_indexed(root, body.scope)
+        prompt = _node_prompt(body.task_type, body.scope, body.prompt, root=root)
+        queue.update_payload(item_id, {"prompt": prompt})
         return {"id": item_id}
 
     def _store_plan(prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
@@ -696,6 +726,7 @@ def create_app(
         # Absicht kommt aus dem Plan-Prompt. det-Knoten (index) + verify laufen
         # ohne Prompt. enqueue ueberspringt done-Knoten -> gleiche Reihenfolge.
         instruction = current.content.get("prompt", "")
+        root = _prompt_root(owner, capability_id)
         enqueued = [n for n in dag.nodes if n.status != "done"]
         for node, tid in zip(enqueued, task_ids, strict=True):
             if node.task_type == TaskType.verify.value:
@@ -709,9 +740,11 @@ def create_app(
             claim_model = _claim_model(node.task_type, _CONFIRM_MODEL)
             if claim_model != _CONFIRM_MODEL:
                 queue.set_model(tid, claim_model)
-            queue.update_payload(
-                tid, {"prompt": _node_prompt(node.task_type, node.scope, instruction)}
-            )
+            # Auto-Index je Knoten-Scope (Workspace des Keys) -> Prompt mit
+            # Quellcode + Symbol-/Aufrufer-Kontext.
+            _ensure_indexed(root, node.scope)
+            prompt = _node_prompt(node.task_type, node.scope, instruction, root=root)
+            queue.update_payload(tid, {"prompt": prompt})
         confirmed = build_plan_artifact(
             current.content.get("prompt", ""),
             plan,

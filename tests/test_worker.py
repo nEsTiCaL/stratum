@@ -500,6 +500,66 @@ class TestWorkerLoop:
 
 
 # ---------------------------------------------------------------------------
+# WorkerLoop: automatische Review->Fix-Rueckkopplung (Schritt 7)
+# ---------------------------------------------------------------------------
+
+
+class _ArtStub:
+    def __init__(self, content: dict):
+        self.content = content
+
+
+class _ReviewRepo(_FakeRepo):
+    """get_current liefert ein review_findings-Artefakt mit den gesetzten Findings."""
+
+    def __init__(self, findings: str):
+        super().__init__()
+        self._findings = findings
+
+    def get_current(self, scope, artifact_type, *, trustworthy=False):
+        if artifact_type == "review_findings":
+            return _ArtStub({"findings": self._findings})
+        return None
+
+
+class TestReviewSpawnsFix:
+    def _loop(self, repo, spawn) -> WorkerLoop:
+        return WorkerLoop(
+            queue=_FakeQueue(None),
+            repo=repo,
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(router=Router(), model_factory=lambda n: None),
+            spawn_fix=spawn,
+        )
+
+    def test_review_with_findings_spawns_fix(self):
+        calls: list = []
+        loop = self._loop(
+            _ReviewRepo("- Bug auf Zeile 42"),
+            lambda item, findings: calls.append((item.scope, findings)),
+        )
+        loop._maybe_spawn_fix(_item(task_type="review", scope="file:scripts/cam.gd"))
+        assert calls == [("file:scripts/cam.gd", "- Bug auf Zeile 42")]
+
+    def test_empty_findings_no_spawn(self):
+        calls: list = []
+        loop = self._loop(_ReviewRepo("   \n"), lambda i, f: calls.append(f))
+        loop._maybe_spawn_fix(_item(task_type="review"))
+        assert calls == []
+
+    def test_non_review_task_no_spawn(self):
+        # explain -> code_explanation (kein review_findings) -> kein fix-Spawn.
+        calls: list = []
+        loop = self._loop(_ReviewRepo("- Bug"), lambda i, f: calls.append(f))
+        loop._maybe_spawn_fix(_item(task_type="explain"))
+        assert calls == []
+
+    def test_no_spawn_callback_is_noop(self):
+        loop = self._loop(_ReviewRepo("- Bug"), None)
+        loop._maybe_spawn_fix(_item(task_type="review"))  # kein Crash, kein Effekt
+
+
+# ---------------------------------------------------------------------------
 # WorkerLoop: task_result-Trace (I-5.1b)
 # ---------------------------------------------------------------------------
 

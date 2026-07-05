@@ -102,6 +102,13 @@ class TestBuildPatchPrompt:
         assert "def a():" in p
         assert "existiert noch nicht" not in p
 
+    def test_source_fence_carries_language(self):
+        # Der Fence des aktuellen Inhalts traegt die Sprache aus der Endung -
+        # kein hart geklemmtes ```python fuer eine .gd-Datei.
+        p = build_patch_prompt("fix", "file:scripts/cam.gd", "func f():\n\tpass\n")
+        assert "```gdscript" in p
+        assert "```python" not in p
+
     def test_feedback_included(self):
         p = build_patch_prompt(
             "implement", "file:a.py", "", feedback="pytest rot: test_a"

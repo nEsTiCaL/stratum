@@ -59,13 +59,16 @@ def build_patch_prompt(
     instruction traegt die natuerlichsprachige Absicht (aus dem Plan-Prompt, da
     ein Goal selbst nur task_type/scope kennt); feedback traegt einen vorherigen
     Verify-Fehler fuer die Rueckkante (I-7.4)."""
+    from core.ingest import source_language
+
     verb = "Behebe den Fehler" if task_type == "fix" else "Implementiere die Aufgabe"
     target = scope[len("file:") :] if scope.startswith("file:") else scope
     parts = [_PATCH_HEADER, f"\nZieldatei: {target}"]
     if instruction:
         parts.append(f"\nAufgabe: {instruction}")
     if source_code:
-        parts.append(f"\nAktueller Inhalt:\n```\n{source_code}\n```")
+        fence = source_language(target) or ""
+        parts.append(f"\nAktueller Inhalt:\n```{fence}\n{source_code}\n```")
     else:
         parts.append("\n(Die Zieldatei existiert noch nicht — lege sie neu an.)")
     if context:

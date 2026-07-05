@@ -55,6 +55,14 @@ def language_for_path(path: str) -> str:
     return _EXTENSION_LANGUAGE.get(Path(path).suffix, _DEFAULT_LANGUAGE)
 
 
+def source_language(path: str) -> str | None:
+    """Sprache aus der Endung ODER None (KEIN Default). Fuer Markdown-Fences /
+    Prompts: language_for_path faellt auf Python zurueck (fuer den Extraktor
+    korrekt), was einen Fence aber falsch etikettiert (z.B. ```python fuer eine
+    .gd-Datei). None -> Aufrufer setzt einen nackten Fence."""
+    return _EXTENSION_LANGUAGE.get(Path(path).suffix)
+
+
 @dataclass(frozen=True)
 class IngestResult:
     scope: str

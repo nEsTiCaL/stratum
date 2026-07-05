@@ -19,6 +19,7 @@ import os
 import socket
 import threading
 import time
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -26,13 +27,17 @@ import psycopg
 import uvicorn
 
 from core.db import apply_migrations
+from core.diff_extract import build_patch_prompt
 from core.metrics import InferenceSample, MetricsStore
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
+from core.review_context import gather_context
 from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
+from core.scope_resolver import RepoScopeResolver
 from core.secret_scan import EgressPolicy
-from core.template_registry import DagNode, TaskDag
+from core.task_routing import CONFIRM_MODEL, claim_model
+from core.template_registry import DagNode, TaskDag, decompose
 from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from core.workspace import resolve_base, workspace_root
@@ -242,6 +247,46 @@ def _make_worker_loop(
             return None
         return workspace_root(item.owner, item.capability_id, base=ws_base)
 
+    fix_queue = Queue(worker_conn)
+
+    def _spawn_fix(item, findings: str) -> None:
+        """Review-Findings -> fix-Folge-Task (Schritt 7, automatisch). Zerlegt wie
+        ein regulaerer fix (decompose: index -> fix -> verify), damit die Findings
+        durch die volle patch->verify-Loop laufen (inkl. I-7.4-Rueckkante), statt
+        als Sackgassen-Artefakt zu enden. Der fix-Prob-Knoten bekommt den
+        Patch-Prompt (Quellcode + Graph-Kontext des Workspace + Findings) und das
+        Claim-Routing eines Schreib-Tasks (human, falls kein code-faehiger
+        Kandidat). Kein Auto-Index noetig: der Scope wurde fuers Review indexiert."""
+        root = _resolve_root(item)
+        scope = item.scope
+        source = ""
+        if root is not None and scope.startswith("file:"):
+            src_path = root / scope[len("file:") :]
+            if src_path.exists():
+                source = src_path.read_text(encoding="utf-8")
+        context = gather_context(worker_repo, scope, source_root=root)
+        instruction = "Behebe die im Review gefundenen Probleme:\n" + findings
+        prompt = build_patch_prompt(
+            "fix", scope, source, instruction=instruction, context=context
+        )
+        dag = decompose(
+            "fix",
+            scope,
+            scope_resolver=RepoScopeResolver(worker_repo),
+            dag_id=f"fix-{uuid.uuid4().hex[:8]}",
+        )
+        ids = fix_queue.enqueue(
+            dag, CONFIRM_MODEL, owner=item.owner, capability_id=item.capability_id
+        )
+        enqueued = [n for n in dag.nodes if n.status != "done"]
+        for node, tid in zip(enqueued, ids, strict=True):
+            if node.task_type != "fix":
+                continue  # index/verify: det, kein Prompt, Claim-Key bleibt
+            claim = claim_model("fix", CONFIRM_MODEL, code_capable=code_capable)
+            if claim != CONFIRM_MODEL:
+                fix_queue.set_model(tid, claim)
+            fix_queue.update_payload(tid, {"prompt": prompt})
+
     loop = WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
@@ -259,6 +304,7 @@ def _make_worker_loop(
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
         resolve_root=_resolve_root,
+        spawn_fix=_spawn_fix,
     )
     return loop, decompose_model, decompose_producer, code_capable
 

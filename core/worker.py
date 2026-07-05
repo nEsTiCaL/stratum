@@ -280,6 +280,11 @@ class WorkerLoop:
     # Schritt 7: root pro Item (Workspace je API-Key). None -> Worker-Default-root
     # (Dogfooding: Stratum-Repo). replace() setzt den root nur fuer diesen Lauf.
     resolve_root: Callable[[QueueItem], Path | None] | None = None
+    # Schritt 7: automatische Review->Fix-Rueckkopplung. Ein Analyse-Knoten, der
+    # Bugs findet (review_findings mit content.findings), ruft dies auf, um einen
+    # fix-Folge-Task zu erzeugen. Injiziert (kennt Routing/Workspace/Prompt-Bau);
+    # None -> keine Rueckkopplung (Reviews bleiben reine Artefakte).
+    spawn_fix: Callable[[QueueItem, str], None] | None = None
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -361,6 +366,26 @@ class WorkerLoop:
                 attempts=1,
             )
 
+    def _maybe_spawn_fix(self, item: QueueItem) -> None:
+        """Automatische Rueckkopplung (Schritt 7): ein Review/Analyse-Knoten, der
+        Bugs meldet (Artefakt 'review_findings' mit nicht-leerem content.findings),
+        erzeugt einen fix-Folge-Task auf demselben Scope -- die Findings gehen so
+        durch die patch->verify-Loop, statt als Sackgassen-Artefakt zu enden. Der
+        fix-Task selbst erzeugt ein 'patch' (kein 'review_findings') -> keine
+        Wiederholung, kein Kreislauf. spawn_fix injiziert (Routing/Workspace)."""
+        if self.spawn_fix is None:
+            return
+        try:
+            task_type = TaskType(item.task_type)
+        except ValueError:
+            return
+        if TASK_TYPE_TO_ARTIFACT_TYPE.get(task_type) != "review_findings":
+            return
+        art = self.repo.get_current(item.scope, "review_findings")
+        findings = (art.content.get("findings", "") if art else "") or ""
+        if findings.strip():
+            self.spawn_fix(item, findings.strip())
+
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
         item = self.queue.claim(model)
@@ -388,6 +413,7 @@ class WorkerLoop:
                 outcome = llm.run(item, self.repo)
                 if outcome.status == "done":
                     self.queue.complete(item.id)
+                    self._maybe_spawn_fix(item)
                 else:
                     self._fail(
                         item,
