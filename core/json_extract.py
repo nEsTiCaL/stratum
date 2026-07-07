@@ -5,9 +5,10 @@ Kleine lokale Modelle verpacken ihr JSON haeufig in Markdown-Fences
 Dieser Helfer toleriert beides: Fence-Praefix entfernen, ersten JSON-Wert
 (Objekt/Array) per raw_decode lesen, Trailing-Garbage ignorieren.
 
-Einzige Wahrheitsquelle fuer diese Toleranz — genutzt von classifier, planner
-und dem Validator-/Worker-Pfad, damit die Validierung nicht an der Verpackung
-scheitert (der Grund existiert unabhaengig vom Aufrufer).
+Einzige Wahrheitsquelle fuer diese Toleranz — genutzt von classifier,
+plan_format (JSON-Altformat-Toleranz) und interfaces.webgui, damit das
+Uebernehmen nicht an der Verpackung scheitert (der Grund existiert
+unabhaengig vom Aufrufer).
 """
 
 from __future__ import annotations

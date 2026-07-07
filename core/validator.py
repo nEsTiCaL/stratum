@@ -1,9 +1,10 @@
 """Validator + Eskalation (I-2.4).
 
 Validiert eine Model-Antwort gegen das passende Result-Schema
-(producer_class-Verzweigung: det -> ResultDet JSON, prob -> Label-Prefix-Format
-via core.llm_parser). Confidence wird nicht mehr vom LLM erwartet; der Worker
-leitet sie aus dem Modell-Tier ab (core.router.TIER_CONFIDENCE).
+(producer_class-Verzweigung: det -> ResultDet JSON, implement/fix ->
+Unified-Diff, prob -> freies Markdown via core.review_format, einzige
+Pflicht: Text nicht leer). Confidence wird nicht mehr vom LLM erwartet; der
+Worker leitet sie aus dem Modell-Tier ab (core.router.TIER_CONFIDENCE).
 
 Model-Seam: schmales Protocol Model.complete(prompt)->response. Reale
 Implementierung (Ollama-Adapter) folgt in I-2.5; hier nur FakeModel fuer
@@ -17,7 +18,6 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
-from core.llm_parser import parse_llm_response
 from core.models.result_det_schema import ResultDet
 from core.router import Candidate, TaskType
 
@@ -120,27 +120,18 @@ class Validator:
         return ValidationResult(passed=True, trigger="pass")
 
     def _validate_prob(self, response: str) -> ValidationResult:
-        # prob-Antwort kommt als Label-Prefix-Format (core.llm_parser).
-        # Einzige Pflicht: CONTENT ist nicht leer. Confidence, findings etc.
-        # baut der Worker deterministisch — der Validator prueft sie nicht.
-        try:
-            parsed = parse_llm_response(response)
-        except Exception as exc:
+        # prob-Antwort ist freies Markdown (core.review_format); einzige
+        # Pflicht: Text nicht leer. Confidence, findings etc. baut der Worker
+        # deterministisch — der Validator prueft sie nicht.
+        from core.review_format import build_content
+
+        if not build_content(response).get("text"):
             return ValidationResult(
                 passed=False,
                 trigger="prob_schema_fail",
                 may_escalate=True,
-                detail=f"parse error: {exc}",
+                detail="Antwort leer",
             )
-
-        if not parsed.text:
-            return ValidationResult(
-                passed=False,
-                trigger="prob_schema_fail",
-                may_escalate=True,
-                detail="CONTENT leer oder fehlt",
-            )
-
         return ValidationResult(passed=True, trigger="pass")
 
     def _validate_patch(self, response: str) -> ValidationResult:

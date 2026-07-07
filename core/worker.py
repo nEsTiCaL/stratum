@@ -5,7 +5,7 @@ LlmWorker:  baut Prompt aus QueueItem.payload, laeuft EscalationLoop,
             baut ResultProb vollstaendig aus Kontext + geparster LLM-Antwort.
 WorkerLoop: claim -> dispatch (det|llm) -> complete|fail.
 
-LLM-Vertrag: Label-Prefix-Format (core.llm_parser). Das Modell liefert nur
+LLM-Vertrag: freies Markdown (core.review_format). Das Modell liefert nur
 Freitext; alle strukturierten Felder (artifact_type, scope, confidence,
 provenance) werden deterministisch vom Worker gesetzt.
 """

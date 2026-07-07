@@ -65,6 +65,7 @@ from core.plan_artifact import (
     plan_from_content,
     plan_input_hash,
 )
+from core.plan_format import parse_plan_response
 from core.plan_metadata import enrich_plan
 from core.planner import (
     LARGE_PLAN_THRESHOLD,
@@ -237,6 +238,10 @@ class IntentBody(BaseModel):
     goals: list[PlanGoalBody] | None = None
     understanding: str = ""
     not_covered: list[str] = []
+    # Manueller Pfad, Variante Rohtext: komplette Zerlegungs-Antwort (Markdown
+    # nach core/plan_format, JSON-Altformat toleriert) -- Parsen uebernimmt der
+    # Server (EIN Parser fuer Modell- und Copy-Paste-Pfad).
+    response: str = ""
 
 
 class PlanEditBody(BaseModel):
@@ -561,10 +566,12 @@ def create_app(
     ) -> dict[str, Any]:
         """I-6.2/6.5: freier Prompt -> Plan-Artefakt (status=proposed).
 
-        Drei Wege:
+        Vier Wege:
         - Manuell (body.goals gesetzt): vorab-verfasste Zerlegung direkt speichern,
           OHNE Modell (model:human; loest das 503-Henne/Ei auf Profil D). Kein
           Cache -- es gibt keinen Modellaufruf zu sparen.
+        - Manuell, Rohtext (body.response): komplette Zerlegungs-Antwort
+          (Markdown/JSON) serverseitig via core/plan_format parsen.
         - Modell + Revision (body.revision): Korrektur an den Prompt anhaengen ->
           neuer effektiver Prompt -> neuer input_hash -> neue Edition.
         - Modell (Cache-first, artifact-first): gleicher Prompt -> Store-Hit ->
@@ -576,18 +583,28 @@ def create_app(
             raise HTTPException(status_code=422, detail="prompt fehlt")
 
         # ── Manueller Pfad (model:human): Ziele direkt uebernommen ──
-        if body.goals is not None:
+        if body.goals is not None or body.response.strip():
             try:
-                goals = _goals_from_bodies(body.goals)
+                if body.goals is not None:
+                    goals = _goals_from_bodies(body.goals)
+                    understanding = body.understanding
+                    not_covered = tuple(body.not_covered)
+                else:
+                    parsed = parse_plan_response(body.response)
+                    goals = _goals_from_bodies(
+                        [PlanGoalBody(**g) for g in parsed["goals"]]
+                    )
+                    understanding = parsed["understanding"]
+                    not_covered = tuple(parsed["not_covered"])
             except ValueError as exc:
                 raise HTTPException(
-                    status_code=400, detail=f"Ungueltiger task_type: {exc}"
+                    status_code=400, detail=f"Zerlegung nicht uebernehmbar: {exc}"
                 ) from exc
             plan = Plan(
                 goals=goals,
                 large=len(goals) >= LARGE_PLAN_THRESHOLD,
-                understanding=body.understanding,
-                not_covered=tuple(body.not_covered),
+                understanding=understanding,
+                not_covered=not_covered,
             )
             return _store_plan(prompt, plan, producer="manual")
 

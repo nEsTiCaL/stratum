@@ -111,6 +111,24 @@ def test_bare_array_stays_backward_compatible():
     assert len(plan.goals) == 1
 
 
+def test_markdown_response_is_primary_format():
+    # Neuformat (core/plan_format): Markdown-Antwort -> Plan; depends_on aus
+    # 1-basierten Schritt-Nummern.
+    resp = (
+        "## 1. Verstaendnis\nDu willst ein Login-Modul mit Tests.\n"
+        "## 2. Nicht abgedeckt\n- keine\n"
+        "## 3. Schritte\n"
+        "1. implement file:auth/login.py\n"
+        "2. test_gen file:tests/test_login.py (nach: 1)"
+    )
+    plan = IntentDecomposer(FakeModel(responses=[resp])).decompose("x")
+    assert plan.understanding == "Du willst ein Login-Modul mit Tests."
+    assert plan.not_covered == ()
+    assert plan.goals[0].task_type == TaskType.implement
+    assert plan.goals[1].task_type == TaskType.test_gen
+    assert plan.goals[1].depends_on == (0,)
+
+
 # ---------------------------------------------------------------------------
 # build_dag(): bestaetigte Goals -> verketteter TaskDag (det)
 # ---------------------------------------------------------------------------
@@ -195,10 +213,11 @@ def test_decompose_implement_and_fix_are_valid_task_types():
 
 
 def test_prompt_template_contains_implement_and_fix():
-    from core.planner import _PROMPT_TEMPLATE
+    from core.planner import build_decompose_prompt
 
-    assert "implement" in _PROMPT_TEMPLATE
-    assert "fix" in _PROMPT_TEMPLATE
+    prompt = build_decompose_prompt("")
+    assert "implement" in prompt
+    assert "fix" in prompt
 
 
 def test_planner_task_types_source_of_truth():

@@ -849,6 +849,69 @@ class TestIntentEndpoint:
             )
         assert r.status_code == 400
 
+    def test_manual_response_markdown_parsed_serverside(self, conn):
+        # Rohtext-Variante des manuellen Pfads: komplette Markdown-Antwort
+        # (core/plan_format) -> Server parst, kein Modell noetig.
+        response = (
+            "## 1. Verstaendnis\nAuth-Modul mit Login.\n"
+            "## 2. Nicht abgedeckt\n- deploy: kein task_type\n"
+            "## 3. Schritte\n"
+            "1. implement file:auth/login.py\n"
+            "2. test_gen file:tests/test_login.py (nach: 1)"
+        )
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={"prompt": "Baue Auth", "response": response},
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        content = r.json()["plan"]["content"]
+        assert content["understanding"] == "Auth-Modul mit Login."
+        assert content["not_covered"] == ["deploy: kein task_type"]
+        assert content["goals"] == [
+            {
+                "task_type": "implement",
+                "scope": "file:auth/login.py",
+                "depends_on": [],
+            },
+            {
+                "task_type": "test_gen",
+                "scope": "file:tests/test_login.py",
+                "depends_on": [0],
+            },
+        ]
+        assert r.json()["plan"]["provenance"]["producer"] == "manual"
+
+    def test_manual_response_json_altformat_accepted(self, conn):
+        # JSON-Altformat bleibt im Rohtext-Pfad toleriert.
+        response = json.dumps(
+            {
+                "understanding": "Auth.",
+                "not_covered": [],
+                "goals": [
+                    {"task_type": "review", "scope": "file:x.py", "depends_on": []}
+                ],
+            }
+        )
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={"prompt": "Baue Auth", "response": response},
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        assert r.json()["plan"]["content"]["goals"][0]["task_type"] == "review"
+
+    def test_manual_response_unparseable_400(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent",
+                json={"prompt": "x", "response": "Kann ich nicht zerlegen."},
+                headers=AUTH,
+            )
+        assert r.status_code == 400
+
 
 class TestIntentPromptEndpoints:
     """I-6.5: Backend als einzige Prompt-/task_type-Quelle (kein Frontend-Duplikat)."""

@@ -14,90 +14,36 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.json_extract import extract_json as _load_json
+from core.plan_format import (
+    PLANNABLE_TASK_TYPES,
+    build_decompose_prompt,
+    parse_plan_response,
+)
 from core.router import TaskType
 from core.template_registry import DagNode, ScopeResolver, TaskDag, decompose
 from core.validator import Model
 
 LARGE_PLAN_THRESHOLD = 5
 
-# Einzige Wahrheitsquelle der planbaren (nutzer-auswaehlbaren) task_types:
-# speist die "one of: ..."-Zeile im Prompt UND den Cockpit-Dropdown (ueber
-# GET /api/intent/task-types). verify fehlt bewusst -- det VerifyWorker-Typ,
-# kein vom Nutzer waehlbares Goal.
-PLANNER_TASK_TYPES: tuple[TaskType, ...] = (
-    TaskType.index,
-    TaskType.symbol_lookup,
-    TaskType.dependency_map,
-    TaskType.explain,
-    TaskType.document,
-    TaskType.summarize,
-    TaskType.review,
-    TaskType.test_gen,
-    TaskType.refactor_suggest,
-    TaskType.debug,
-    TaskType.architecture,
-    TaskType.cross_module,
-    TaskType.crypto_audit,
-    TaskType.implement,
-    TaskType.fix,
+# Planbare (nutzer-auswaehlbare) task_types fuer den Cockpit-Dropdown (ueber
+# GET /api/intent/task-types). Abgeleitet aus der einzigen Wahrheitsquelle
+# core/plan_format.PLANNABLE_TASK_TYPES (dort mit Beschreibung, speist den
+# Prompt). verify fehlt bewusst -- det VerifyWorker-Typ, kein waehlbares Goal.
+# build_decompose_prompt wird hier re-exportiert (I-2.7-API; app.py nutzt es
+# fuer POST /api/intent/prompt).
+PLANNER_TASK_TYPES: tuple[TaskType, ...] = tuple(
+    TaskType(name) for name, _ in PLANNABLE_TASK_TYPES
 )
-_TASK_TYPE_LIST = " ".join(t.value for t in PLANNER_TASK_TYPES)
 
-# Sentinel __TASK_TYPES__ statt {task_types}, damit die spaetere .format(prompt=)
-# nicht kollidiert (Template escaped literale Braces als {{ }}).
-_PROMPT_TEMPLATE = """\
-You are a software-engineering assistant. First understand what the user \
-actually wants, then break it into ordered sub-goals.
-
-Reply with a JSON object only — no prose, no markdown fences:
-{{
-  "understanding": "<2-3 sentences restating what the user wants, in their \
-own language; this is shown back to the user to confirm or correct>",
-  "not_covered": [<strings: parts of the request you could NOT turn into a \
-goal, each with a short reason; empty list if everything is covered>],
-  "goals": [
-    {{
-      "task_type": "<one of: __TASK_TYPES__>",
-      "scope": "<scope string, e.g. module:auth or file:auth/login.py>",
-      "depends_on": [<0-based indices of goals this depends on, empty if none>]
-    }}
-  ]
-}}
-
-Task type guidance (use the best fit):
-- implement: create new code or a new file from scratch (e.g. a new script, \
-feature, or module). For greenfield requests the file does not exist yet — \
-propose a reasonable target path as the scope (e.g. file:player/camera.gd).
-- fix: correct a bug or broken behaviour in existing code
-- refactor_suggest: restructure existing code without changing behaviour
-- test_gen: generate tests for existing code
-- review/debug/explain/document/summarize: analysis and reading tasks
-- architecture/cross_module/crypto_audit: cross-cutting analysis
-- index/symbol_lookup/dependency_map: structural queries
-
-Scope rules:
-- implement: scope is the target file path; invent a sensible path if the file \
-does not exist yet (greenfield). This is expected and required, not an error.
-- all other task types: scope must refer to something that plausibly exists. \
-If no task_type fits OR no existing scope can be determined, list it in \
-not_covered — do NOT invent a task_type or scope.
-
-Return one goal for a simple single-step request. Reply with the JSON object \
-only.
-
-Task:
-{prompt}""".replace("__TASK_TYPES__", _TASK_TYPE_LIST)
-
-
-def build_decompose_prompt(prompt: str) -> str:
-    """Fertiger Zerlegungs-Prompt fuer einen Nutzer-Auftrag.
-
-    Einzige Wahrheitsquelle: dieselbe Funktion speist den lokalen Modell-Pfad
-    (IntentDecomposer.decompose) UND den manuellen Copy-Paste-Pfad im Cockpit
-    (ueber POST /api/intent/prompt). Kein zweites Template im Frontend mehr.
-    """
-    return _PROMPT_TEMPLATE.format(prompt=prompt)
+__all__ = [  # explizit: build_decompose_prompt ist bewusster Re-Export
+    "LARGE_PLAN_THRESHOLD",
+    "PLANNER_TASK_TYPES",
+    "GoalItem",
+    "Plan",
+    "IntentDecomposer",
+    "build_dag",
+    "build_decompose_prompt",
+]
 
 
 @dataclass(frozen=True)
@@ -206,18 +152,13 @@ class IntentDecomposer:
         self._large_threshold = large_threshold
 
     def decompose(self, prompt: str) -> Plan:
+        # Markdown-Format (core/plan_format); JSON-Altformat (Objekt oder
+        # bare Array) bleibt ueber parse_plan_response toleriert.
         raw = self._model.complete(build_decompose_prompt(prompt))
-        data = _load_json(raw)
-        # Neu (I-6.5): Objekt {understanding, not_covered, goals}. Tolerant zum
-        # alten Format (bare Array = nur goals), damit aeltere Modelle/Fixtures
-        # weiter parsen.
-        if isinstance(data, list):
-            items, understanding, not_covered = data, "", ()
-        else:
-            items = data.get("goals", [])
-            understanding = str(data.get("understanding", ""))
-            not_covered = tuple(str(x) for x in data.get("not_covered", ()))
-        goals = _parse_goals(items)
+        data = parse_plan_response(raw)
+        goals = _parse_goals(data["goals"])
+        understanding = data["understanding"]
+        not_covered = tuple(data["not_covered"])
         return Plan(
             goals=tuple(goals),
             large=len(goals) >= self._large_threshold,

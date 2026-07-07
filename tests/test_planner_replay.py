@@ -1,13 +1,14 @@
 """Replay-Tests fuer I-2.7 (IntentDecomposer) mit echten phi4-mini-Antworten.
 
-Aufgenommen 2026-07-01 gegen phi4-mini:latest (Vulkan, GTX1070).
-Faengt Regressionen in _load_json / _parse_goals / decompose() ohne echtes Modell.
-Wenn _PROMPT_TEMPLATE geaendert wird: Fixtures neu aufnehmen (dev_verify).
+Aufgenommen 2026-07-01 gegen phi4-mini:latest (Vulkan, GTX1070) -- damals
+JSON-Format; belegt heute die JSON-Altformat-Toleranz von parse_plan_response.
+Wenn das Prompt-Format geaendert wird: Fixtures neu aufnehmen (dev_verify).
 """
 
 from __future__ import annotations
 
-from core.planner import _PROMPT_TEMPLATE, IntentDecomposer
+from core.plan_format import build_decompose_prompt
+from core.planner import IntentDecomposer
 from core.router import TaskType
 from core.validator import ReplayModel
 
@@ -31,9 +32,7 @@ _CAPTURED: list[tuple[str, str]] = [
 
 
 def _replay_model() -> ReplayModel:
-    return ReplayModel(
-        replay={_PROMPT_TEMPLATE.format(prompt=u): r for u, r in _CAPTURED}
-    )
+    return ReplayModel(replay={build_decompose_prompt(u): r for u, r in _CAPTURED})
 
 
 def test_replay_single_goal():

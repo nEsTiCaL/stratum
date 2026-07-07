@@ -20,16 +20,17 @@ import hashlib
 from pathlib import Path
 
 from core.models.result_prob_schema import ArtifactType, ResultProb
-from core.planner import _PROMPT_TEMPLATE as _PLANNER_TEMPLATE
+from core.plan_format import build_decompose_prompt
 from core.planner import GoalItem, Plan
 from core.provenance_stamp import build_prob_provenance
 from core.router import TaskType
 
-# Template-Fingerprint: aendert sich _PROMPT_TEMPLATE, aendert sich dieser Wert
-# -> alle bisherigen Cache-Eintraege verfallen automatisch (neuer input_hash).
-_TEMPLATE_FINGERPRINT = hashlib.sha256(_PLANNER_TEMPLATE.encode("utf-8")).hexdigest()[
-    :16
-]
+# Template-Fingerprint: aendert sich der Zerlegungs-Prompt (core/plan_format,
+# inkl. task_type-Liste/Beschreibungen), aendert sich dieser Wert -> alle
+# bisherigen Cache-Eintraege verfallen automatisch (neuer input_hash).
+_TEMPLATE_FINGERPRINT = hashlib.sha256(
+    build_decompose_prompt("").encode("utf-8")
+).hexdigest()[:16]
 
 # Plaene sind repo-weit (I-6.1-Vertrag: scope "repo:"). Die Edit-Kette (I-6.3)
 # laeuft ueber die superseded-Mechanik desselben (scope, artifact_type).

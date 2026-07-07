@@ -101,9 +101,33 @@ def test_classify_sensitivity_src_both_none():
 
 
 def test_classify_strips_markdown_fences():
-    """Modell liefert ```json...``` trotz Instruktion – soll trotzdem parsen."""
+    """Modell liefert ```json...``` (Altformat) – soll weiter parsen."""
     fenced = f"```json\n{_fake_response('explain', 'low', 100, 'none')}\n```"
     model = FakeModel(responses=[fenced])
     result = Classifier(model).classify("explain quicksort")
     assert result.task_type == TaskType.explain
     assert result.complexity == "low"
+
+
+def test_classify_key_value_lines_primary_format():
+    """Neuformat: vier "schluessel: wert"-Zeilen statt JSON."""
+    resp = (
+        "task_type: implement\ncomplexity: high\nest_input_len: 350\nsensitivity: low\n"
+    )
+    result = Classifier(FakeModel(responses=[resp])).classify("write a parser")
+    assert result.task_type == TaskType.implement
+    assert result.complexity == "high"
+    assert result.est_input_len == 350
+    assert result.sensitivity == Sensitivity.low
+
+
+def test_classify_key_value_tolerates_bullets_bold_and_units():
+    resp = (
+        "- **task_type**: review\n"
+        "- complexity: medium\n"
+        "- est_input_len: ca. 150 Tokens\n"
+        "- sensitivity: none\n"
+    )
+    result = Classifier(FakeModel(responses=[resp])).classify("review x")
+    assert result.task_type == TaskType.review
+    assert result.est_input_len == 150

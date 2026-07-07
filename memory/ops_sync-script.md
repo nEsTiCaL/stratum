@@ -9,6 +9,14 @@ Aufruf (absoluter Pfad, WIN_REPO_PFAD aus `.local/host.md`):
 powershell -ExecutionPolicy Bypass -File "<WIN_REPO_PFAD>\.local\sync.ps1" "commit message"
 ```
 
+## Remote-Divergenz-Check (vor Commit, seit 2026-07-07)
+
+Nach dem Paritaets-Check: `git fetch origin` + `rev-list --count
+HEAD..origin/main`. Ist origin/main voraus (parallele Session hat gepusht),
+bricht das Script VOR dem Commit ab und listet die fehlenden Commits --
+erst integrieren (`git pull --ff-only` bzw. Merge), dann erneut syncen.
+Gegenstueck beim Sitzungsstart: Remote-Check in `memory_start`.
+
 ## MD5-Paritaets-Check (vor Commit)
 
 Vor `git add` wird fuer alle geaenderten/neuen `.py`-Dateien geprueft ob
@@ -93,6 +101,18 @@ if ($mismatches.Count -gt 0) {
 }
 
 Write-Host "  OK: alle geaenderten Python-Dateien paritaetisch."
+
+# --- Remote-Divergenz-Check (vor Commit) -----------------------------------
+Write-Host "Pruefe Remote-Divergenz (git fetch)..."
+git -C $WinRepo fetch origin
+if ($LASTEXITCODE -ne 0) { throw "git fetch fehlgeschlagen (offline?)" }
+
+$behind = (git -C $WinRepo rev-list --count "HEAD..origin/main").Trim()
+if ($behind -ne "0") {
+    git -C $WinRepo log --oneline "HEAD..origin/main" | ForEach-Object { Write-Host "  REMOTE: $_" }
+    throw "origin/main ist $behind Commit(s) voraus -- erst integrieren (git pull --ff-only bzw. Merge), dann sync."
+}
+Write-Host "  OK: lokal auf aktuellem Stand von origin/main."
 
 # --- Commit + Push --------------------------------------------------------
 

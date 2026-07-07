@@ -144,9 +144,19 @@ Einreichen (`/api/submit/{id}`) fuer den Human-Pfad ist zusaetzlich format-toler
    klare 422-Meldung. Manuelle Antwort -> `confidence = 0.9` (`_HUMAN_CONFIDENCE`).
 
 `model == "human"`: Worker ignoriert den Task (kein Ollama-Lauf), Bearbeitung nur
-manuell ueber das Dashboard. Validator (`_validate_prob`) prueft weiterhin nur, ob
-Text nicht leer ist (via `parse_llm_response`-Fallback) -- Markdown besteht das.
-Der Split gilt fuer NEUE Artefakte; bereits gespeicherte aendern sich nicht.
+manuell ueber das Dashboard. Validator (`_validate_prob`) prueft nur, ob Text
+nicht leer ist (seit 2026-07-07 via `build_content`; `core/llm_parser` GELOESCHT,
+Label-Prefix-Format komplett abgeloest). Der Split gilt fuer NEUE Artefakte;
+bereits gespeicherte aendern sich nicht.
+
+Konsequent seit 2026-07-07 -- KEIN LLM-Prompt verlangt mehr JSON:
+- Intent-Zerlegung: `core/plan_format.py` (build_decompose_prompt +
+  parse_plan_response; drei Ueberschriften Verstaendnis / Nicht abgedeckt /
+  Schritte, JSON-Altformat toleriert; Details spec_schritt-6). POST /api/intent
+  nimmt zusaetzlich `response` (Rohtext der Zerlegungs-Antwort) -- Server parst.
+- Classifier (`core/classifier.py`, aktuell nur Tests): vier
+  "schluessel: wert"-Zeilen statt JSON-Schema, gleiche Toleranz.
+- Frontend: kein JSON-Vorcheck mehr in validateResponse (Server prueft).
 
 ## Aufruf-Beispiele (curl)
 

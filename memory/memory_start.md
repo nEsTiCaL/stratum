@@ -13,6 +13,20 @@ Historie / Zeitpunkt                              -> log.md (nur laufende Phase;
                                                      Aelteres: memory-archiv/, Notfall)
 ```
 
+## Remote-Check (Pflicht VOR jeder Repo-Arbeit)
+
+Parallele Sessions (anderer Host/Chat) pushen auf main. Deshalb beim
+Sitzungsstart, BEVOR Dateien editiert werden:
+
+```
+git fetch origin && git log --oneline HEAD..origin/main
+```
+
+Ausgabe nicht leer -> origin ist voraus: erst `git pull --ff-only`, DANN
+arbeiten. Lokal bereits eigene Commits + origin voraus -> Divergenz an den
+Nutzer melden (nie force-push, nie blind mergen). Zweite Sperre: sync.ps1
+bricht Commits auf veralteter Basis ab (Remote-Divergenz-Check).
+
 ## Konventionen (Kurz, Details in rules.md)
 
 - Chunks heissen `<tag>_<slug>.md`; ein Glob `<tag>_*` holt eine ganze Domaene.

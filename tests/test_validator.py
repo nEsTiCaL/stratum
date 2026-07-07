@@ -3,7 +3,7 @@
 Alle Tests det/TDD: kein Postgres, kein GPU, kein echtes Modell.
 Validator-Logik und Eskalations-Ablauf laufen ueber den Model-Seam (FakeModel).
 
-prob-Validierung prueft nur: CONTENT nicht leer.
+prob-Validierung prueft nur: Text nicht leer (freies Markdown, review_format).
 Confidence kommt nicht mehr vom LLM (Worker leitet sie aus Tier ab).
 """
 
@@ -46,8 +46,8 @@ _DET_RESULT = json.dumps(
 
 
 def _prob_response(content: str = "Erklaerung des Codes.") -> str:
-    """Minimale LLM-Antwort im Label-Prefix-Format."""
-    return f"MODEL: phi4-mini\n\nCONTENT:\n{content}\n\nFINDINGS:\nnone\n"
+    """Minimale LLM-Antwort (freies Markdown, review_format-Welt)."""
+    return f"## 1. Struktur & Verantwortlichkeiten\n{content}\n"
 
 
 def _candidate(name: str, *, cloud: bool = False) -> Candidate:
@@ -89,22 +89,28 @@ class TestValidatorDet:
 
 
 # ---------------------------------------------------------------------------
-# Validator: prob-Pfad (Label-Format)
+# Validator: prob-Pfad (freies Markdown, core.review_format)
 # ---------------------------------------------------------------------------
 
 
 class TestValidatorProb:
-    def test_labeled_format_with_content_passes(self):
+    def test_markdown_review_passes(self):
+        raw = (
+            "## 1. Struktur & Verantwortlichkeiten\nKlassen und Zweck.\n"
+            "## 3. Bugs & Schwachstellen\n- Race in Zeile 42\n"
+        )
         v = Validator()
-        result = v.validate(_prob_response(), TaskType.explain, producer_class="prob")
+        result = v.validate(raw, TaskType.review, producer_class="prob")
         assert result.passed is True
         assert result.trigger == "pass"
 
-    def test_plain_text_without_labels_passes(self):
-        # Fallback: ganzer Text = CONTENT -> gueltig solange nicht leer
+    def test_plain_text_passes(self):
+        # Einzige Pflicht: Text nicht leer -- beliebiger Freitext besteht.
         v = Validator()
         result = v.validate(
-            "Einfache Antwort ohne Labels.", TaskType.summarize, producer_class="prob"
+            "Einfache Antwort ohne Ueberschriften.",
+            TaskType.summarize,
+            producer_class="prob",
         )
         assert result.passed is True
 
@@ -115,29 +121,25 @@ class TestValidatorProb:
         assert result.trigger == "prob_schema_fail"
         assert result.may_escalate is True
 
-    def test_empty_content_section_fails(self):
-        raw = "MODEL: phi4-mini\n\nCONTENT:\n\nFINDINGS:\nnone\n"
+    def test_empty_fence_fails(self):
+        # Nur eine leere ```-Fence -> nach Bereinigung kein Text -> fail.
         v = Validator()
-        result = v.validate(raw, TaskType.explain, producer_class="prob")
+        result = v.validate("```\n```", TaskType.explain, producer_class="prob")
         assert result.passed is False
         assert result.trigger == "prob_schema_fail"
         assert result.may_escalate is True
 
-    def test_full_sections_pass(self):
-        raw = (
-            "MODEL: phi4-mini\n\n"
-            "CONTENT:\nHauptantwort hier.\n\n"
-            "FINDINGS:\n- Bug auf Zeile 42\n\n"
-            "RISKS:\n- Injection moeglich\n\n"
-            "RECOMMENDATIONS:\n- Validierung hinzufuegen\n"
-        )
+    def test_legacy_label_prefix_still_passes_as_plain_text(self):
+        # Historisches Label-Prefix-Layout ist heute schlicht nicht-leerer
+        # Freitext (landet komplett in content.text, verlustfrei).
+        raw = "MODEL: phi4-mini\n\nCONTENT:\nHauptantwort hier.\n"
         v = Validator()
         result = v.validate(raw, TaskType.review, producer_class="prob")
         assert result.passed is True
 
     def test_prob_fail_may_escalate(self):
         v = Validator()
-        result = v.validate("", TaskType.review, producer_class="prob")
+        result = v.validate("   ", TaskType.review, producer_class="prob")
         assert result.may_escalate is True
 
 

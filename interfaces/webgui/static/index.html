@@ -416,7 +416,7 @@
       <div class="block-label">
         <span class="num" id="ans-num">③</span>
         <span class="title">Antwort</span>
-        <span class="desc" id="ans-desc">→ JSON-Ausgabe des LLM einfügen, dann prüfen &amp; einreichen</span>
+        <span class="desc" id="ans-desc">→ Markdown-Antwort des LLM einfügen, dann prüfen &amp; einreichen</span>
       </div>
     </div>
     <textarea id="response-box"
@@ -760,9 +760,9 @@
         '→ Rolle · Kontext · Quellcode · Aufgabe · Format';
       document.getElementById('ans-num').textContent  = '③';
       document.getElementById('ans-desc').textContent =
-        '→ JSON-Ausgabe des LLM einfügen, dann prüfen & einreichen';
+        '→ Markdown-Antwort des LLM einfügen, dann prüfen & einreichen';
       document.getElementById('response-box').placeholder =
-        '{ "artifact_type": "...", "scope": "...", "content": {…}, "confidence": 0.85, "provenance": {…} }';
+        '## 1. Struktur & Verantwortlichkeiten\n…';
     }
     document.getElementById('response-box').value  = '';
     document.getElementById('submit-msg').textContent = '';
@@ -810,13 +810,8 @@
     const response = document.getElementById('response-box').value.trim();
     const msg = document.getElementById('submit-msg');
     if (!response) { msg.textContent = 'Keine Antwort eingegeben.'; msg.className = 'err'; return; }
-    try { JSON.parse(response); } catch(e) {
-      const tip = e.message.includes("after property value")
-        ? ' — Tipp: Wahrscheinlich doppelte Anführungszeichen im Text.'
-        : '';
-      msg.textContent = `Kein valides JSON: ${e.message}${tip}`;
-      msg.className = 'err'; return;
-    }
+    // Kein JSON-Vorcheck: Antworten sind freies Markdown (core/review_format);
+    // /api/validate prueft serverseitig format-tolerant.
     msg.textContent = 'Prüfe …'; msg.className = '';
     const r = await apiFetch('/api/validate', {
       method: 'POST',
@@ -992,10 +987,10 @@
       <div class="pc-row"><button class="btn-pc" onclick="submitIntent()">Zerlegen ▸</button></div>`;
     if (_manual) {
       h += `<div class="pc-lbl" style="margin-top:.8rem">Manuelle Zerlegung — kein Modell verfügbar</div>
-        <div class="pc-hint">① Prompt kopieren → externes LLM. ② Antwort-JSON unten einfügen.</div>
+        <div class="pc-hint">① Prompt kopieren → externes LLM. ② Markdown-Antwort unten einfügen (Server parst).</div>
         <div class="pc-row" style="margin-top:.3rem"><button class="btn-pc-ghost" onclick="copyDecomposePrompt()">📋 Zerlegungs-Prompt kopieren</button></div>
-        <div class="pc-lbl" style="margin-top:.5rem">JSON {understanding, not_covered, goals}</div>
-        <textarea class="pc-in" id="pc-manual-json" placeholder='{"understanding":"…","not_covered":[],"goals":[{"task_type":"review","scope":"file:core/x.py","depends_on":[]}]}'></textarea>
+        <div class="pc-lbl" style="margin-top:.5rem">Antwort (Markdown, JSON-Altformat wird toleriert)</div>
+        <textarea class="pc-in" id="pc-manual-resp" placeholder='## 1. Verstaendnis&#10;…&#10;## 2. Nicht abgedeckt&#10;- keine&#10;## 3. Schritte&#10;1. review file:core/x.py'></textarea>
         <div class="pc-row"><button class="btn-pc-go" onclick="submitManual()">Plan erstellen ▸</button></div>`;
     }
     return h;
@@ -1064,13 +1059,13 @@
   async function submitManual() {
     const prompt = ((document.getElementById('pc-prompt') || {}).value || _pendingPrompt || '').trim();
     if (!prompt) { pcMsg('Prompt fehlt.', 'err'); return; }
-    let obj;
-    try { obj = JSON.parse(document.getElementById('pc-manual-json').value.trim()); }
-    catch(e) { pcMsg('Kein valides JSON: ' + e.message, 'err'); return; }
+    // Rohtext (Markdown oder JSON-Altformat) — Parsen uebernimmt der Server
+    // (core/plan_format, EIN Parser fuer Modell- und Copy-Paste-Pfad).
+    const response = document.getElementById('pc-manual-resp').value.trim();
+    if (!response) { pcMsg('Antwort fehlt.', 'err'); return; }
     const r = await apiFetch('/api/intent', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt, understanding: obj.understanding || '',
-        not_covered: obj.not_covered || [], goals: obj.goals || [] }),
+      body: JSON.stringify({ prompt, response }),
     });
     if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
     _manual = false; _pendingPrompt = ''; _sel = { kind:'intent' };

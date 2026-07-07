@@ -159,8 +159,8 @@ none
 
 class TestResponseToResultProb:
     def test_recorded_response_validates_as_result_prob(self):
-        # Antwort -> Validator: Cloud-Adapter liefert Label-Prefix-Format,
-        # Validator prueft nur ob CONTENT nicht leer ist.
+        # Antwort -> Validator: prob-Antworten sind freier Text/Markdown,
+        # Validator prueft nur ob der Text nicht leer ist.
         from core.router import TaskType
 
         sender = ReplayCloudSender(

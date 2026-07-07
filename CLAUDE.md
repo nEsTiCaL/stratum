@@ -1,6 +1,7 @@
 ## Projektgedaechtnis
 
 Sitzungsstart: sofort lesen (ungefragt) -> memory/memory_start.md + .local/host.md.
+Vor Repo-Arbeit: Remote-Check (git fetch + Divergenz, memory_start.md) -- parallele Sessions pushen auf main.
 Routing: Fakt -> `grep memory/`; Kontext -> memory/MANIFEST.md; Bauen -> memory/arbeitsplan.md.
 Nicht raten: erst grep/MANIFEST bevor projektbezogene Fragen beantwortet werden.
 Schreiben: Erkenntnisse/Entscheidungen sofort festhalten -> memory/rules.md.

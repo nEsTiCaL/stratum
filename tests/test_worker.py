@@ -6,7 +6,8 @@ det-testbar ohne Postgres / GPU:
 - LlmWorker-Plumbing mit FakeModel (Schema-Konformitaet, complete/fail-Routing)
 - WorkerLoop-Dispatching (det/LLM-Verzweigung, complete/fail-Aufruf)
 
-LLM-Antworten im Label-Prefix-Format (core.llm_parser).
+LLM-Antworten: freies Markdown (core.review_format); _prob_response nutzt
+bewusst das historische Label-Prefix-Layout als "beliebiger Freitext"-Beleg.
 Confidence kommt aus dem Modell-Tier (TIER_CONFIDENCE), nicht vom LLM.
 """
 
@@ -31,7 +32,8 @@ from core.worker import DetWorker, LlmWorker, WorkerLoop
 
 
 def _prob_response(content: str = "Erklaerung des Codes.") -> str:
-    """LLM-Antwort im Label-Prefix-Format."""
+    """Historisches Label-Prefix-Layout -- heute schlicht nicht-leerer
+    Freitext (landet komplett in content.text, verlustfrei)."""
     return (
         f"MODEL: phi4-mini\n\n"
         f"CONTENT:\n{content}\n\n"

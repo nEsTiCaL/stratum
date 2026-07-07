@@ -58,24 +58,35 @@ spaeter datengetrieben; nichts im heutigen Entwurf verbaut den Weg.
 ## Intent = Verstaendnis-Rueckfrage (Entwurfsentscheidung fuer I-6.5)
 
 Das System sagt, was es verstanden hat; der Nutzer revidiert/schaerft nach.
-EIN Modellaufruf liefert beides (erweitertes _PROMPT_TEMPLATE in core/planner):
+EIN Modellaufruf liefert beides. Format seit 2026-07-07: MARKDOWN statt JSON
+(gleiche Kur wie review_format; einzige Wahrheitsquelle core/plan_format.py,
+build_decompose_prompt + parse_plan_response, JSON-Altformat inkl. bare-Array
+bleibt toleriert):
 
 ```
-{"understanding": "<2-3 Saetze: was wurde verstanden>",
- "not_covered":   ["<Anteil + Grund, warum nicht planbar>", ...],
- "goals":         [{"task_type","scope","depends_on"}, ...]}
+## 1. Verstaendnis     -> understanding (2-3 Saetze)
+## 2. Nicht abgedeckt  -> not_covered ("- <Anteil>: <Grund>"; "- keine")
+## 3. Schritte         -> goals: "N. <task_type> <scope>" + opt. "(nach: M, K)"
+                          (1-basierte Schritt-Nummern -> 0-basierte Indizes)
 ```
 
+Der Prompt listet die 15 planbaren task_types MIT Ein-Zeilen-Beschreibung
+(PLANNABLE_TASK_TYPES; planner.PLANNER_TASK_TYPES ist daraus abgeleitet) und
+traegt die Scope-Regeln (implement = Greenfield-Pfad erfinden erlaubt; alle
+anderen: Scope muss plausibel existieren, sonst not_covered). Der Template-
+Fingerprint im plan_input_hash (core/plan_artifact) haengt an
+build_decompose_prompt("") -> Prompt-Aenderung bustet den Cache automatisch.
 plan-Content traegt understanding + not_covered zusaetzlich. Revision =
 Korrekturtext -> erneuter Decompose mit prompt+Korrektur -> NEUE Plan-Edition
-(superseded-Kette; neuer input_hash -> Cache bleibt korrekt). Der manuelle
-Copy-Paste-Pfad verlangt dasselbe JSON zurueck.
+(superseded-Kette; neuer input_hash -> Cache bleibt korrekt).
 
 Backend-Ergaenzungen (VOR dem UI, test-driven):
-- _PROMPT_TEMPLATE liefert understanding + not_covered + goals
 - POST /api/intent: optional `revision` (wird an den Prompt angehaengt);
   optional `understanding`+`goals` direkt uebergeben (manueller Pfad; loest
-  zugleich das 503-Henne/Ei auf Profil D -- ohne Modell kein erster Plan)
+  zugleich das 503-Henne/Ei auf Profil D -- ohne Modell kein erster Plan);
+  optional `response` (Rohtext der Zerlegungs-Antwort, Markdown ODER
+  JSON-Altformat) -- der SERVER parst via parse_plan_response, das Frontend
+  parst nichts mehr (Cockpit laedt den Prompt via POST /api/intent/prompt)
 
 ## I-6.1  Artefakttyp plan + Schema/Codegen
 
@@ -226,8 +237,10 @@ GET /api/plan/current (Cockpit-Load/Reload). Frontend: linke pc-Eingabe folgt
 der Selektion, rechte Baum-Navigation (Rail + Intent/Goal-Knoten), Modus-Badge
 (manuell/Modell aus provenance.producer), Metadaten-Badges, det-Subtask-Hinweis;
 Plan wird EINMALIG geladen (nicht im Interval -> keine Eingabe-Ueberschreibung).
-Manueller Copy-Paste: DECOMPOSE_INSTRUCTION im Frontend spiegelt
-_PROMPT_TEMPLATE (kleine bewusste Duplizierung). Live dev-verifiziert auf einer
+Manueller Copy-Paste: Frontend laedt den Zerlegungs-Prompt via POST
+/api/intent/prompt (keine Frontend-Kopie mehr, seit 40bac72) und schickt die
+Antwort ROH als `response` an POST /api/intent (Server parst, seit 2026-07-07
+Markdown-Format). Live dev-verifiziert auf einer
 Temp-Instanz (:8001, kein Cloud-Key = Profil-D-Fall): manueller Pfad 201,
 current/metadata/edit/discard, Revision->503, Selektion->Editor, Metadaten aus
 echten Kalibrierungsdaten (~289s/large fuer explain). SCHRITT 6 VOLLSTAENDIG.
