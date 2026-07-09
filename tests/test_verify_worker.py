@@ -93,6 +93,23 @@ class TestLintPatch:
         )
         assert not out.passed and "Timeout" in out.summary
 
+    def test_missing_linter_binary_is_neutral(self):
+        # Regression: ruff nicht installiert (FileNotFoundError aus subprocess)
+        # -> neutral degradieren wie "keine Linter-Sprache", NICHT crashen
+        # (crashte frueher den ganzen Verify-Task: exception statt Report).
+        def _missing(*_a):
+            raise FileNotFoundError(2, "No such file or directory", "ruff")
+
+        out = lint_patch(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=_missing,
+        )
+        assert out.passed and out.applied
+        assert out.commands[0]["status"] == "missing"
+        assert "nicht installiert" in out.summary
+
 
 class _FakeRepo:
     def __init__(self, patch_content: dict | None):

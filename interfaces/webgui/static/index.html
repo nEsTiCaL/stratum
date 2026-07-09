@@ -265,6 +265,22 @@
                       border-left: 3px solid #2a5a8a; padding: .3rem .7rem; background: #10161e;
                       border-radius: 4px; margin-bottom: .6rem; }
   #pc-msg { font-size: .76rem; margin-top: .4rem; min-height: 1em; }
+
+  /* ── Workspace (Projekt anzeigen / herunterladen) ── */
+  #ws-panel { display: none; margin-top: 2rem; }
+  #ws-panel.active { display: block; }
+  .ws-head { display: flex; gap: .5rem; align-items: center; margin-bottom: .6rem;
+             flex-wrap: wrap; }
+  .ws-list { border: 1px solid #242424; border-radius: 5px; background: #131316;
+             max-height: 260px; overflow-y: auto; font-size: .78rem; }
+  .ws-file { display: flex; justify-content: space-between; gap: 1rem;
+             padding: .3rem .7rem; cursor: pointer; border-bottom: 1px solid #1c1c1c;
+             color: #cdd6e6; }
+  .ws-file:hover { background: #191920; }
+  .ws-file.sel { background: #14202e; }
+  .ws-size { color: #667; white-space: nowrap; }
+  .ws-empty { color: #778; font-size: .8rem; padding: .6rem .7rem; }
+  #ws-viewer { display: none; margin-top: .7rem; }
 </style>
 
 <!-- ── Login-Overlay ── -->
@@ -374,6 +390,25 @@
       <tr><td colspan="7" id="empty-msg">Verbinde …</td></tr>
     </tbody>
   </table>
+</div>
+
+<div id="ws-panel">
+  <div class="stats-title">Projekt (Workspace)</div>
+  <div class="ws-head">
+    <button class="btn-pc-ghost" onclick="fetchWorkspace()">↻ Aktualisieren</button>
+    <button class="btn-pc" onclick="downloadWorkspace()">⬇ Projekt als ZIP</button>
+    <span class="pc-hint" id="ws-msg"></span>
+  </div>
+  <div class="ws-list" id="ws-list"><div class="ws-empty">—</div></div>
+  <div id="ws-viewer">
+    <div class="copy-block msg">
+      <div class="copy-block-header">
+        <div class="block-label"><span class="title" id="ws-viewer-name"></span></div>
+        <button class="btn-copy" onclick="copyBlock('ws-viewer-pre', this)">📋 Kopieren</button>
+      </div>
+      <pre class="copy-pre" id="ws-viewer-pre"></pre>
+    </div>
+  </div>
 </div>
 
 <div id="claim-panel">
@@ -517,6 +552,7 @@
   function startPolling() {
     document.getElementById('monitor').classList.add('active');
     document.getElementById('plan-cockpit').classList.add('active');
+    document.getElementById('ws-panel').classList.add('active');
     const slowPoll = () => { fetchMetrics(); fetchStats(); fetchCalibration(); };
     fetchTasks();
     fetchLive();
@@ -524,6 +560,7 @@
     // Plan einmalig laden (user-getrieben; NICHT im Interval -> keine Eingabe-
     // Ueberschreibung waehrend des Tippens). Aktualisiert nach jeder Aktion.
     fetchPlan();
+    fetchWorkspace();   // einmalig; danach manuell (↻) — kein Poll auf dem Dateisystem
     slowPoll();
     // Live-Status im Sekundentakt (leicht), Aggregate periodisch (teurer, R5).
     _pollTimer = setInterval(() => { fetchTasks(); fetchLive(); }, 2000);
@@ -535,6 +572,8 @@
     if (_slowTimer) { clearInterval(_slowTimer); _slowTimer = null; }
     document.getElementById('monitor').classList.remove('active');
     document.getElementById('plan-cockpit').classList.remove('active');
+    document.getElementById('ws-panel').classList.remove('active');
+    document.getElementById('ws-viewer').style.display = 'none';
   }
 
   async function fetchTasks() {
@@ -738,6 +777,13 @@
       `<strong>Scope:</strong> ${esc(d.scope)}`;
 
     const sysBlock = document.getElementById('block-sys');
+    // implement/fix erwarten einen Unified-Diff (kein Markdown-Review) — der
+    // Platzhalter zeigt das erwartete Format (Server extrahiert via extract_diff).
+    const isPatch = d.task_type === 'implement' || d.task_type === 'fix';
+    const ansKind = isPatch ? 'Unified-Diff' : 'Markdown-Antwort';
+    const ansPlaceholder = isPatch
+      ? 'diff --git a/pfad/datei.py b/pfad/datei.py\nnew file mode 100644\n--- /dev/null\n+++ b/pfad/datei.py\n@@ -0,0 +1,2 @@\n+…'
+      : '## 1. Struktur & Verantwortlichkeiten\n…';
     if (d.prompt != null) {
       // Human-Task: alles in einem kopierbaren Feld
       sysBlock.style.display = 'none';
@@ -747,9 +793,8 @@
         '→ komplett kopieren: Rolle · Kontext · Quellcode · Aufgabe · Format';
       document.getElementById('ans-num').textContent  = '②';
       document.getElementById('ans-desc').textContent =
-        '→ Markdown-Antwort einfügen, dann prüfen & einreichen';
-      document.getElementById('response-box').placeholder =
-        '## 1. Struktur & Verantwortlichkeiten\n…';
+        `→ ${ansKind} einfügen, dann prüfen & einreichen`;
+      document.getElementById('response-box').placeholder = ansPlaceholder;
     } else {
       // LLM-Task: System-Prompt und Nachricht getrennt
       sysBlock.style.display = '';
@@ -760,9 +805,8 @@
         '→ Rolle · Kontext · Quellcode · Aufgabe · Format';
       document.getElementById('ans-num').textContent  = '③';
       document.getElementById('ans-desc').textContent =
-        '→ Markdown-Antwort des LLM einfügen, dann prüfen & einreichen';
-      document.getElementById('response-box').placeholder =
-        '## 1. Struktur & Verantwortlichkeiten\n…';
+        `→ ${ansKind} des LLM einfügen, dann prüfen & einreichen`;
+      document.getElementById('response-box').placeholder = ansPlaceholder;
     }
     document.getElementById('response-box').value  = '';
     document.getElementById('submit-msg').textContent = '';
@@ -1145,6 +1189,62 @@
     pcMsg(n ? `Verworfen — ${n} Subtask(s) entfernt.` : 'Verworfen.', 'ok');
   }
 
+  // ── Workspace (Projekt anzeigen / herunterladen) ───────────────────────────
+
+  let _wsFiles = [];
+  let _wsSel = null;
+
+  function wsMsg(t) { document.getElementById('ws-msg').textContent = t || ''; }
+
+  async function fetchWorkspace() {
+    const r = await apiFetch('/api/workspace/files');
+    const list = document.getElementById('ws-list');
+    if (!r.ok) { wsMsg(`Workspace nicht verfügbar (${r.status}).`); return; }
+    wsMsg('');
+    _wsFiles = (await r.json()).files || [];
+    if (!_wsFiles.length) {
+      list.innerHTML = '<div class="ws-empty">Workspace ist leer — angewendete Patches erscheinen hier.</div>';
+      return;
+    }
+    list.innerHTML = _wsFiles.map((f, i) =>
+      `<div class="ws-file${f.path === _wsSel ? ' sel' : ''}" data-i="${i}">
+        <span>${esc(f.path)}</span><span class="ws-size">${fmtBytes(f.size)}</span></div>`).join('');
+    list.querySelectorAll('.ws-file').forEach(el => {
+      el.onclick = () => openWorkspaceFile(_wsFiles[el.dataset.i].path);
+    });
+  }
+
+  async function openWorkspaceFile(path) {
+    const r = await apiFetch('/api/workspace/file?path=' + encodeURIComponent(path));
+    if (!r.ok) {
+      wsMsg(`${path}: ${((await r.json()).detail || r.status)}`);
+      return;
+    }
+    wsMsg('');
+    _wsSel = path;
+    const d = await r.json();
+    document.getElementById('ws-viewer-name').textContent = d.path;
+    document.getElementById('ws-viewer-pre').textContent = d.content;
+    document.getElementById('ws-viewer').style.display = 'block';
+    document.querySelectorAll('#ws-list .ws-file').forEach(el => {
+      el.classList.toggle('sel', _wsFiles[el.dataset.i].path === path);
+    });
+  }
+
+  async function downloadWorkspace() {
+    wsMsg('Erzeuge ZIP …');
+    const r = await apiFetch('/api/workspace/archive');
+    if (!r.ok) { wsMsg(`Download fehlgeschlagen (${r.status}).`); return; }
+    const blob = await r.blob();
+    const m = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : 'workspace.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    wsMsg('');
+  }
+
   // ── Utils ──────────────────────────────────────────────────────────────────
 
   function esc(s) {
@@ -1155,5 +1255,11 @@
   function fmtSec(s) {
     if (s < 60) return `${Math.round(s)}s`;
     return `${Math.floor(s/60)}m${Math.round(s%60)}s`;
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1048576) return `${(n/1024).toFixed(1)} KB`;
+    return `${(n/1048576).toFixed(1)} MB`;
   }
 </script>

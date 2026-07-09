@@ -1271,3 +1271,165 @@ class TestPlanMetadata:
             pid = _create_plan(c)
             c.post(f"/api/plan/{pid}/discard", headers=AUTH)
             assert c.get(f"/api/plan/{pid}/metadata", headers=AUTH).status_code == 409
+
+
+_DIFF = (
+    "diff --git a/tools/hello.py b/tools/hello.py\n"
+    "new file mode 100644\n"
+    "--- /dev/null\n"
+    "+++ b/tools/hello.py\n"
+    "@@ -0,0 +1,2 @@\n"
+    "+def hello():\n"
+    '+    return "hallo"\n'
+)
+
+
+@pytest.fixture
+def client_with_implement_task(conn):
+    queue = Queue(conn)
+    repo = Repository(conn)
+    (item_id,) = queue.enqueue(
+        _dag(task_type="implement"), model="human", owner=TEST_OWNER
+    )
+    app = create_app(queue, repo)
+    with TestClient(app, raise_server_exceptions=True) as c:
+        yield c, item_id, repo
+
+
+class TestPatchSubmit:
+    """Regression Task-8-Vorfall: Human-Submit fuer implement/fix muss dasselbe
+    patch-content-Layout ablegen wie der LLM-Worker (content.diff), sonst liest
+    der VerifyWorker einen leeren Diff ("kein anwendbarer Hunk", Endlos-
+    Rueckkante)."""
+
+    def test_submit_stores_content_diff(self, client_with_implement_task):
+        c, item_id, repo = client_with_implement_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        r = c.post(
+            f"/api/submit/{item_id}",
+            json={"response": _DIFF, "task_type": "implement"},
+            headers=AUTH,
+        )
+        assert r.status_code == 200
+        patch = repo.get_current("file:core/queue.py", "patch")
+        assert patch is not None
+        assert patch.content["diff"].startswith("diff --git ")
+        assert patch.content["target_scope"] == "file:core/queue.py"
+        assert "text" not in patch.content
+
+    def test_submit_strips_markdown_fence(self, client_with_implement_task):
+        c, item_id, repo = client_with_implement_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        fenced = f"Hier der Patch:\n```diff\n{_DIFF}```"
+        r = c.post(
+            f"/api/submit/{item_id}",
+            json={"response": fenced, "task_type": "implement"},
+            headers=AUTH,
+        )
+        assert r.status_code == 200
+        patch = repo.get_current("file:core/queue.py", "patch")
+        assert patch.content["diff"].startswith("diff --git ")
+        assert "```" not in patch.content["diff"]
+
+    def test_submit_without_diff_returns_422(self, client_with_implement_task):
+        c, item_id, _repo = client_with_implement_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        r = c.post(
+            f"/api/submit/{item_id}",
+            json={"response": "Ich habe keinen Patch.", "task_type": "implement"},
+            headers=AUTH,
+        )
+        assert r.status_code == 422
+        assert "patch_parse_fail" in r.json()["detail"]
+
+    def test_stored_diff_is_appliable(self, client_with_implement_task):
+        # Ende-zu-Ende-Gegenprobe: der gespeicherte content.diff muss durch
+        # core.patch_apply anwendbar sein (genau daran scheiterte Task 8).
+        from core.patch_apply import apply_diff
+
+        c, item_id, repo = client_with_implement_task
+        c.post(f"/api/claim/{item_id}", headers=AUTH)
+        c.post(
+            f"/api/submit/{item_id}",
+            json={"response": _DIFF, "task_type": "implement"},
+            headers=AUTH,
+        )
+        patch = repo.get_current("file:core/queue.py", "patch")
+        result = apply_diff(patch.content["diff"], lambda _rel: None)
+        assert result.ok
+        assert result.changes[0].kind == "create"
+
+
+class TestWorkspaceEndpoints:
+    """Projekt-Workspace anzeigen/herunterladen (read-only)."""
+
+    def _client(self, conn, base):
+        queue = Queue(conn)
+        repo = Repository(conn)
+        app = create_app(queue, repo, workspace_base=base)
+        return TestClient(app, raise_server_exceptions=True), repo
+
+    def _seed_workspace(self, repo, base):
+        from core.workspace import workspace_root
+
+        owner, cap_id = repo.resolve_capability(TEST_API_KEY)
+        root = workspace_root(owner, cap_id, base=base)
+        (root / "src").mkdir()
+        (root / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+        (root / ".git").mkdir()
+        (root / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+        return root
+
+    def test_requires_auth(self, conn, tmp_path):
+        c, _repo = self._client(conn, tmp_path)
+        with c:
+            assert c.get("/api/workspace/files").status_code == 401
+            assert c.get("/api/workspace/file?path=x").status_code == 401
+            assert c.get("/api/workspace/archive").status_code == 401
+
+    def test_files_lists_visible_files_only(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.get("/api/workspace/files", headers=AUTH)
+            assert r.status_code == 200
+            files = r.json()["files"]
+            assert [f["path"] for f in files] == ["src/main.py"]
+            assert files[0]["size"] > 0
+
+    def test_file_returns_content(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.get("/api/workspace/file?path=src/main.py", headers=AUTH)
+            assert r.status_code == 200
+            assert r.json() == {"path": "src/main.py", "content": "print('hi')\n"}
+
+    def test_file_traversal_rejected(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.get("/api/workspace/file?path=../../../etc/passwd", headers=AUTH)
+            assert r.status_code == 400
+
+    def test_file_missing_returns_404(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.get("/api/workspace/file?path=nope.py", headers=AUTH)
+            assert r.status_code == 404
+
+    def test_archive_zips_workspace(self, conn, tmp_path):
+        import io
+        import zipfile
+
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.get("/api/workspace/archive", headers=AUTH)
+            assert r.status_code == 200
+            assert r.headers["content-type"] == "application/zip"
+            assert "attachment" in r.headers["content-disposition"]
+            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                assert zf.namelist() == ["src/main.py"]
+                assert zf.read("src/main.py") == b"print('hi')\n"

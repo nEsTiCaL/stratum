@@ -8,6 +8,10 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN uv pip install --system --no-cache ".[web]"
 
+# Per-File-Linter fuer den VerifyWorker (core.verify_worker DEFAULT_LINTERS):
+# ohne ruff degradiert Verify von Python-Patches auf "Linter nicht installiert".
+RUN uv pip install --system --no-cache ruff
+
 # Quellcode
 COPY . .
 

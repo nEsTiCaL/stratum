@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 
-_FENCE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n```", re.DOTALL)
+_FENCE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n```", re.DOTALL | re.MULTILINE)
 _HUNK = re.compile(r"^@@ .* @@", re.MULTILINE)
 _GIT = re.compile(r"^diff --git ", re.MULTILINE)
 
@@ -82,13 +82,20 @@ def build_patch_prompt(
 def extract_diff(raw: str) -> str:
     """Extrahiert den Unified-Diff aus `raw`; toleriert Fences + Prosa.
 
+    Bei mehreren Fence-Bloecken (z.B. Erklaerungs-Code VOR dem Patch) gewinnt
+    der ERSTE Block mit Diff-Signal; ein Fence darf auch mitten im Text stehen
+    (Prosa davor -- der Copy-Paste-Normalfall im Human-Pfad). Kein Fence mit
+    Signal -> Rohtext weiterverwenden (nackter Diff mit Prosa drumherum).
+
     Wirft ValueError, wenn kein Diff-Signal (Hunk-Header oder diff --git)
     gefunden wird -- kaputte Antwort statt kaputtem Artefakt.
     """
     text = raw.strip()
-    fenced = _FENCE.search(text)
-    if fenced is not None:
-        text = fenced.group(1).strip()
+    for fenced in _FENCE.finditer(text):
+        block = fenced.group(1).strip()
+        if _HUNK.search(block) or _GIT.search(block):
+            text = block
+            break
 
     if not (_HUNK.search(text) or _GIT.search(text)):
         raise ValueError("kein Unified-Diff (weder @@-Hunk noch 'diff --git')")

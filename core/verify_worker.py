@@ -133,6 +133,18 @@ def lint_patch(
                 return VerifyOutcome(
                     False, True, f"Linter-Timeout: {chg.path}", tuple(entries)
                 )
+            except FileNotFoundError:
+                # Linter-Binary nicht installiert (z.B. ruff fehlt im Image) ->
+                # neutral wie "keine Linter-Sprache" (Modul-Doc), NICHT crashen.
+                entries.append(
+                    {
+                        "file": chg.path,
+                        "linter": linter[0],
+                        "status": "missing",
+                        "exit_code": 0,
+                    }
+                )
+                continue
         finally:
             Path(tmp).unlink(missing_ok=True)
 
@@ -143,9 +155,11 @@ def lint_patch(
             {"file": chg.path, "linter": linter[0], "status": status, "exit_code": rc}
         )
 
-    linted = sum(1 for e in entries if e["status"] != "skipped")
+    linted = sum(1 for e in entries if e["status"] not in ("skipped", "missing"))
     if not passed:
         summary = "Linter meldet Fehler"
+    elif any(e["status"] == "missing" for e in entries):
+        summary = "sauber appliziert; Linter nicht installiert (neutral)"
     elif linted == 0:
         summary = "sauber appliziert; kein Linter fuer Zielsprache (neutral)"
     else:

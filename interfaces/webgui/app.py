@@ -21,6 +21,9 @@ Endpunkte (Bearer-Auth, 401 bei fehlendem/ungueltigem Key):
   GET  /api/result/{id}        -> Gespeichertes Artefakt (Owner-Check)
   GET  /api/patches            -> Patches zur Bestaetigung (scope + verified-Flag)
   POST /api/apply              -> HARTES GATE: verifizierten Patch anwenden (I-7.5)
+  GET  /api/workspace/files    -> Dateiliste des Projekt-Workspace (read-only)
+  GET  /api/workspace/file     -> Inhalt einer Workspace-Datei (?path=rel)
+  GET  /api/workspace/archive  -> Projekt-Workspace als ZIP-Download
   POST /api/claim/{id}         -> Task claimen (Owner-Check)
   GET  /api/prompt/{id}        -> Prompt lesen (Owner-Check)
   POST /api/submit/{id}        -> Antwort einreichen (Owner-Check)
@@ -38,20 +41,22 @@ Dev-Harness-Endpunkte (Bearer-Auth, N1-Preflight):
 from __future__ import annotations
 
 import dataclasses
+import io
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from core.apply_gate import apply_confirmed_patch
 from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
-from core.diff_extract import build_patch_prompt
+from core.diff_extract import build_patch_prompt, extract_diff
 from core.ingest import ingest_file, ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
@@ -141,6 +146,29 @@ def _result_from_submission(
     Wirft ValueError mit erklaerender Meldung, wenn kein verwertbarer Text bleibt.
     """
     artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
+
+    # patch (implement/fix): GLEICHES content-Layout wie der LLM-Worker
+    # (core.worker) -- VerifyWorker und Apply-Gate lesen content["diff"]. Der
+    # Markdown-Split unten wuerde den Diff als content.text ablegen und Verify
+    # liefe mit leerem Diff auf "kein anwendbarer Hunk" (Endlos-Rueckkante).
+    if artifact_type_str == "patch":
+        try:
+            diff = extract_diff(response)
+        except ValueError as exc:
+            raise ValueError(
+                f"Antwort enthaelt keinen Unified-Diff ({exc}). Bitte den "
+                "Patch im Unified-Diff-Format einreichen (diff --git / @@-Hunk)."
+            ) from exc
+        prov = build_prob_provenance(
+            scope=scope, artifact_type=artifact_type_str, producer=producer, root=root
+        )
+        return ResultProb(
+            artifact_type=ArtifactType(artifact_type_str),
+            scope=scope,
+            content={"diff": diff, "target_scope": scope},
+            confidence=_HUMAN_CONFIDENCE,
+            provenance=prov,
+        )
 
     # 1. Vollstaendiges JSON-Objekt (nur wenn alle Pflichtfelder da sind).
     try:
@@ -442,6 +470,14 @@ def create_app(
         if result is None:
             raise HTTPException(status_code=404, detail="Kein Ergebnis verfuegbar")
         return result.model_dump(mode="json")
+
+    def _workspace_root_of(owner: str, capability_id: int) -> Path | None:
+        """Projektbaum eines API-Keys (Schreibziel, Schritt 7): der Workspace
+        <base>/<owner>/<capability_id>; ohne workspace_base (Dogfooding/Tests)
+        -> source_root."""
+        if workspace_base is not None:
+            return workspace_root(owner, capability_id, base=workspace_base)
+        return source_root
 
     def _prompt_root(owner: str, capability_id: int | None) -> Path | None:
         """Lesepfad-Root SYMMETRISCH zum Schreibpfad (Schritt 7): der Workspace
@@ -838,17 +874,89 @@ def create_app(
         den Workspace des API-Keys an. Ohne confirm ODER ohne gruenen
         verify_report kein Schreibzugriff (409)."""
         owner, capability_id = cap
-        root = (
-            workspace_root(owner, capability_id, base=workspace_base)
-            if workspace_base is not None
-            else source_root
-        )
+        root = _workspace_root_of(owner, capability_id)
         if root is None:
             raise HTTPException(status_code=503, detail="kein Schreibziel konfiguriert")
         result = apply_confirmed_patch(repo, root, body.scope, confirmed=body.confirm)
         if not result.applied:
             raise HTTPException(status_code=409, detail=result.reason)
         return {"applied": True, "reason": result.reason, "scope": result.target_scope}
+
+    # ── Workspace lesen (Projekt anzeigen/herunterladen) ───────────────────────
+
+    def _workspace_or_503(owner: str, capability_id: int) -> Path:
+        root = _workspace_root_of(owner, capability_id)
+        if root is None:
+            raise HTTPException(status_code=503, detail="kein Workspace konfiguriert")
+        return root
+
+    def _workspace_files(root: Path) -> list[tuple[Path, str]]:
+        """Alle regulaeren Dateien unter root als (Pfad, rel-posix), sortiert.
+        Versteckte Segmente (.git, .venv-artige Punktordner) bleiben aussen vor
+        -- relevant nur im source_root-Fallback; echte Workspaces sind git-frei."""
+        out: list[tuple[Path, str]] = []
+        if not root.is_dir():
+            return out
+        for p in sorted(root.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(root)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            out.append((p, rel.as_posix()))
+        return out
+
+    @app.get("/api/workspace/files")
+    async def workspace_files(
+        cap: tuple[str, int] = Depends(_require_capability),
+    ) -> dict[str, Any]:
+        """Dateiliste des Projekt-Workspace dieses API-Keys (read-only)."""
+        owner, capability_id = cap
+        root = _workspace_or_503(owner, capability_id)
+        return {
+            "files": [
+                {"path": rel, "size": p.stat().st_size}
+                for p, rel in _workspace_files(root)
+            ]
+        }
+
+    @app.get("/api/workspace/file")
+    async def workspace_file(
+        path: str, cap: tuple[str, int] = Depends(_require_capability)
+    ) -> dict[str, Any]:
+        """Inhalt EINER Workspace-Datei (read-only, Traversal-Guard)."""
+        owner, capability_id = cap
+        root = _workspace_or_503(owner, capability_id).resolve()
+        target = (root / path).resolve()
+        if root not in target.parents and target != root:
+            raise HTTPException(status_code=400, detail="Pfad ausserhalb des Workspace")
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="Datei nicht gefunden")
+        try:
+            content = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(
+                status_code=415, detail="Binaerdatei — nur Download moeglich"
+            ) from exc
+        return {"path": path, "content": content}
+
+    @app.get("/api/workspace/archive")
+    async def workspace_archive(
+        cap: tuple[str, int] = Depends(_require_capability),
+    ) -> Response:
+        """Gesamtes Projekt als ZIP (Download-Button im Dashboard)."""
+        owner, capability_id = cap
+        root = _workspace_or_503(owner, capability_id)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p, rel in _workspace_files(root):
+                zf.write(p, rel)
+        filename = f"workspace-{capability_id}.zip"
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.post("/api/claim/{task_id}")
     async def claim_task(
