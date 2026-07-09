@@ -82,6 +82,30 @@ class TestDiffExtract:
         with pytest.raises(ValueError):
             extract_diff("Ich wuerde folgendes aendern: foo zurueckgeben.")
 
+    def test_trailing_plus_fence_stripped(self):
+        # Systematisches Chatbot-Artefakt (Task-14-Vorfall): die schliessende
+        # Markdown-Fence steht als "+```" im Diff-Body -> ohne Strip landet
+        # ``` als letzte Zeile in der Zieldatei (invalid-syntax).
+        raw = "--- /dev/null\n+++ b/x.py\n@@ -0,0 +1,1 @@\n+a = 1\n+```"
+        out = extract_diff(raw)
+        assert "```" not in out
+        assert out.endswith("+a = 1")
+
+    def test_unclosed_opening_fence_stripped(self):
+        # Oeffnende Fence ohne erkanntes Gegenstueck (Schluss-Fence als "+```"
+        # verschmolzen) -> beide Raender werden bereinigt.
+        raw = "```diff\n--- /dev/null\n+++ b/x.py\n@@ -0,0 +1,1 @@\n+a = 1\n+```"
+        out = extract_diff(raw)
+        assert "```" not in out
+        assert out.startswith("--- /dev/null")
+
+    def test_content_fence_line_inside_diff_survives(self):
+        # Eine ```-Zeile MITTEN im Diff-Body (z.B. Markdown-Datei) bleibt --
+        # gestrippt wird nur am Rand.
+        raw = "--- /dev/null\n+++ b/doc.md\n@@ -0,0 +1,3 @@\n+text\n+```\n+ende\n"
+        out = extract_diff(raw)
+        assert "+```" in out
+
 
 class TestBuildPatchPrompt:
     """implement/fix-Prompt: fordert Unified-Diff, Greenfield -> neue Datei."""

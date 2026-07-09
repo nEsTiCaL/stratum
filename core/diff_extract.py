@@ -18,6 +18,12 @@ import re
 _FENCE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n```", re.DOTALL | re.MULTILINE)
 _HUNK = re.compile(r"^@@ .* @@", re.MULTILINE)
 _GIT = re.compile(r"^diff --git ", re.MULTILINE)
+# Fence-Reste an den Diff-Raendern: oeffnende ```-Zeile ohne (erkanntes)
+# Gegenstueck bzw. schliessende Fence, die das LLM als "+```" in den
+# Diff-Body geschrieben hat (systematisches Chatbot-Artefakt: die Zeile
+# landete als ``` in der Zieldatei -> invalid-syntax, Task-14-Vorfall).
+_FENCE_OPEN_LINE = re.compile(r"^```[a-zA-Z]*\s*$")
+_FENCE_CLOSE_LINE = re.compile(r"^\+?```\s*$")
 
 # Eingabeseite desselben Vertrags: der Prompt weist GENAU das Format an, das
 # extract_diff (unten) wieder herausloest -- ein Beispiel-Diff im Prompt haelt
@@ -87,6 +93,11 @@ def extract_diff(raw: str) -> str:
     (Prosa davor -- der Copy-Paste-Normalfall im Human-Pfad). Kein Fence mit
     Signal -> Rohtext weiterverwenden (nackter Diff mit Prosa drumherum).
 
+    Fence-Reste an den Raendern werden entfernt: eine oeffnende ```-Zeile ohne
+    Gegenstueck und eine schliessende Fence am Ende -- auch wenn das LLM sie
+    als "+```" in den Diff-Body geschrieben hat (sonst landet ``` als letzte
+    Zeile in der Zieldatei -> invalid-syntax in jeder Verify-Runde).
+
     Wirft ValueError, wenn kein Diff-Signal (Hunk-Header oder diff --git)
     gefunden wird -- kaputte Antwort statt kaputtem Artefakt.
     """
@@ -96,6 +107,15 @@ def extract_diff(raw: str) -> str:
         if _HUNK.search(block) or _GIT.search(block):
             text = block
             break
+
+    lines = text.split("\n")
+    if lines and _FENCE_OPEN_LINE.match(lines[0]):
+        lines = lines[1:]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and _FENCE_CLOSE_LINE.match(lines[-1]):
+        lines = lines[:-1]
+    text = "\n".join(lines)
 
     if not (_HUNK.search(text) or _GIT.search(text)):
         raise ValueError("kein Unified-Diff (weder @@-Hunk noch 'diff --git')")
