@@ -30,6 +30,17 @@ Compose (siehe unten "Container-Zyklus ...."). Nur Env aendern (kein Code) -> oh
 ist noetig, sonst haengen die print()-Logs des Worker-Threads im stdout-Block-
 puffer und erscheinen nie in `docker logs`.
 
+## Persistente Daten: nur Named Volumes ueberleben `--build`
+
+`COPY . .` + Recreate bei `up --build` legt das Image-FS neu an -> alles UNTER
+`/app` (Quellbaum) ist weg. Persistenz nur ueber Named Volumes:
+- `pgdata` -> Postgres (`/var/lib/postgresql/data`).
+- `workspaces` -> Schreibpfad-Workspaces auf `/data/workspaces`, via env
+  `STRATUM_WORKSPACES=/data/workspaces` aus dem Quellbaum entkoppelt (frueher
+  `/app/.workspaces` -> jeder Rebuild wischte angewandte Patches). Detail/Begruendung:
+  `spec_schritt-7`.
+Lehre: alles, was der Nutzer behalten soll, gehoert auf ein Volume, NIE nach `/app`.
+
 ## Container-Zyklus (fast shutdown / Skipping initialization) = WSL-Session-Churn
 
 Symptom: db+server zyklen im ~20-40s-Takt, db-Log wechselt "received fast shutdown

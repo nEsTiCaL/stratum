@@ -60,3 +60,24 @@ python (Windows)          -- keine Projekt-Pakete, falsche Plattform
 make lint (WSL bash -c)   -- uv nicht im PATH -> Fehler "uv: No such file"
 cd /mnt/... && test       -- inotify/case-sensitivity-Bruch (kein /mnt-Ausfuehren)
 ```
+
+## Quoting/Argument-Uebergabe ueber die WSL-Grenze (verifiziert 2026-07-09)
+
+Fallstricke beim Uebergeben von Kommandos an `wsl` aus den Tools (Bash=Git Bash,
+PowerShell):
+- `wsl -d Debian -- bash -c '<script>'` mit LEERZEICHEN im Script wird
+  wortgetrennt: nur der erste Token wird das bash-`-c`-Script, der Rest wird zu
+  Positionsparametern ($0,$1,...). Eine Zuweisung `S="/mnt/d/AI Development/..."`
+  wird so zerrissen ($S bleibt leer -> `cp '' ...`). Auch verschachtelte Quotes
+  ueber >1 Ebene brechen.
+- Zuverlaessig: Script mit Leerzeichen/Quotes NICHT inline, sondern in eine `.sh`
+  schreiben und `wsl -d Debian -- bash <script.sh>` aufrufen (Pfade IM Script
+  quoten, dort splittet wsl nichts mehr).
+- ABER das Bash-Tool (Git Bash) konvertiert absolute `/mnt/c/...`-Pfade
+  (MSYS-Path-Munging, Praefix "C:/Program Files/Git/...") -> `.sh` per
+  /mnt/c-Pfad NUR ueber das PowerShell-Tool starten (macht keine Konvertierung).
+- psql/SQL mit verschachtelten Double-Quotes (`docker exec stratum-db psql ... -c
+  "SELECT ..."`) laeuft aus dem Bash-Tool (`wsl -d Debian bash -lc "... -c
+  \"SELECT ...\""`), aus PowerShell zerbricht das nested Quoting.
+Merksatz: Leerzeichen/Quotes -> Script-Datei; /mnt/c-Pfad -> PowerShell-Tool;
+SQL mit Quotes -> Bash-Tool.

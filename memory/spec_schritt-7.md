@@ -159,3 +159,48 @@ Umsetzung: core/patch_apply + core/workspace (neu), verify_worker + apply_gate
 git-frei, worker.resolve_root-Seam, queue/repository/app/serve verdrahtet, mig
 0010. 837 Tests gruen (1 pre-existing red: test_webgui claim-Prompt-Assertion,
 unabhaengig), ruff check + format gruen.
+
+## Betriebsschliff (2026-07-09): Auto-Apply, done-Sichtbarkeit, Apply-UI, Volume
+
+Zwei Dashboard-Symptome, EINE Wurzel: der Lebenszyklus *verify-gruen -> apply ->
+im Workspace sichtbar* war nicht verdrahtet. (a) "Projektdateien/ZIP leer": der
+Workspace wird NUR durch angewandte Patches befuellt, aber es gab weder einen
+`/api/apply`-Aufruf im Frontend noch Auto-Apply -> gruene Patches wurden nie
+geschrieben. (b) "implement-Task nicht als beendet dargestellt": `list_tasks`
+blendete `done` aus -> fertige Tasks verschwanden kommentarlos.
+
+- **Auto-Apply nach gruenem verify (opt-out, Default an).** Nutzer-Entscheidung
+  2026-07-09: bequemer Default, Gate bleibt (confirm+gruener verify_report werden
+  in `apply_confirmed_patch` geprueft). `core/settings.RuntimeSettings`
+  (threadsicherer Schalter, EINE Instanz Worker-Thread<->App geteilt).
+  `WorkerLoop.auto_apply`-Hook feuert in `_run_verify` NUR bei `outcome.passed`,
+  best-effort (ein Apply-Fehler kippt das done-verify NICHT, nur `print`).
+  `serve._auto_apply` liest den Schalter + ruft `apply_confirmed_patch(confirmed=
+  True)`. Schalter via `GET/POST /api/settings` (`{auto_apply: bool}`).
+- **done-Tasks sichtbar.** `queue.list_tasks` um `limit`/`newest_first` erweitert
+  (Default unveraendert). `/api/tasks` = offene (pending/running/failed) + letzte
+  `_DONE_LIMIT`=20 done (newest_first). Frontend: `badge-done` "fertig".
+- **Apply-UI im Ergebnis-Panel** (Nutzer-Entscheidung, NICHT in der Tabellenzeile):
+  done implement/fix -> Button "Ergebnis · Anwenden" -> `#result-panel` mit
+  colorierter Diff-Vorschau (aus `/api/result/{id}` content.diff) + "In Workspace
+  anwenden" (`/api/apply`, danach `fetchWorkspace`). Auto-Apply-Toggle
+  "Auto-Anwenden" im ws-head. CLI/API bekommt naturgemaess keine Vorschau.
+- **Workspace-Persistenz (Volume).** Der Workspace lag in `/app/.workspaces`
+  (Container-FS) -> jeder `docker compose up --build` (COPY . . + Recreate) wischte
+  angewandte Patches weg. Fix: Named Volume `workspaces` gemountet auf
+  `/data/workspaces`, via env `STRATUM_WORKSPACES=/data/workspaces` entkoppelt vom
+  Quellbaum (`resolve_base` liest die env vor dem Default). E2E belegt: apply ->
+  zweiter voller Rebuild -> Datei ueberlebt. (Ops-Notiz: `ops_docker-server`.)
+- **Pre-existing roter Claim-Test behoben** (war seit 2026-07-05 toleriert).
+  Ursache war NICHT der Code, sondern die geteilte `client_with_task`-Fixture:
+  sie injiziert einen Platzhalter-`payload.prompt` ("erklaere queue.py") und
+  ueberdeckte damit den Fallback-Build-Pfad. `test_claim_pending_task` bekam eine
+  eigene prompt-lose Task -> `claim` baut via `_node_prompt` (Scope + Review-
+  Sektionen greifen). Dass ein GESPEICHERTER Prompt autoritativ bleibt, deckt
+  `TestPromptFeedback` (claim/prompt haengt verify_feedback an) weiter ab -> kein
+  Code-Change. Suite jetzt 895 gruen, 0 rot.
+
+Umsetzung: core/settings (neu), worker.auto_apply-Hook, queue.list_tasks
++limit/+newest_first, app (/api/settings, /api/tasks+done, _DONE_LIMIT),
+serve._auto_apply+RuntimeSettings-Verdrahtung, static/index.html (Badge, Panel,
+Toggle), docker-compose (Volume+env). 895 Tests gruen, lint+format gruen.

@@ -49,7 +49,8 @@ env_core.md              | globale Constraints: Laufzeit-Voraussetzungen, kumula
 env_portabilitaet.md     | Windows-Dev -> Linux: Dev-Modell, 11 Anforderungen, Ollama-         | wsl2, debian, inotify, cuda, vulkan,
                          |   Erreichbarkeit, GPU-Backend-Auswahl                               |   case-sensitivity
 ops_wsl.md               | kanonischer WSL-Aufruf: Form A (activate, bevorzugt) + Form B         | wsl -d Debian, source activate, .venv,
-                         |   (.venv/bin/python); make-lint-Falle + verifizierte Nicht-Wege        |   uv.exe, ruff, pytest
+                         |   (.venv/bin/python); make-lint-Falle + verifizierte Nicht-Wege;       |   uv.exe, ruff, pytest, quoting-grenze,
+                         |   Quoting/Argument-Uebergabe ueber die WSL-Grenze                      |   wortgetrennt, mnt-munging, script-datei
 ops_n1-queries.md        | Index statt Quelldateien: devcli symbol_lookup/index/               | migrate, ingest, dogfooding, kaltstart,
                          |   dependency_map, Preflight                                         |   devcli
 ops_sync-workflow.md     | Dev-Loop: Phase-A-cp / Phase-B via sync.ps1, Entscheidung           | cp, git reset --hard, zwei-klon,
@@ -63,7 +64,8 @@ ops_prob-dogfooding.md   | Prob-Loop: eigenen Code per Worker(LLM)/Human reviewe
 ops_docker-server.md     | Server-Container bauen/testen/debuggen: fastapi nur im .[web]-Image, | stratum-server, fastapi, .[web],
                          |   Build-Kontext=WSL-Klon, PYTHONUNBUFFERED, End-to-End+diag,          |   pythonpath, pyunbuffered, quoting,
                          |   Docker-Daemon fuer DB-Tests, API-Key erzeugen, Container-Zyklus     |   testcontainers, api-key, core.auth,
-                         |   durch WSL-Session-Churn (fast shutdown/RestartCount=0/--no-deps)     |   session-churn, fast-shutdown, socket-aktiviert
+                         |   durch WSL-Session-Churn (fast shutdown/RestartCount=0/--no-deps);    |   session-churn, fast-shutdown, socket-aktiviert,
+                         |   Persistenz nur via Named Volume (pgdata/workspaces)                 |   named-volume, workspaces, stratum_workspaces
 ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreichbarkeit,        | curl, invoke-restmethod, powershell,
                          |   WSL2-Port-Forwarding, PowerShell-Quoting-Falle (curl.exe vs.        |   quoting-falle, localhost, bearer,
                          |   Invoke-RestMethod), kanonische Befehlsformen je Plattform            |   windows, wsl2, single-quote
@@ -91,7 +93,9 @@ spec_schritt-6.md        | Inkremente Schritt 6 (Intent-Paket) I-6.1..6.5: Promp
                          |   Planbarkeit (statisch/not_covered/replan), UI-Konzept I-6.5;      |   verstaendnis, not_covered, replan, modus-badge,
                          |   Zerlegungsformat Markdown (core/plan_format, 2026-07-07)          |   markdown-zerlegung, greenfield
 spec_schritt-7.md        | Inkremente Schritt 7 (Schreibpfad) I-7.1..7.5: patch/verify_report, | patch, verify_report, verifyworker,
-                         |   VerifyWorker eigener det-Worker, Rueckkante, Apply-Gate           |   rueckkante, apply-gate, worktree
+                         |   VerifyWorker eigener det-Worker, Rueckkante, Apply-Gate;          |   rueckkante, apply-gate, worktree,
+                         |   Betriebsschliff: Auto-Apply (opt-out), done-Sichtbarkeit,         |   auto-apply, runtimesettings, done-sichtbar,
+                         |   Apply-UI/Diff-Panel, Workspace-Volume                             |   apply-ui, workspace-volume
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
 spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task, GET /api/tasks     | polling, task-create, result-abruf, ssh-pipe,
                          |   Polling, GET /api/result/{id}; SSE entfernt I-REST.2),              |   session-cache, scope, curl-beispiele,
