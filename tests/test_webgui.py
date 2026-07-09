@@ -778,6 +778,44 @@ class TestIntentEndpoint:
             r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
         assert isinstance(r.json()["id"], int)
 
+    def test_confirmed_plan_not_served_from_cache(self, conn):
+        # Verbrauchter Plan (confirmed) + identischer Prompt -> KEIN Cache-Hit,
+        # sondern neue Edition. Sonst wirkt das Cockpit tot: der alte
+        # bestaetigte Plan kommt zurueck, keine neue Zerlegung/Tasks.
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            pid = c.post(
+                "/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH
+            ).json()["id"]
+            c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+            r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+        assert r.json()["cached"] is False
+        assert model.calls == 2
+
+    def test_discarded_plan_not_served_from_cache(self, conn):
+        model = _CountingModel(_GOALS_JSON)
+        with TestClient(self._app(conn, model)) as c:
+            pid = c.post(
+                "/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH
+            ).json()["id"]
+            c.post(f"/api/plan/{pid}/discard", headers=AUTH)
+            r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+        assert r.json()["cached"] is False
+        assert model.calls == 2
+
+    def test_confirmed_plan_identical_prompt_503_without_model(self, conn):
+        # Profil D (kein Modell): identischer Prompt nach Confirm muss in den
+        # manuellen Pfad (503) fuehren statt den verbrauchten Plan zu liefern.
+        queue, repo = Queue(conn), Repository(conn)
+        with TestClient(self._app(conn, _CountingModel(_GOALS_JSON))) as c:
+            pid = c.post(
+                "/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH
+            ).json()["id"]
+            c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+        with TestClient(create_app(queue, repo)) as c:  # kein decompose_model
+            r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
+        assert r.status_code == 503
+
     def test_understanding_and_not_covered_surfaced(self, conn):
         obj = json.dumps(
             {

@@ -653,7 +653,12 @@ def create_app(
         input_hash = plan_input_hash(effective)
         if repo.staleness_lookup(PLAN_SCOPE, PLAN_ARTIFACT_TYPE, input_hash):
             cached = repo.get_current(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
-            if cached is not None:
+            # Cache nur, solange der aktuelle Plan noch PROPOSED ist. Ein
+            # confirmed/discarded Plan ist verbraucht: derselbe Prompt muss
+            # eine NEUE Edition anstossen (Modell oder 503 -> manueller Pfad).
+            # Sonst wirkt das Cockpit tot -- identischer Auftrag lieferte den
+            # alten bestaetigten Plan zurueck, ohne neue Zerlegung/Tasks.
+            if cached is not None and cached.content.get("status") == STATUS_PROPOSED:
                 cached_id = repo.get_current_id(PLAN_SCOPE, PLAN_ARTIFACT_TYPE)
                 return {
                     "cached": True,
