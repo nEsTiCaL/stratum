@@ -109,6 +109,30 @@ class TestListTasks:
         assert q.list_tasks(statuses=("running",)) == []
         assert len(q.list_tasks(statuses=("pending",))) == 1
 
+    def test_done_status_can_be_requested(self, conn):
+        q = Queue(conn)
+        (item_id,) = q.enqueue(_dag(), model="phi4-mini")
+        q.claim(model="phi4-mini")
+        q.complete(item_id)
+        done = q.list_tasks(statuses=("done",))
+        assert len(done) == 1
+        assert done[0]["id"] == item_id
+        assert done[0]["status"] == "done"
+
+    def test_limit_and_newest_first(self, conn):
+        q = Queue(conn)
+        ids = []
+        for i in range(3):
+            (item_id,) = q.enqueue(
+                _dag(f"d{i}", "summarize", f"file:{i}.py"), model="phi4-mini"
+            )
+            q.claim(model="phi4-mini")
+            q.complete(item_id)
+            ids.append(item_id)
+        # newest_first + limit: nur die zuletzt abgeschlossenen, absteigend.
+        recent = q.list_tasks(statuses=("done",), limit=2, newest_first=True)
+        assert [t["id"] for t in recent] == [ids[2], ids[1]]
+
     def test_result_has_expected_keys(self, conn):
         q = Queue(conn)
         q.enqueue(_dag("d1", "summarize", "file:b.py"), model="phi4-mini")

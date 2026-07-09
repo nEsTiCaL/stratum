@@ -26,6 +26,7 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
+from core.apply_gate import apply_confirmed_patch
 from core.db import apply_migrations
 from core.diff_extract import build_patch_prompt
 from core.metrics import InferenceSample, MetricsStore
@@ -36,6 +37,7 @@ from core.review_context import gather_context
 from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.secret_scan import EgressPolicy
+from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL, claim_model
 from core.template_registry import DagNode, TaskDag, decompose
 from core.verify_worker import VerifyWorker
@@ -117,7 +119,9 @@ def _seed(conn: psycopg.Connection) -> None:
 
 
 def _make_worker_loop(
-    worker_conn: psycopg.Connection, worker_repo: Repository
+    worker_conn: psycopg.Connection,
+    worker_repo: Repository,
+    settings: RuntimeSettings,
 ) -> tuple[WorkerLoop, object | None, str, bool]:
     """Baut den WorkerLoop und (I-6.2) den Decompose-Seam fuer POST /api/intent.
 
@@ -287,6 +291,19 @@ def _make_worker_loop(
                 fix_queue.set_model(tid, claim)
             fix_queue.update_payload(tid, {"prompt": prompt})
 
+    def _auto_apply(item, root: Path | None) -> None:
+        """Auto-Apply nach gruenem verify (Schritt 7, opt-out). Liest den Schalter
+        (settings.auto_apply) und wendet den verifizierten Patch ueber das Apply-
+        Gate an (confirm=True + gruener verify_report werden dort geprueft). root =
+        Workspace des API-Keys (via _resolve_root); None -> kein Schreibziel."""
+        if not settings.get_auto_apply() or root is None:
+            return
+        result = apply_confirmed_patch(worker_repo, root, item.scope, confirmed=True)
+        if result.applied:
+            print(f"[worker] Auto-Apply: {item.scope} -> {result.reason}")
+        else:
+            print(f"[worker] Auto-Apply uebersprungen ({item.scope}): {result.reason}")
+
     loop = WorkerLoop(
         queue=Queue(worker_conn),
         repo=worker_repo,
@@ -305,6 +322,7 @@ def _make_worker_loop(
         on_item_fail=on_item_fail,
         resolve_root=_resolve_root,
         spawn_fix=_spawn_fix,
+        auto_apply=_auto_apply,
     )
     return loop, decompose_model, decompose_producer, code_capable
 
@@ -353,9 +371,13 @@ def main() -> None:
     repo = Repository(conn)
     worker_repo = Repository(worker_conn)
 
+    # Schritt 7: EIN Schalter-Objekt fuer Worker-Thread (Auto-Apply lesen) und
+    # App (HTTP-Toggle) -- dieselbe Instanz teilen.
+    settings = RuntimeSettings()
+
     print("Worker-Thread starten …")
     worker_loop, decompose_model, decompose_producer, code_capable = _make_worker_loop(
-        worker_conn, worker_repo
+        worker_conn, worker_repo, settings
     )
     worker_thread = threading.Thread(
         target=_run_worker,
@@ -379,6 +401,7 @@ def main() -> None:
         decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
         decompose_producer=decompose_producer,
         code_capable=code_capable,  # Schritt 7: False -> implement/fix -> human
+        settings=settings,  # Schritt 7: Auto-Apply-Schalter (mit Worker geteilt)
     )
 
     print(f"Dashboard: http://{args.host}:{args.port}/")

@@ -88,6 +88,7 @@ from core.review_context import gather_context
 from core.review_format import build_content, build_review_prompt
 from core.router import TASK_REQUIREMENTS, TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.scope_resolver import RepoScopeResolver
+from core.settings import RuntimeSettings
 from core.task_routing import (
     CONFIRM_MODEL,
     HUMAN_MODEL,
@@ -100,6 +101,11 @@ from core.verify_worker import prompt_with_feedback
 from core.workspace import workspace_root
 
 _STATIC = Path(__file__).parent / "static"
+
+# Uebersicht: wie viele zuletzt abgeschlossene (done) Tasks zusaetzlich zu den
+# offenen gezeigt werden -- genug, um einen gerade fertig gewordenen implement-
+# Task zu sehen, ohne die ganze Historie einzublenden.
+_DONE_LIMIT = 20
 
 
 def _capacity_dict(cap: ResolvedCapacity) -> dict[str, Any]:
@@ -248,6 +254,10 @@ class ApplyBody(BaseModel):
     confirm: bool = False
 
 
+class SettingsBody(BaseModel):
+    auto_apply: bool
+
+
 class PlanGoalBody(BaseModel):
     task_type: str
     scope: str
@@ -313,6 +323,7 @@ def create_app(
     decompose_model: Model | None = None,
     decompose_producer: str = "unknown",
     code_capable: bool = True,
+    settings: RuntimeSettings | None = None,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
 
@@ -330,6 +341,9 @@ def create_app(
     Router-Kappung (code>=55) graceful failen zu lassen.
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
+    # Schritt 7: geteilter Schalter (Auto-Apply) mit dem Worker-Thread. Ohne
+    # Injektion eine lokale Default-Instanz (auto_apply=True) -- Tests/Standalone.
+    settings = settings if settings is not None else RuntimeSettings()
 
     # ── Auth-Dependency ────────────────────────────────────────────────────────
 
@@ -380,10 +394,35 @@ def create_app(
     async def get_tasks(
         owner: str = Depends(_require_owner),
     ) -> list[dict[str, Any]]:
-        tasks = queue.list_tasks(owner=owner)
+        """Offene Tasks (pending/running/failed) + eine kurze Liste der zuletzt
+        ABGESCHLOSSENEN (done). Frueher fielen done-Tasks voellig raus -> ein
+        fertiger implement-Task verschwand kommentarlos aus der Uebersicht, statt
+        als 'fertig' (ggf. mit Ergebnis/Apply) sichtbar zu bleiben (Schritt 7).
+        done ist auf die letzten `_DONE_LIMIT` begrenzt, damit die Historie die
+        Uebersicht nicht flutet."""
+        active = queue.list_tasks(owner=owner)
         if progress_store:
-            tasks = _augment_progress(tasks, progress_store)
-        return tasks
+            active = _augment_progress(active, progress_store)
+        done = queue.list_tasks(
+            owner=owner, statuses=("done",), limit=_DONE_LIMIT, newest_first=True
+        )
+        return active + done
+
+    @app.get("/api/settings")
+    async def get_settings(owner: str = Depends(_require_owner)) -> dict[str, Any]:
+        """Laufzeit-Schalter (Schritt 7). auto_apply (opt-out, Default True):
+        gruener verify -> Patch automatisch anwenden. Aus -> Mensch wendet im
+        Dashboard bewusst an (Diff-Vorschau)."""
+        return {"auto_apply": settings.get_auto_apply()}
+
+    @app.post("/api/settings")
+    async def set_settings(
+        body: SettingsBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, Any]:
+        """Setzt den Auto-Apply-Schalter (prozessweit; wirkt fuer den Worker-
+        Thread sofort beim naechsten gruenen verify)."""
+        settings.set_auto_apply(body.auto_apply)
+        return {"auto_apply": settings.get_auto_apply()}
 
     @app.get("/api/live")
     async def live_status(owner: str = Depends(_require_owner)) -> dict[str, Any]:

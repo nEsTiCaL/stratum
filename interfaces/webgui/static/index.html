@@ -100,6 +100,7 @@
   .badge-running { background: #1a1a2a; color: #66f; }
   .badge-human   { background: #2a1a1a; color: #f66; }
   .badge-failed  { background: #2a1a0a; color: #f84; }
+  .badge-done    { background: #16281a; color: #6ec46e; }
   #empty-msg { color: #778; font-size: .85rem; padding: 1rem 0; }
 
   button { cursor: pointer; border: none; border-radius: 3px; padding: .3rem .7rem;
@@ -281,6 +282,28 @@
   .ws-size { color: #667; white-space: nowrap; }
   .ws-empty { color: #778; font-size: .8rem; padding: .6rem .7rem; }
   #ws-viewer { display: none; margin-top: .7rem; }
+  /* Auto-Apply-Schalter */
+  .setting-toggle { display: inline-flex; align-items: center; gap: .4rem;
+                    font-size: .74rem; color: #99a; cursor: pointer;
+                    margin-left: auto; user-select: none; }
+  .setting-toggle input { accent-color: #6ec46e; cursor: pointer; }
+  /* Ergebnis-/Apply-Panel (done implement/fix: Diff-Vorschau + Anwenden) */
+  #result-panel { display: none; margin-top: 2rem; border: 1px solid #242424;
+                  border-radius: 6px; background: #131316; padding: 1rem 1.1rem; }
+  #result-panel.active { display: block; }
+  .rp-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+             margin-bottom: .5rem; }
+  .rp-title { font-weight: bold; color: #cdd6e6; }
+  .rp-meta { font-size: .74rem; color: #778; }
+  #result-panel pre.copy-pre { max-height: 420px; color: #c8e8c8; }
+  .rp-actions { display: flex; gap: .5rem; align-items: center; margin-top: .7rem;
+                flex-wrap: wrap; }
+  .rp-msg { font-size: .76rem; color: #99a; }
+  .rp-msg.ok  { color: #6ec46e; }
+  .rp-msg.err { color: #f84; }
+  .diff-add { color: #6ec46e; }
+  .diff-del { color: #e06c6c; }
+  .diff-hunk { color: #6aa0ff; }
 </style>
 
 <!-- ── Login-Overlay ── -->
@@ -398,6 +421,10 @@
     <button class="btn-pc-ghost" onclick="fetchWorkspace()">↻ Aktualisieren</button>
     <button class="btn-pc" onclick="downloadWorkspace()">⬇ Projekt als ZIP</button>
     <span class="pc-hint" id="ws-msg"></span>
+    <label class="setting-toggle" title="Verifizierte Patches nach grünem Verify automatisch in den Workspace anwenden. Aus → Ergebnis erst ansehen und manuell anwenden.">
+      <input type="checkbox" id="auto-apply-toggle" onchange="toggleAutoApply()">
+      Auto-Anwenden
+    </label>
   </div>
   <div class="ws-list" id="ws-list"><div class="ws-empty">—</div></div>
   <div id="ws-viewer">
@@ -409,6 +436,23 @@
       <pre class="copy-pre" id="ws-viewer-pre"></pre>
     </div>
   </div>
+</div>
+
+<!-- ── Ergebnis / Apply (done implement/fix: Diff-Vorschau + Anwenden) ── -->
+<div id="result-panel">
+  <div class="rp-head">
+    <span class="rp-title" id="rp-title">Ergebnis</span>
+    <span class="rp-meta" id="rp-meta"></span>
+    <button class="btn-pc-ghost" style="margin-left:auto" onclick="closeResult()">✕ Schließen</button>
+  </div>
+  <div class="copy-block msg">
+    <div class="copy-block-header">
+      <div class="block-label"><span class="title" id="rp-body-label">Patch (Unified-Diff)</span></div>
+      <button class="btn-copy" onclick="copyBlock('rp-pre', this)">📋 Kopieren</button>
+    </div>
+    <pre class="copy-pre" id="rp-pre"></pre>
+  </div>
+  <div class="rp-actions" id="rp-actions"></div>
 </div>
 
 <div id="claim-panel">
@@ -474,6 +518,8 @@
   let _promptVisible = true;
   let _pollTimer    = null;
   let _slowTimer    = null;
+  let _lastTasks    = [];     // zuletzt gerenderte Task-Liste (Scope-Lookup für showResult)
+  let _resultScope  = null;   // Scope des aktuell im Ergebnis-Panel gezeigten Patches
 
   // ── Hilfsfunktionen ────────────────────────────────────────────────────────
 
@@ -561,6 +607,7 @@
     // Ueberschreibung waehrend des Tippens). Aktualisiert nach jeder Aktion.
     fetchPlan();
     fetchWorkspace();   // einmalig; danach manuell (↻) — kein Poll auf dem Dateisystem
+    loadSettings();     // Auto-Apply-Schalter aus dem Backend spiegeln
     slowPoll();
     // Live-Status im Sekundentakt (leicht), Aggregate periodisch (teurer, R5).
     _pollTimer = setInterval(() => { fetchTasks(); fetchLive(); }, 2000);
@@ -574,6 +621,7 @@
     document.getElementById('plan-cockpit').classList.remove('active');
     document.getElementById('ws-panel').classList.remove('active');
     document.getElementById('ws-viewer').style.display = 'none';
+    document.getElementById('result-panel').classList.remove('active');
   }
 
   async function fetchTasks() {
@@ -697,6 +745,7 @@
   // ── Render ─────────────────────────────────────────────────────────────────
 
   function renderTasks(tasks) {
+    _lastTasks = tasks;
     const tbody = document.getElementById('task-body');
     if (!tasks.length) {
       tbody.innerHTML = '<tr><td colspan="7" id="empty-msg">Keine offenen Tasks.</td></tr>';
@@ -705,16 +754,22 @@
     tbody.innerHTML = tasks.map(t => {
       const isHuman  = t.model === 'human';
       const canClaim = t.status === 'pending';
-      const badge = isHuman
-        ? '<span class="badge badge-human">human</span>'
-        : t.status === 'running'
-          ? '<span class="badge badge-running">läuft</span>'
-          : t.status === 'failed'
-            ? '<span class="badge badge-failed">fehlgeschlagen</span>'
-            : '<span class="badge badge-pending">wartend</span>';
+      const isDone   = t.status === 'done';
+      const badge = t.status === 'done'
+        ? '<span class="badge badge-done">fertig</span>'
+        : isHuman
+          ? '<span class="badge badge-human">human</span>'
+          : t.status === 'running'
+            ? '<span class="badge badge-running">läuft</span>'
+            : t.status === 'failed'
+              ? '<span class="badge badge-failed">fehlgeschlagen</span>'
+              : '<span class="badge badge-pending">wartend</span>';
+      const isWrite = t.task_type === 'implement' || t.task_type === 'fix';
       let action;
       if (canClaim) {
         action = `<button class="btn-claim" onclick="claimTask(${t.id})">Übernehmen</button>`;
+      } else if (isDone && isWrite) {
+        action = `<button class="btn-pc" onclick="showResult(${t.id})">Ergebnis · Anwenden</button>`;
       } else if (t.status === 'running') {
         const p = t.progress;
         let progressHtml = '';
@@ -1243,6 +1298,98 @@
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(a.href);
     wsMsg('');
+  }
+
+  // ── Ergebnis / Apply (done implement/fix) ──────────────────────────────────
+
+  function rpMsg(t, cls) {
+    const el = document.getElementById('rp-msg');
+    if (el) { el.textContent = t || ''; el.className = 'rp-msg' + (cls ? ' ' + cls : ''); }
+  }
+
+  function colorizeDiff(diff) {
+    return esc(diff).split('\n').map(l => {
+      if (/^\+\+\+|^---/.test(l)) return `<span class="diff-hunk">${l}</span>`;
+      if (l.startsWith('@@'))      return `<span class="diff-hunk">${l}</span>`;
+      if (l.startsWith('+'))       return `<span class="diff-add">${l}</span>`;
+      if (l.startsWith('-'))       return `<span class="diff-del">${l}</span>`;
+      return l;
+    }).join('\n');
+  }
+
+  async function showResult(id) {
+    const t = (_lastTasks || []).find(x => x.id === id);
+    if (!t) return;
+    _resultScope = t.scope;
+    const scope = t.scope.replace(/^file:/, '');
+    document.getElementById('rp-title').textContent = `${t.task_type} · ${scope}`;
+    document.getElementById('rp-meta').textContent = `Task #${id}`;
+    rpMsg('Lade Ergebnis …');
+    document.getElementById('rp-actions').innerHTML = '';
+    document.getElementById('rp-pre').textContent = '';
+    document.getElementById('result-panel').classList.add('active');
+    document.getElementById('result-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const r = await apiFetch(`/api/result/${id}`);
+    if (!r.ok) {
+      rpMsg(`Ergebnis nicht verfügbar (${r.status}): ${(await r.json()).detail || ''}`, 'err');
+      return;
+    }
+    const d = await r.json();
+    const diff = (d.content && d.content.diff) || '';
+    document.getElementById('rp-pre').innerHTML = diff
+      ? colorizeDiff(diff)
+      : esc((d.content && d.content.text) || '(kein Diff im Artefakt)');
+    rpMsg('');
+    document.getElementById('rp-actions').innerHTML =
+      `<button class="btn-pc-go" onclick="applyPatch()">In Workspace anwenden</button>
+       <span class="rp-msg" id="rp-apply-msg"></span>`;
+  }
+
+  function closeResult() {
+    document.getElementById('result-panel').classList.remove('active');
+    _resultScope = null;
+  }
+
+  async function applyPatch() {
+    if (!_resultScope) return;
+    const msg = document.getElementById('rp-apply-msg');
+    if (msg) { msg.textContent = 'Wende an …'; msg.className = 'rp-msg'; }
+    const r = await apiFetch('/api/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: _resultScope, confirm: true }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (msg) { msg.textContent = `Nicht angewendet (${r.status}): ${d.detail || ''}`; msg.className = 'rp-msg err'; }
+      return;
+    }
+    if (msg) { msg.textContent = `Angewendet: ${d.scope || _resultScope}`; msg.className = 'rp-msg ok'; }
+    fetchWorkspace();
+  }
+
+  // ── Einstellungen (Auto-Apply-Schalter) ────────────────────────────────────
+
+  async function loadSettings() {
+    const r = await apiFetch('/api/settings');
+    if (!r.ok) return;
+    const d = await r.json();
+    const box = document.getElementById('auto-apply-toggle');
+    if (box) box.checked = !!d.auto_apply;
+  }
+
+  async function toggleAutoApply() {
+    const box = document.getElementById('auto-apply-toggle');
+    const want = !!box.checked;
+    const r = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_apply: want }),
+    });
+    if (!r.ok) { box.checked = !want; wsMsg('Schalter konnte nicht gesetzt werden.'); return; }
+    const d = await r.json();
+    box.checked = !!d.auto_apply;
   }
 
   // ── Utils ──────────────────────────────────────────────────────────────────

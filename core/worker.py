@@ -284,6 +284,12 @@ class WorkerLoop:
     # fix-Folge-Task zu erzeugen. Injiziert (kennt Routing/Workspace/Prompt-Bau);
     # None -> keine Rueckkopplung (Reviews bleiben reine Artefakte).
     spawn_fix: Callable[[QueueItem, str], None] | None = None
+    # Schritt 7: Auto-Apply nach gruenem verify (opt-out, Default via Schalter in
+    # der App). Wird mit (verify-item, root) aufgerufen, sobald ein verify-Knoten
+    # gruen abschliesst; die Injektion liest den Schalter und ruft das Apply-Gate
+    # (confirm=True + gruener verify_report). None -> kein Auto-Apply (Mensch
+    # wendet manuell an). Best-effort: ein Apply-Fehler kippt das done-verify nicht.
+    auto_apply: Callable[[QueueItem, Path | None], None] | None = None
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -334,6 +340,14 @@ class WorkerLoop:
         outcome = vw.run(item, self.repo)
         if outcome.passed:
             self.queue.complete(item.id)
+            # Auto-Apply (Schritt 7, opt-out): gruener verify -> Patch anwenden,
+            # ohne weiteren Klick. Best-effort: ein Apply-Fehler (kein Schreibziel,
+            # Diff schlaegt fehl) darf das erfolgreiche verify nicht kippen.
+            if self.auto_apply is not None:
+                try:
+                    self.auto_apply(item, root)
+                except Exception as exc:  # noqa: BLE001 - Apply ist Beiwerk zum verify
+                    print(f"[worker] Auto-Apply fehlgeschlagen ({item.scope}): {exc}")
             self._trace_result(
                 item,
                 validation_result="pass",

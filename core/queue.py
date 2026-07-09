@@ -302,11 +302,16 @@ class Queue:
         *,
         statuses: tuple[str, ...] = ("pending", "running", "failed"),
         owner: str | None = None,
+        limit: int | None = None,
+        newest_first: bool = False,
     ) -> list[dict[str, Any]]:
         """Listet Tasks fuer das Dashboard (read-only, kein Locking).
 
-        Gibt pending, running und failed Tasks zurueck (done ausgeblendet).
-        Mit owner-Filter: nur Tasks dieses Owners. Reihenfolge: created_at asc.
+        Default: pending, running und failed (done ausgeblendet). Mit owner-Filter
+        nur Tasks dieses Owners. Reihenfolge created_at asc (newest_first=True ->
+        desc, fuer die begrenzte done-Liste). limit begrenzt die Zeilenzahl -- so
+        laesst sich eine kurze Liste zuletzt abgeschlossener Tasks holen, ohne die
+        Uebersicht mit der gesamten Historie zu fluten.
         """
         placeholders = ",".join(["%s"] * len(statuses))
         params: list[Any] = list(statuses)
@@ -314,11 +319,16 @@ class Queue:
         if owner is not None:
             owner_clause = " AND owner = %s"
             params.append(owner)
+        order = "DESC" if newest_first else "ASC"
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = " LIMIT %s"
+            params.append(limit)
         rows = self._conn.execute(
             f"SELECT id, dag_id, task_type, scope, model, status, "
             f"attempts, created_at, claimed_at "
             f"FROM queue WHERE status IN ({placeholders}){owner_clause} "
-            f"ORDER BY created_at",
+            f"ORDER BY created_at {order}{limit_clause}",
             params,
         ).fetchall()
         keys = (

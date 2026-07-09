@@ -359,6 +359,45 @@ class TestTasksEndpoint:
         ).json()
         assert tasks == []
 
+    def test_includes_recently_done(self, conn):
+        """Schritt 7: fertige (done) Tasks bleiben sichtbar (fertig-Badge), statt
+        kommentarlos aus der Uebersicht zu fallen."""
+        queue = Queue(conn)
+        (item_id,) = queue.enqueue(_dag(), model="phi4-mini", owner=TEST_OWNER)
+        queue.claim(model="phi4-mini")
+        queue.complete(item_id)
+        app = create_app(queue, Repository(conn))
+        with TestClient(app) as c:
+            tasks = c.get("/api/tasks", headers=AUTH).json()
+        assert len(tasks) == 1
+        assert tasks[0]["id"] == item_id
+        assert tasks[0]["status"] == "done"
+
+
+class TestSettingsEndpoint:
+    def test_default_auto_apply_true(self, client):
+        r = client.get("/api/settings", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json() == {"auto_apply": True}
+
+    def test_requires_auth(self, client):
+        assert client.get("/api/settings").status_code == 401
+        r = client.post("/api/settings", json={"auto_apply": False})
+        assert r.status_code == 401
+
+    def test_toggle_persists_across_requests(self, conn):
+        from core.settings import RuntimeSettings
+
+        settings = RuntimeSettings()
+        app = create_app(Queue(conn), Repository(conn), settings=settings)
+        with TestClient(app) as c:
+            r = c.post("/api/settings", headers=AUTH, json={"auto_apply": False})
+            assert r.status_code == 200
+            assert r.json() == {"auto_apply": False}
+            # Folge-GET spiegelt den neuen Wert; auch das injizierte Objekt (Worker).
+            assert c.get("/api/settings", headers=AUTH).json() == {"auto_apply": False}
+        assert settings.get_auto_apply() is False
+
 
 class TestClaimEndpoint:
     def test_claim_pending_task(self, client_with_task):
@@ -424,8 +463,11 @@ class TestSubmitEndpoint:
         )
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
+        # Der Task ist danach NICHT mehr offen (pending/running/failed), erscheint
+        # aber als 'done' in der Uebersicht (Schritt 7: fertige bleiben sichtbar).
         tasks = c.get("/api/tasks", headers=AUTH).json()
-        assert not any(t["id"] == item_id for t in tasks)
+        done = [t for t in tasks if t["id"] == item_id]
+        assert done and done[0]["status"] == "done"
 
     def test_submit_requires_auth(self, client_with_task):
         c, item_id = client_with_task

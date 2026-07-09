@@ -164,7 +164,7 @@ class _FakeVerifyWorker:
         return self._outcome
 
 
-def _loop(item, outcome, reopen_result=True, verify_worker=None):
+def _loop(item, outcome, reopen_result=True, verify_worker=None, auto_apply=None):
     queue = _FakeQueue(item, reopen_result=reopen_result)
     repo = _FakeRepo()
     vw = verify_worker if verify_worker is not None else _FakeVerifyWorker(outcome)
@@ -174,6 +174,7 @@ def _loop(item, outcome, reopen_result=True, verify_worker=None):
         det_worker=DetWorker(ingest_fn=lambda *_: "x"),
         llm_worker=LlmWorker(router=Router(), model_factory=lambda n: None),
         verify_worker=vw,
+        auto_apply=auto_apply,
     )
     return loop, queue
 
@@ -222,3 +223,46 @@ class TestVerifyDispatch:
         )
         loop.step("verify")
         assert queue.failed == [5]
+
+
+class TestAutoApply:
+    """Schritt 7: gruener verify -> auto_apply-Hook (opt-out). Nur bei pass, mit
+    dem root des Items; ein Apply-Fehler kippt das done-verify nicht."""
+
+    def test_passed_invokes_auto_apply(self):
+        item = _verify_item(5)
+        calls: list = []
+        loop, queue = _loop(
+            item,
+            VerifyOutcome(True, True, "gruen", ()),
+            auto_apply=lambda it, root: calls.append((it.id, root)),
+        )
+        loop.step("verify")
+        assert queue.completed == [5]
+        assert calls == [(5, None)]
+
+    def test_failed_does_not_invoke_auto_apply(self):
+        item = _verify_item(5)
+        calls: list = []
+        loop, queue = _loop(
+            item,
+            VerifyOutcome(False, True, "rot", ()),
+            reopen_result=True,
+            auto_apply=lambda it, root: calls.append(it.id),
+        )
+        loop.step("verify")
+        assert calls == []  # rot -> kein Apply, nur Rueckkante
+
+    def test_auto_apply_error_does_not_break_done(self):
+        item = _verify_item(5)
+
+        def _boom(_it, _root):
+            raise RuntimeError("apply kaputt")
+
+        loop, queue = _loop(
+            item, VerifyOutcome(True, True, "gruen", ()), auto_apply=_boom
+        )
+        loop.step("verify")
+        # verify bleibt trotz Apply-Fehler done (Apply ist Beiwerk).
+        assert queue.completed == [5]
+        assert _traces(loop)[0]["detail"]["validation_result"] == "pass"
