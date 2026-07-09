@@ -1360,6 +1360,47 @@ class TestPatchSubmit:
         assert result.changes[0].kind == "create"
 
 
+class TestClaimShowsVerifyFeedback:
+    """Rueckkante I-7.4 im Human-Pfad: claim/prompt haengen verify_feedback an
+    den Prompt (EINE Quelle mit dem LLM-Worker: prompt_with_feedback). Vorher
+    claimte der Mensch den wiedereroeffneten Task ohne den Verify-Fehler."""
+
+    def _seed(self, conn):
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="implement"), model="human", owner=TEST_OWNER
+        )
+        conn.execute(
+            "UPDATE queue SET payload = %s WHERE id = %s",
+            (
+                json.dumps(
+                    {
+                        "prompt": "Basis-Prompt",
+                        "verify_feedback": "x.py:140:5 F841 unused variable",
+                    }
+                ),
+                item_id,
+            ),
+        )
+        return queue, repo, item_id
+
+    def test_prompt_appends_feedback(self, conn):
+        queue, repo, item_id = self._seed(conn)
+        with TestClient(create_app(queue, repo)) as c:
+            p = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
+        assert p.startswith("Basis-Prompt")
+        assert "Vorheriger Verify-Fehler" in p
+        assert "F841" in p
+
+    def test_claim_appends_feedback(self, conn):
+        queue, repo, item_id = self._seed(conn)
+        with TestClient(create_app(queue, repo)) as c:
+            p = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
+        assert "Vorheriger Verify-Fehler" in p
+        assert "F841" in p
+
+
 class TestWorkspaceEndpoints:
     """Projekt-Workspace anzeigen/herunterladen (read-only)."""
 

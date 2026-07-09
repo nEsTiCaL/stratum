@@ -35,6 +35,7 @@ from core.router import (
 )
 from core.secret_scan import EgressPolicy, Sensitivity
 from core.validator import EscalationLoop, EscalationOutcome, Validator
+from core.verify_worker import feedback_text, prompt_with_feedback
 
 
 @dataclass
@@ -107,13 +108,11 @@ class LlmWorker:
 
         # Rueckkante (I-7.4): reopen_after_verify legt verify_feedback ins Payload;
         # es an den Prompt zu haengen ist der Punkt, an dem der naechste Versuch
-        # den vorherigen Verify-Fehler tatsaechlich sieht.
-        prompt = item.payload["prompt"]
-        feedback = item.payload.get("verify_feedback")
-        if feedback:
-            prompt = (
-                f"{prompt}\n\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}"
-            )
+        # den vorherigen Verify-Fehler tatsaechlich sieht (geteilt mit dem
+        # Human-Pfad: webgui claim/prompt nutzen dieselbe Funktion).
+        prompt = prompt_with_feedback(
+            item.payload["prompt"], item.payload.get("verify_feedback")
+        )
 
         outcome = self._local_phase(task_type, prompt, local)
         if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:
@@ -345,8 +344,9 @@ class WorkerLoop:
         # Rot: Rueckkante (I-7.4). reopen_after_verify oeffnet Vorgaenger
         # (implement/fix) + diesen verify-Knoten neu, solange die Kappung nicht
         # erreicht ist; sonst faellt verify terminal (Belegkette: Patch + Report).
+        # Feedback = Summary + konkrete Linter-Findings (core.verify_worker).
         reopened = self.queue.reopen_after_verify(
-            item, feedback=outcome.summary, max_attempts=self.verify_max_attempts
+            item, feedback=feedback_text(outcome), max_attempts=self.verify_max_attempts
         )
         if reopened:
             self._trace_result(

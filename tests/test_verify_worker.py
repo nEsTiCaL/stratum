@@ -12,7 +12,13 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.verify_worker import VerifyOutcome, VerifyWorker, lint_patch
+from core.verify_worker import (
+    VerifyOutcome,
+    VerifyWorker,
+    feedback_text,
+    lint_patch,
+    prompt_with_feedback,
+)
 
 _DIFF = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b\n"
 _DIFF_GD = "--- a/s.gd\n+++ b/s.gd\n@@ -1 +1 @@\n-a\n+b\n"
@@ -59,6 +65,23 @@ class TestLintPatch:
         )
         assert out.applied and not out.passed
         assert out.commands[0]["status"] == "failed"
+        # Findings landen im Report -- nur so ist der Fehler behebbar.
+        assert out.commands[0]["output"] == "E501 line too long"
+
+    def test_failed_output_rewrites_tmp_path(self):
+        # Der Linter laeuft gegen ein Tempfile; im Output soll aber der ECHTE
+        # Zielpfad stehen (sonst verwirrt /tmp/tmpXY.py Feedback und Report).
+        def _echo_path(args, _cwd, _t):
+            return 1, f"{args[-1]}:1:1 F841 unused variable"
+
+        out = lint_patch(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=_echo_path,
+        )
+        assert out.commands[0]["output"].startswith("x.py:1:1")
+        assert "/tmp" not in out.commands[0]["output"]
 
     def test_no_linter_language_is_neutral(self):
         out = lint_patch(
@@ -92,6 +115,40 @@ class TestLintPatch:
             run_cmd=_to,
         )
         assert not out.passed and "Timeout" in out.summary
+
+    def test_feedback_text_carries_findings(self):
+        # Rueckkante-Feedback = Summary + Linter-Output der roten Dateien;
+        # ein blosses "Linter meldet Fehler" ist fuer den naechsten Versuch
+        # (LLM ODER Mensch) nicht behebbar.
+        outcome = VerifyOutcome(
+            False,
+            True,
+            "Linter meldet Fehler",
+            (
+                {
+                    "file": "x.py",
+                    "linter": "ruff",
+                    "status": "failed",
+                    "exit_code": 1,
+                    "output": "x.py:140:5 F841 unused variable `result`",
+                },
+                {"file": "y.gd", "linter": None, "status": "skipped", "exit_code": 0},
+            ),
+        )
+        fb = feedback_text(outcome)
+        assert fb.startswith("Linter meldet Fehler")
+        assert "F841" in fb
+
+    def test_feedback_text_without_findings_is_summary(self):
+        outcome = VerifyOutcome(False, False, "kein anwendbarer Hunk im Diff", ())
+        assert feedback_text(outcome) == "kein anwendbarer Hunk im Diff"
+
+    def test_prompt_with_feedback(self):
+        assert prompt_with_feedback("P", None) == "P"
+        assert prompt_with_feedback("P", "") == "P"
+        combined = prompt_with_feedback("P", "F841 unused")
+        assert combined.startswith("P\n\nVorheriger Verify-Fehler")
+        assert combined.endswith("F841 unused")
 
     def test_missing_linter_binary_is_neutral(self):
         # Regression: ruff nicht installiert (FileNotFoundError aus subprocess)

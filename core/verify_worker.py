@@ -43,6 +43,9 @@ from core.repository import Repository
 DEFAULT_LINTERS: Mapping[str, tuple[str, ...]] = {"python": ("ruff", "check")}
 _LANG_BY_EXT: Mapping[str, str] = {".py": "python"}
 DEFAULT_TIMEOUT_S = 300
+# Linter-Output je roter Datei im Report/Feedback (gekappt: Reports bleiben
+# klein, aber die konkreten Findings kommen beim naechsten Versuch an).
+_MAX_LINT_OUTPUT = 1500
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,7 @@ def lint_patch(
         try:
             Path(tmp).write_text(chg.new_content or "", encoding="utf-8")
             try:
-                rc, _out = run_cmd([*linter, tmp], Path(tmp).parent, timeout_s)
+                rc, out = run_cmd([*linter, tmp], Path(tmp).parent, timeout_s)
             except subprocess.TimeoutExpired:
                 entries.append(
                     {
@@ -149,11 +152,18 @@ def lint_patch(
             Path(tmp).unlink(missing_ok=True)
 
         status = "passed" if rc == 0 else "failed"
+        entry = {
+            "file": chg.path,
+            "linter": linter[0],
+            "status": status,
+            "exit_code": rc,
+        }
         if rc != 0:
             passed = False
-        entries.append(
-            {"file": chg.path, "linter": linter[0], "status": status, "exit_code": rc}
-        )
+            # Findings mitschreiben (Tempfile-Pfad -> echter Pfad), sonst kann
+            # der naechste Versuch (LLM ODER Mensch) den Fehler nicht beheben.
+            entry["output"] = out.replace(tmp, chg.path).strip()[:_MAX_LINT_OUTPUT]
+        entries.append(entry)
 
     linted = sum(1 for e in entries if e["status"] not in ("skipped", "missing"))
     if not passed:
@@ -165,6 +175,31 @@ def lint_patch(
     else:
         summary = "sauber appliziert; Linter gruen"
     return VerifyOutcome(passed, True, summary, tuple(entries))
+
+
+def feedback_text(outcome: VerifyOutcome) -> str:
+    """Rueckkante-Feedback (I-7.4): Summary + Linter-Findings der roten Dateien.
+
+    Nur "Linter meldet Fehler" ist als Feedback wertlos -- erst die konkreten
+    Findings machen den naechsten Versuch (LLM oder Mensch) behebbar."""
+    parts = [outcome.summary]
+    parts += [
+        e["output"]
+        for e in outcome.commands
+        if e.get("status") == "failed" and e.get("output")
+    ]
+    return "\n".join(parts)
+
+
+def prompt_with_feedback(prompt: str, feedback: str | None) -> str:
+    """Haengt verify_feedback (aus queue.reopen_after_verify) an einen Prompt.
+
+    EINE Quelle fuer LLM-Worker (core.worker) UND Human-Pfad (webgui claim/
+    prompt) -- vorher sah nur der LLM-Pfad das Feedback, der Mensch claimte
+    den wiedereroeffneten Task ohne den Verify-Fehler zu kennen."""
+    if not feedback:
+        return prompt
+    return f"{prompt}\n\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}"
 
 
 @dataclass

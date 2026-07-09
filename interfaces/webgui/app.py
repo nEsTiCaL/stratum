@@ -96,6 +96,7 @@ from core.task_routing import (
 )
 from core.template_registry import DagNode, TaskDag
 from core.validator import Model, Validator
+from core.verify_worker import prompt_with_feedback
 from core.workspace import workspace_root
 
 _STATIC = Path(__file__).parent / "static"
@@ -971,14 +972,19 @@ def create_app(
                 detail="Task nicht verfuegbar (nicht pending oder nicht gefunden)",
             )
 
-        # Gespeicherter Payload-Prompt ist autoritativ (traegt die Plan-Instruktion
-        # + ggf. Verify-Feedback); Fallback nur, falls keiner gesetzt wurde.
+        # Gespeicherter Payload-Prompt ist autoritativ (traegt die Plan-
+        # Instruktion); verify_feedback der Rueckkante wird angehaengt (EINE
+        # Quelle mit dem LLM-Worker) -- sonst claimt der Mensch einen wieder-
+        # eroeffneten Task, ohne den Verify-Fehler zu kennen.
         stored = item.payload.get("prompt")
         return {
             "id": item.id,
             "task_type": item.task_type,
             "scope": item.scope,
-            "prompt": stored or _node_prompt(item.task_type, item.scope),
+            "prompt": prompt_with_feedback(
+                stored or _node_prompt(item.task_type, item.scope),
+                item.payload.get("verify_feedback"),
+            ),
         }
 
     @app.get("/api/prompt/{task_id}")
@@ -994,7 +1000,10 @@ def create_app(
             "id": task_id,
             "task_type": task_type,
             "scope": scope,
-            "prompt": stored or _node_prompt(task_type, scope),
+            "prompt": prompt_with_feedback(
+                stored or _node_prompt(task_type, scope),
+                info["payload"].get("verify_feedback"),
+            ),
         }
 
     @app.post("/api/validate")
