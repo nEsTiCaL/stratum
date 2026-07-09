@@ -14,6 +14,11 @@ Unified-Diff ist reine Zeilenlogik, kein Zielsprachen-Parser.
 Semantik: EXAKTER Kontext-Match, kein Fuzz. Passt ein Hunk nicht zeilengenau,
 -> ok=False mit Fundstelle. Ein Patch, der nicht sauber greift, IST ein
 Verify-fail -- kein Reinraten in falschen Kontext.
+
+Eine bewusste Toleranz gibt es NUR bei der Hunk-Kopf-Zaehlung: LLM-Diffs
+deklarieren die Zeilenzahl notorisch falsch. Folgen nach erschoepfter Zaehlung
+weitere +/- Zeilen (und kein Struktur-Header), gehoeren sie noch zum Hunk --
+Inhalt schlaegt Zaehlung. Kontext-Match bleibt davon unberuehrt exakt.
 """
 
 from __future__ import annotations
@@ -24,6 +29,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+# Struktur-Zeilen, die einen Hunk IMMER beenden -- auch wenn die deklarierte
+# Zeilenzahl des Hunk-Kopfs noch nicht erschoepft waere ("--- "/"+++ " beginnen
+# mit -/+ und wuerden sonst als Body-Zeilen der Ueberlaenge konsumiert).
+_STRUCTURAL = re.compile(r"^(--- |\+\+\+ |@@ |diff --git )")
 
 # read_current(path) -> aktueller Working-Tree-Inhalt oder None (Datei fehlt).
 ReadCurrent = Callable[[str], "str | None"]
@@ -116,6 +125,15 @@ def _parse(diff: str) -> list[_FileDiff]:
                     i += 1
                     continue
                 if ro <= 0 and rn <= 0:
+                    # Deklarierte Laenge erschoepft. LLM-Diffs zaehlen den
+                    # Hunk-Kopf notorisch falsch: folgen weitere +/- Zeilen
+                    # (und KEIN Struktur-Header), gehoeren sie noch zum Hunk --
+                    # Inhalt schlaegt Zaehlung. Sonst wuerde der Rest still
+                    # verworfen und die Datei trunkiert appliziert.
+                    if tag in "+-" and not _STRUCTURAL.match(body):
+                        hunk.lines.append(body)
+                        i += 1
+                        continue
                     break
                 if tag == " ":
                     ro -= 1

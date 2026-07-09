@@ -160,9 +160,12 @@ def lint_patch(
         }
         if rc != 0:
             passed = False
-            # Findings mitschreiben (Tempfile-Pfad -> echter Pfad), sonst kann
-            # der naechste Versuch (LLM ODER Mensch) den Fehler nicht beheben.
-            entry["output"] = out.replace(tmp, chg.path).strip()[:_MAX_LINT_OUTPUT]
+            # Findings mitschreiben (Tempfile-Pfad -> echter Pfad; auch den
+            # Basename ersetzen -- ruff gibt Pfade relativ zur cwd aus), sonst
+            # kann der naechste Versuch (LLM ODER Mensch) den Fehler nicht
+            # beheben.
+            cleaned = out.replace(tmp, chg.path).replace(Path(tmp).name, chg.path)
+            entry["output"] = cleaned.strip()[:_MAX_LINT_OUTPUT]
         entries.append(entry)
 
     linted = sum(1 for e in entries if e["status"] not in ("skipped", "missing"))

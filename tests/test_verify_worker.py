@@ -83,6 +83,21 @@ class TestLintPatch:
         assert out.commands[0]["output"].startswith("x.py:1:1")
         assert "/tmp" not in out.commands[0]["output"]
 
+    def test_failed_output_rewrites_tmp_basename(self):
+        # ruff gibt Pfade RELATIV zur cwd aus (nur der Basename des Tempfiles)
+        # -> auch der Basename allein muss zum Zielpfad umgeschrieben werden.
+        def _echo_basename(args, _cwd, _t):
+            return 1, f"--> {Path(args[-1]).name}:140:5 F841 unused"
+
+        out = lint_patch(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            run_cmd=_echo_basename,
+        )
+        assert "x.py:140:5" in out.commands[0]["output"]
+        assert "tmp" not in out.commands[0]["output"]
+
     def test_no_linter_language_is_neutral(self):
         out = lint_patch(
             _DIFF_GD,

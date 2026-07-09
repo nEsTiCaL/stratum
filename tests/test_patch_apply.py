@@ -112,3 +112,43 @@ class TestGarbage:
     def test_no_diff_fails(self):
         r = apply_diff("hier ist kein diff", _reader({}))
         assert not r.ok and "Hunk" in r.reason
+
+
+class TestHunkCountTolerance:
+    """LLM-Diffs deklarieren die Hunk-Laenge notorisch falsch (Task-11-Vorfall:
+    Kopf sagte 140, Body hatte 160 Zeilen -> Datei wurde still bei 140
+    trunkiert). Inhalt schlaegt Zaehlung; Struktur-Header beenden den Hunk."""
+
+    def test_undercounted_create_keeps_all_lines(self):
+        # Kopf deklariert 2 Zeilen, es folgen 4 -> alle 4 gehoeren zur Datei.
+        diff = "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1,2 @@\n+a\n+b\n+c\n+d\n"
+        r = apply_diff(diff, _reader({}))
+        assert r.ok
+        assert r.changes[0].new_content == "a\nb\nc\nd\n"
+
+    def test_overflow_stops_at_next_file_header(self):
+        # Ueberzaehlige Zeilen enden am "--- "-Header der naechsten Datei --
+        # der beginnt mit "-", darf aber NICHT als Loeschzeile konsumiert werden.
+        diff = (
+            "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1,1 @@\n+a\n+b\n"
+            "--- a/y.py\n+++ b/y.py\n@@ -1 +1 @@\n-p\n+P\n"
+        )
+        r = apply_diff(diff, _reader({"y.py": "p\n"}))
+        assert r.ok and len(r.changes) == 2
+        by_path = {c.path: c.new_content for c in r.changes}
+        assert by_path["new.py"] == "a\nb\n"
+        assert by_path["y.py"] == "P\n"
+
+    def test_overflow_stops_at_next_hunk(self):
+        # Ueberzaehlige Zeilen enden am naechsten @@-Kopf (Mehr-Hunk-Datei).
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+A\n+A2\n@@ -3 +4 @@\n-c\n+C\n"
+        r = apply_diff(diff, _reader({"x.py": "a\nb\nc\n"}))
+        assert r.ok and r.changes[0].new_content == "A\nA2\nb\nC\n"
+
+    def test_prose_after_hunk_not_consumed(self):
+        # Nicht-Diff-Zeilen (Prosa, Fence) nach erschoepfter Zaehlung beenden
+        # den Hunk -- sie landen NICHT in der Datei.
+        diff = "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1,1 @@\n+a\n```\nFertig!\n"
+        r = apply_diff(diff, _reader({}))
+        assert r.ok
+        assert r.changes[0].new_content == "a\n"
