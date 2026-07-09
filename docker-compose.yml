@@ -31,13 +31,21 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-stratum}:${POSTGRES_PASSWORD:-stratum}@db:5432/${POSTGRES_DB:-stratum}
       OLLAMA_HOST: http://host.docker.internal:11434
       PYTHONUNBUFFERED: "1"
+      # Schreibpfad (Schritt 7): Workspaces auf ein persistentes Volume, NICHT in
+      # den Quellbaum (/app/.workspaces). Sonst wischt jeder `--build` (COPY . .
+      # + Recreate) angewandte Patches weg. resolve_base liest STRATUM_WORKSPACES
+      # vor dem Default. Muss unter dem Volume-Mount liegen.
+      STRATUM_WORKSPACES: /data/workspaces
     env_file:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
+    volumes:
+      - workspaces:/data/workspaces
     restart: unless-stopped
 
 volumes:
   pgdata:
+  workspaces:

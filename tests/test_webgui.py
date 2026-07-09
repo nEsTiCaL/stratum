@@ -400,9 +400,16 @@ class TestSettingsEndpoint:
 
 
 class TestClaimEndpoint:
-    def test_claim_pending_task(self, client_with_task):
-        c, item_id = client_with_task
-        r = c.post(f"/api/claim/{item_id}", headers=AUTH)
+    def test_claim_pending_task(self, conn):
+        # Task OHNE gespeicherten Prompt (nicht die client_with_task-Fixture, die
+        # einen Platzhalter injiziert) -> claim baut den Prompt via _node_prompt
+        # (Fallback). Dass ein GESPEICHERTER Prompt stattdessen autoritativ ist,
+        # deckt TestPromptFeedback separat ab.
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(_dag(), model="human", owner=TEST_OWNER)
+        with TestClient(create_app(queue, repo)) as c:
+            r = c.post(f"/api/claim/{item_id}", headers=AUTH)
         assert r.status_code == 200
         body = r.json()
         assert body["id"] == item_id
