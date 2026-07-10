@@ -96,6 +96,9 @@ spec_schritt-7.md        | Inkremente Schritt 7 (Schreibpfad) I-7.1..7.5: patch/
                          |   VerifyWorker eigener det-Worker, Rueckkante, Apply-Gate;          |   rueckkante, apply-gate, worktree,
                          |   Betriebsschliff: Auto-Apply (opt-out), done-Sichtbarkeit,         |   auto-apply, runtimesettings, done-sichtbar,
                          |   Apply-UI/Diff-Panel, Workspace-Volume                             |   apply-ui, workspace-volume
+spec_refactor-webschicht.md | Web-Schicht-Refactor (Findings + Plan, 2026-07-10): app.py     | refactor, webschicht, app.py, closure,
+                         |   941-Z-Closure = einziger Hotspot; Tier1 (I-RW.1) Logik->core      |   node_prompt, apirouter, tier1, tier2,
+                         |   (dedup app/serve), Tier2 (I-RW.2) APIRouter-Split; core/ gesund    |   dedup, hotspot, di-ansatz
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
 spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task, GET /api/tasks     | polling, task-create, result-abruf, ssh-pipe,
                          |   Polling, GET /api/result/{id}; SSE entfernt I-REST.2),              |   session-cache, scope, curl-beispiele,

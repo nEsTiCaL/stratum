@@ -235,6 +235,19 @@ I-S.4     read-only Remote-Dashboard     det   I-5.3     IZ
 I-S.5     Kalibrierung/Canary (Server)   gem   I-5.5     IZ, R5
 ```
 
+## Refactor: Web-Schicht  (Spec: `spec_refactor-webschicht`)
+
+Einziger struktureller Hotspot (Analyse 2026-07-10): interfaces/webgui/app.py =
+1250 LOC, create_app = 941-Zeilen-Closure. core/ ist gesund. Findings + Def je
+Haeppchen: `spec_refactor-webschicht`.
+
+```
+ID       Haeppchen                       Kl   dep       Detail
+-------  ------------------------------  ---  --------  ----------------
+I-RW.1   Logik-Extraktion nach core      det  -         `spec_refactor-webschicht`   offen
+I-RW.2   APIRouter-Split je Domaene      det  I-RW.1    `spec_refactor-webschicht`   offen
+```
+
 ## Status
 
 Die Tabellen oben sind die einzige Fortschritts-Wahrheit (rules P7); Details je
