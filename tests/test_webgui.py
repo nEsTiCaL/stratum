@@ -1171,6 +1171,21 @@ class TestPlanConfirmDiscard:
         current = Repository(conn).get_current("repo:", "plan")
         assert current.content["dag_id"] == body["dag_id"]
 
+    def test_confirm_empty_plan_422_not_silent_noop(self, conn):
+        # Kein Ziel ableitbar (goals leer) -> confirm muss 422 werfen statt
+        # still 0 Tasks einzureihen und den Plan als confirmed zu verbrauchen.
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            empty = c.put(f"/api/plan/{pid}", json={"goals": []}, headers=AUTH)
+            eid = empty.json()["id"]
+            r = c.post(f"/api/plan/{eid}/confirm", headers=AUTH)
+        assert r.status_code == 422
+        assert "Ziel" in r.json()["detail"]
+        # Nichts eingereiht, Plan bleibt bestaetigbar (nicht confirmed).
+        assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 0
+        current = Repository(conn).get_current("repo:", "plan")
+        assert current.content["status"] == "proposed"
+
     def test_discard_confirmed_plan_cascades_to_subtasks(self, conn):
         # Kernanforderung: Discard eines bestaetigten Plans verwirft die Subtasks.
         with _plan_client(conn) as c:
@@ -1604,3 +1619,43 @@ class TestAppliedTasks:
             )
         assert r.status_code == 200
         assert r.json()["reason"] == "bereits angewendet"
+
+
+class TestIntentSuggest:
+    """POST /api/intent/suggest: Ziel-Vorschlaege bei leerem Plan."""
+
+    def test_requires_auth(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post("/api/intent/suggest", json={"prompt": "x"})
+            assert r.status_code == 401
+
+    def test_returns_pickable_goals(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/intent/suggest",
+                json={"prompt": "Es kommt ein Fehler in core/login.py"},
+                headers=AUTH,
+            )
+        assert r.status_code == 200
+        sugs = r.json()["suggestions"]
+        assert sugs and all({"task_type", "scope", "reason"} <= s.keys() for s in sugs)
+        # Vorschlag ist als Goal uebernehmbar (PUT-kompatibles Format).
+        assert all(isinstance(s["depends_on"], list) for s in sugs)
+
+    def test_suggestion_can_be_applied_and_confirmed(self, conn):
+        # End-to-End: leerer Plan -> Vorschlag holen -> als Ziel uebernehmen ->
+        # confirm reiht jetzt einen Task ein (Sackgasse aufgeloest).
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            empty = c.put(f"/api/plan/{pid}", json={"goals": []}, headers=AUTH)
+            eid = empty.json()["id"]
+            sug = c.post(
+                "/api/intent/suggest",
+                json={"prompt": "Erkläre file:core/queue.py"},
+                headers=AUTH,
+            ).json()["suggestions"][0]
+            goal = {k: sug[k] for k in ("task_type", "scope", "depends_on")}
+            edited = c.put(f"/api/plan/{eid}", json={"goals": [goal]}, headers=AUTH)
+            r = c.post(f"/api/plan/{edited.json()['id']}/confirm", headers=AUTH)
+        assert r.status_code == 200
+        assert r.json()["task_ids"]

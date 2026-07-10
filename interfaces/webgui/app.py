@@ -57,6 +57,7 @@ from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
 from core.diff_extract import build_patch_prompt, extract_diff
+from core.goal_suggest import suggest_goals
 from core.ingest import ingest_file, ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
@@ -743,6 +744,19 @@ def create_app(
         Prompt-Kopie mehr."""
         return {"prompt": build_decompose_prompt(body.prompt.strip())}
 
+    @app.post("/api/intent/suggest")
+    async def intent_suggest(
+        body: DecomposePromptBody, owner: str = Depends(_require_owner)
+    ) -> dict[str, list[dict[str, object]]]:
+        """Ziel-Vorschlaege, wenn die Zerlegung kein Ziel ableiten konnte
+        (goals leer -> alles unter 'Nicht abgedeckt').
+
+        Deterministisch (core.goal_suggest, kein Modell): der Nutzer waehlt einen
+        Vorschlag und uebernimmt ihn via PUT /api/plan/{id} als Ziel. Loest die
+        Sackgasse 'kein task_type -> nichts einreihbar' auf, ohne den Planner-
+        Vertrag zu brechen (Code schlaegt vor, Mensch bestaetigt)."""
+        return {"suggestions": suggest_goals(body.prompt.strip())}
+
     @app.get("/api/plan/current")
     async def current_plan(owner: str = Depends(_require_owner)) -> dict[str, Any]:
         """Aktueller (nicht superseded) Plan fuer den Cockpit-Viewer (I-6.5).
@@ -814,6 +828,19 @@ def create_app(
         owner, capability_id = cap
         current = _load_current_plan(plan_id)
         plan = plan_from_content(current.content)
+        # Leerer Plan (Zerlegung konnte kein Ziel ableiten -> alles 'Nicht
+        # abgedeckt') haette 0 Knoten enqueued: ein stiller No-Op, der den Plan
+        # als 'confirmed' verbraucht, ohne dass je etwas laeuft. Stattdessen 422
+        # mit Hinweis -> das Cockpit fuehrt zu '+ Ziel' / Vorschlaegen.
+        if not plan.goals:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Kein Ziel ableitbar — die Zerlegung konnte den Auftrag "
+                    "keinem task_type/Scope zuordnen. Auftrag nachschärfen "
+                    "(Datei/Modul nennen) oder ein Ziel manuell hinzufügen."
+                ),
+            )
         dag = build_dag(plan, scope_resolver=RepoScopeResolver(repo), cache_query=None)
         task_ids = queue.enqueue(
             dag, _CONFIRM_MODEL, owner=owner, capability_id=capability_id

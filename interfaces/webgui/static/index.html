@@ -261,6 +261,14 @@
   .btn-pc-danger:hover { background: #3a2020; }
   .btn-pc-go   { background: #1e3a1e; color: #6f6; }
   .btn-pc-go:hover { background: #234a23; }
+  .btn-pc-go:disabled { background: #191919; color: #556; cursor: not-allowed; }
+  .pc-sugs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .3rem; }
+  .pc-sug { display: inline-flex; align-items: baseline; gap: .4rem; cursor: pointer;
+            background: #10161e; border: 1px solid #2a3a4a; border-radius: 4px;
+            padding: .3rem .55rem; color: #cdd6e6; font-size: .74rem; text-align: left; }
+  .pc-sug:hover { background: #16202c; border-color: #3a5a8a; }
+  .pc-sug-type { color: #6af; font-weight: 600; }
+  .pc-sug-scope { color: #889; font-family: monospace; font-size: .7rem; }
   .pc-hint { font-size: .7rem; color: #667; margin-top: .5rem; }
   .pc-understanding { font-size: .82rem; color: #cdd6e6; line-height: 1.5;
                       border-left: 3px solid #2a5a8a; padding: .3rem .7rem; background: #10161e;
@@ -971,6 +979,7 @@
   let _sel = null;              // {kind:'prompt'|'intent'|'goal', i}
   let _manual = false;          // manueller Zerlegungs-Pfad sichtbar
   let _pendingPrompt = '';      // gemerkt fuer den manuellen Pfad
+  let _suggest = [];            // Ziel-Vorschlaege bei leerem Plan (goals==[])
 
   function _active() { return _plan && _plan.content.status !== 'discarded'; }
 
@@ -988,6 +997,17 @@
       const m = await apiFetch(`/api/plan/${_planId}/metadata`);
       _meta = m.ok ? (await m.json()).metadata : [];
     } else { _meta = []; }
+    // Leerer Plan (kein Ziel ableitbar) -> Vorschlaege holen, aus denen der
+    // Nutzer auswaehlt. Nur bei proposed; confirmed/discarded braucht keine.
+    _suggest = [];
+    if (_active() && _plan.content.status !== 'confirmed'
+        && !(_plan.content.goals || []).length) {
+      const s = await apiFetch('/api/intent/suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: _plan.content.prompt || '' }),
+      });
+      if (s.ok) _suggest = (await s.json()).suggestions || [];
+    }
     if (!_sel) _sel = { kind: _active() ? 'intent' : 'prompt' };
     renderCockpit();
   }
@@ -1026,6 +1046,17 @@
     </div>`;
     if (c.not_covered && c.not_covered.length)
       h += `<div class="pc-notcov">Nicht abgedeckt: ${c.not_covered.map(esc).join(' · ')}</div>`;
+    const noGoals = !(c.goals || []).length;
+    if (noGoals && !isConf) {
+      h += `<div class="pc-notcov">Kein Ziel ableitbar — nichts einreihbar. Wähle einen Vorschlag oder füge manuell ein Ziel hinzu.</div>`;
+      if (_suggest.length) {
+        h += `<div class="pc-lbl" style="margin-top:.5rem">Vorschläge — zum Übernehmen anklicken</div>
+          <div class="pc-sugs">` + _suggest.map((s,i)=>
+          `<button class="pc-sug" onclick="applySuggestion(${i})" title="${esc(s.reason||'')}">
+            <span class="pc-sug-type">${esc(s.task_type)}</span>
+            <span class="pc-sug-scope">${esc(s.scope)}</span></button>`).join('') + `</div>`;
+      }
+    }
     h += '<div class="pc-tasks">';
     (c.goals||[]).forEach((g,i)=>{
       const m = _meta[i] || {};
@@ -1049,8 +1080,11 @@
         <button class="btn-pc-danger" onclick="discardPlan()">Verwerfen (inkl. Subtasks)</button>
         <button class="btn-pc-ghost" onclick="newAuftrag()">Neuer Auftrag</button></div>`;
     } else {
+      const goBtn = noGoals
+        ? `<button class="btn-pc-go" disabled title="Kein Ziel — nichts einreihbar">Bestätigen → Queue</button>`
+        : `<button class="btn-pc-go" onclick="confirmPlan()">Bestätigen → Queue</button>`;
       h += `<div class="pc-row" style="margin-top:.6rem">
-        <button class="btn-pc-go" onclick="confirmPlan()">Bestätigen → Queue</button>
+        ${goBtn}
         <button class="btn-pc-ghost" onclick="addGoal()">+ Ziel</button>
         <button class="btn-pc-danger" onclick="discardPlan()">Verwerfen</button>
         <button class="btn-pc-ghost" onclick="newAuftrag()">Neuer Auftrag</button></div>`;
@@ -1221,6 +1255,17 @@
     const goals = _collectGoals();
     goals.push({ task_type:'review', scope:'repo:', depends_on:[] });
     _putGoals(goals, 'Ziel hinzugefügt.');
+  }
+
+  // Vorschlag (bei leerem Plan) als Ziel uebernehmen; danach das neue Ziel
+  // selektieren, damit der Nutzer Scope/Typ direkt nachschaerfen kann.
+  function applySuggestion(i) {
+    const s = _suggest[i];
+    if (!s) return;
+    const goals = _collectGoals();
+    goals.push({ task_type: s.task_type, scope: s.scope, depends_on: [] });
+    _sel = { kind:'goal', i: goals.length - 1 };
+    _putGoals(goals, 'Vorschlag übernommen — Scope prüfen.');
   }
 
   async function confirmPlan() {
