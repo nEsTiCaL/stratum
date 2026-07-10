@@ -827,6 +827,20 @@ def create_app(
         = weiche Warnung (I-2.7-Vertrag; grosser Plan wird trotzdem enqueued)."""
         owner, capability_id = cap
         current = _load_current_plan(plan_id)
+        # Idempotenz: der bestaetigte Plan IST nach dem Confirm der aktuelle --
+        # ein zweiter POST auf seine id landet also erneut hier. Ohne Guard
+        # baut jeder weitere Klick einen frischen DAG (neue dag_id) und reiht
+        # dieselbe Arbeit nochmal ein. Bereits confirmed -> No-Op mit den schon
+        # eingereihten task_ids, kein Re-Enqueue, kein neues Artefakt.
+        if current.content.get("status") == STATUS_CONFIRMED:
+            existing_dag = current.content.get("dag_id")
+            return {
+                "dag_id": existing_dag,
+                "task_ids": queue.ids_for_dag(existing_dag) if existing_dag else [],
+                "large": bool(current.content.get("large", False)),
+                "plan_id": plan_id,
+                "already_confirmed": True,
+            }
         plan = plan_from_content(current.content)
         # Leerer Plan (Zerlegung konnte kein Ziel ableiten -> alles 'Nicht
         # abgedeckt') haette 0 Knoten enqueued: ein stiller No-Op, der den Plan

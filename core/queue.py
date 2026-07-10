@@ -163,6 +163,17 @@ class Queue:
                     (item_id,),
                 )
 
+    def ids_for_dag(self, dag_id: str) -> list[int]:
+        """Queue-ids eines DAG (created-Reihenfolge). Fuer die Idempotenz von
+        Plan-Confirm: ein bereits bestaetigter Plan liefert seine schon
+        eingereihten Task-ids zurueck, statt neu zu enqueuen."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM queue WHERE dag_id = %s ORDER BY created_at, id",
+                (dag_id,),
+            )
+            return [row[0] for row in cur.fetchall()]
+
     def discard_dag(self, dag_id: str) -> int:
         """Verwirft alle Subtasks eines DAG (Plan-Discard, I-6.3-Erweiterung).
 

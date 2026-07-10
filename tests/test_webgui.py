@@ -1186,6 +1186,23 @@ class TestPlanConfirmDiscard:
         current = Repository(conn).get_current("repo:", "plan")
         assert current.content["status"] == "proposed"
 
+    def test_confirm_already_confirmed_is_idempotent_noop(self, conn):
+        # Zweiter Confirm auf den (jetzt aktuellen) bestaetigten Plan darf NICHT
+        # erneut enqueuen -- sonst reiht jeder weitere Klick denselben DAG neu ein.
+        with _plan_client(conn) as c:
+            pid = _create_plan(c)
+            first = c.post(f"/api/plan/{pid}/confirm", headers=AUTH).json()
+            confirmed_id = Repository(conn).get_current_id("repo:", "plan")
+            n_after_first = conn.execute("SELECT count(*) FROM queue").fetchone()[0]
+            again = c.post(f"/api/plan/{confirmed_id}/confirm", headers=AUTH)
+        assert again.status_code == 200
+        body = again.json()
+        assert body["already_confirmed"] is True
+        assert body["dag_id"] == first["dag_id"]  # gleicher DAG, kein neuer
+        assert sorted(body["task_ids"]) == sorted(first["task_ids"])
+        # Queue unveraendert: keine Duplikate.
+        assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == n_after_first
+
     def test_discard_confirmed_plan_cascades_to_subtasks(self, conn):
         # Kernanforderung: Discard eines bestaetigten Plans verwirft die Subtasks.
         with _plan_client(conn) as c:

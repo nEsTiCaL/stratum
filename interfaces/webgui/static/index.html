@@ -980,6 +980,7 @@
   let _manual = false;          // manueller Zerlegungs-Pfad sichtbar
   let _pendingPrompt = '';      // gemerkt fuer den manuellen Pfad
   let _suggest = [];            // Ziel-Vorschlaege bei leerem Plan (goals==[])
+  let _confirming = false;      // Re-Entrancy-Sperre gegen Doppel-Confirm
 
   function _active() { return _plan && _plan.content.status !== 'discarded'; }
 
@@ -1269,13 +1270,26 @@
   }
 
   async function confirmPlan() {
-    const r = await apiFetch(`/api/plan/${_planId}/confirm`, { method:'POST' });
-    if (r.status === 409) { pcMsg('Plan geändert — neu geladen.', 'err'); await fetchPlan(); return; }
-    if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
-    const d = await r.json();
-    _sel = { kind:'intent' };
-    await fetchPlan(); fetchTasks();
-    pcMsg(`Bestätigt: ${d.task_ids.length} Aufgaben eingereiht.`, 'ok');
+    // Doppel-Confirm verhindern: (1) Re-Entrancy-Flag sperrt ein zweites
+    // await-Fenster, (2) Button sofort deaktivieren, damit der Nutzer waehrend
+    // des Round-Trips nicht mehrfach klickt (sonst wuerde derselbe Plan
+    // mehrfach eingereiht). Backend ist zusaetzlich idempotent (already_confirmed).
+    if (_confirming) return;
+    _confirming = true;
+    document.querySelectorAll('.btn-pc-go').forEach(b => { b.disabled = true; });
+    try {
+      const r = await apiFetch(`/api/plan/${_planId}/confirm`, { method:'POST' });
+      if (r.status === 409) { pcMsg('Plan geändert — neu geladen.', 'err'); await fetchPlan(); return; }
+      if (!r.ok) { pcMsg('Fehler: ' + ((await r.json()).detail || r.status), 'err'); return; }
+      const d = await r.json();
+      _sel = { kind:'intent' };
+      await fetchPlan(); fetchTasks();
+      pcMsg(d.already_confirmed
+        ? 'Bereits bestätigt — keine neuen Aufgaben eingereiht.'
+        : `Bestätigt: ${d.task_ids.length} Aufgaben eingereiht.`, 'ok');
+    } finally {
+      _confirming = false;
+    }
   }
 
   async function discardPlan() {

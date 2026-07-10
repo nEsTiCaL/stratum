@@ -81,6 +81,14 @@ class TestEnqueue:
         assert item is not None
         assert "exclusive" in item.flags
 
+    def test_ids_for_dag_returns_enqueued_ids(self, conn):
+        q = Queue(conn)
+        ids = q.enqueue(_dag("dX", [_node("n1"), _node("n2")]), model="phi4-mini")
+        q.enqueue(_dag("dY", [_node("n1")]), model="phi4-mini")  # anderer DAG
+        assert q.ids_for_dag("dX") == sorted(ids)
+        assert len(q.ids_for_dag("dY")) == 1
+        assert q.ids_for_dag("missing") == []
+
 
 # ---------------------------------------------------------------------------
 # claim
