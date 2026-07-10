@@ -38,7 +38,7 @@ from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
-from core.task_routing import CONFIRM_MODEL, claim_model
+from core.task_routing import CONFIRM_MODEL, auto_capable_task_types, claim_model
 from core.template_registry import DagNode, TaskDag, decompose
 from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
@@ -122,14 +122,15 @@ def _make_worker_loop(
     worker_conn: psycopg.Connection,
     worker_repo: Repository,
     settings: RuntimeSettings,
-) -> tuple[WorkerLoop, object | None, str, bool]:
+) -> tuple[WorkerLoop, object | None, str, frozenset[str]]:
     """Baut den WorkerLoop und (I-6.2) den Decompose-Seam fuer POST /api/intent.
 
-    Rueckgabe: (loop, decompose_model, decompose_producer, code_capable). Der
+    Rueckgabe: (loop, decompose_model, decompose_producer, auto_capable). Der
     Decompose-Seam ist nur gesetzt, wenn eine Cloud konfiguriert ist
     (ANTHROPIC_API_KEY); auf Profil D bleibt er None -> /api/intent 503
-    (Zerlegung via Cloud/manuell). code_capable steuert das Schreib-Routing
-    (Schritt 7): False -> implement/fix laufen ueber model:human.
+    (Zerlegung via Cloud/manuell). auto_capable = task_types mit erfuellbarem
+    automatischem Worker unter diesem Profil; der Rest wird auf model:human
+    geroutet (Dashboard-Einreichpfad).
     """
     router = Router()
 
@@ -229,17 +230,16 @@ def _make_worker_loop(
                 print(f"[intent] Decompose-Modell: {cand.model} (Cloud)")
                 break
 
-    # code_capable (Schritt 7): gibt es einen erreichbaren Kandidaten fuer
-    # Schreib-Tasks (implement/fix, Router-Kappung code>=55)? Cloud aktiv ODER
-    # ein installierter lokaler Coder. Auf Profil D ohne Cloud: False -> die App
-    # routet implement/fix auf model:human (Dashboard-Einreichpfad).
-    local_coder = any(
-        not cand.is_cloud
-        for cand in router.candidates(
-            TaskType.implement, installed=frozenset(installed)
-        )
+    # auto_capable: welche task_types hat unter diesem Profil ueberhaupt einen
+    # erfuellbaren automatischen Worker (install-gefilterter lokaler Kandidat ODER
+    # aktive Cloud)? Aus der Router-Lage abgeleitet -> deckt alle Achsen ab
+    # (reasoning/code/general), nicht nur Schreib-Tasks. Der Rest -> model:human.
+    # Auf Profil D ohne Cloud bleiben so nur explain/document/summarize + det.
+    auto_capable = auto_capable_task_types(
+        router,
+        installed=frozenset(installed),
+        cloud_active=cloud_sender is not None,
     )
-    code_capable = cloud_sender is not None or local_coder
 
     root = Path(__file__).parent.parent.parent
     ws_base = resolve_base(root / ".workspaces")
@@ -286,7 +286,7 @@ def _make_worker_loop(
         for node, tid in zip(enqueued, ids, strict=True):
             if node.task_type != "fix":
                 continue  # index/verify: det, kein Prompt, Claim-Key bleibt
-            claim = claim_model("fix", CONFIRM_MODEL, code_capable=code_capable)
+            claim = claim_model("fix", CONFIRM_MODEL, auto_capable=auto_capable)
             if claim != CONFIRM_MODEL:
                 fix_queue.set_model(tid, claim)
             fix_queue.update_payload(tid, {"prompt": prompt})
@@ -328,7 +328,7 @@ def _make_worker_loop(
         spawn_fix=_spawn_fix,
         auto_apply=_auto_apply,
     )
-    return loop, decompose_model, decompose_producer, code_capable
+    return loop, decompose_model, decompose_producer, auto_capable
 
 
 def _run_worker(loop: WorkerLoop, models: list[str]) -> None:
@@ -380,7 +380,7 @@ def main() -> None:
     settings = RuntimeSettings()
 
     print("Worker-Thread starten …")
-    worker_loop, decompose_model, decompose_producer, code_capable = _make_worker_loop(
+    worker_loop, decompose_model, decompose_producer, auto_capable = _make_worker_loop(
         worker_conn, worker_repo, settings
     )
     worker_thread = threading.Thread(
@@ -404,7 +404,7 @@ def main() -> None:
         workspace_base=resolve_base(source_root / ".workspaces"),
         decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
         decompose_producer=decompose_producer,
-        code_capable=code_capable,  # Schritt 7: False -> implement/fix -> human
+        auto_capable=auto_capable,  # task_types ohne Kandidat -> model:human
         settings=settings,  # Schritt 7: Auto-Apply-Schalter (mit Worker geteilt)
     )
 

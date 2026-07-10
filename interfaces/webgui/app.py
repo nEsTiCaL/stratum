@@ -92,8 +92,6 @@ from core.scope_resolver import RepoScopeResolver
 from core.settings import RuntimeSettings
 from core.task_routing import (
     CONFIRM_MODEL,
-    HUMAN_MODEL,
-    WRITE_TASK_TYPES,
     claim_model,
 )
 from core.template_registry import DagNode, TaskDag
@@ -290,11 +288,9 @@ class PlanEditBody(BaseModel):
 
 # Claim-Key-Routing: eine Quelle (core.task_routing), geteilt mit dem
 # automatischen Review->Fix-Spawn im Worker. Enqueue-Modell fuer einen
-# bestaetigten Plan/Task = CONFIRM_MODEL; ohne code-faehigen Kandidaten werden
-# Schreib-Tasks auf HUMAN_MODEL geroutet (Dashboard-Einreichpfad).
+# bestaetigten Plan/Task = CONFIRM_MODEL; task_types ohne erfuellbaren Kandidaten
+# (auto_capable, aus der Router-Lage) werden auf model:human geroutet.
 _CONFIRM_MODEL = CONFIRM_MODEL
-_HUMAN_MODEL = HUMAN_MODEL
-_WRITE_TASK_TYPES = WRITE_TASK_TYPES
 
 
 def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
@@ -323,7 +319,7 @@ def create_app(
     workspace_base: Path | None = None,
     decompose_model: Model | None = None,
     decompose_producer: str = "unknown",
-    code_capable: bool = True,
+    auto_capable: frozenset[str] | None = None,
     settings: RuntimeSettings | None = None,
 ) -> FastAPI:
     """Factory fuer die FastAPI-App; Queue und Repository werden injiziert.
@@ -335,11 +331,12 @@ def create_app(
     -> Plan). None -> Endpoint 503 (Profil D ohne Cloud: Zerlegung via Cloud
     oder manuell). decompose_producer = Modellname fuer die Plan-Provenance.
 
-    code_capable (Schritt 7): ob ein code-faehiger Kandidat erreichbar ist
-    (lokaler Coder installiert ODER Cloud aktiv). False (Profil D ohne Cloud)
-    -> Schreib-Tasks (implement/fix) werden auf model:human geroutet, damit der
-    Dashboard-Einreichpfad greift statt der phi4-mini-Loop sie an der
-    Router-Kappung (code>=55) graceful failen zu lassen.
+    auto_capable: task_types, die der automatische Worker unter dem aktuellen
+    Profil abschliessen kann (core.task_routing.auto_capable_task_types, aus der
+    Router-Kandidatenlage). Knoten ausserhalb -> Claim-Key model:human, damit der
+    Dashboard-Einreichpfad greift statt der phi4-mini-Loop sie an der Router-Kappung
+    graceful failen zu lassen (escalated/no_candidate). None -> kein Umrouten (jeder
+    Claim-Key bleibt wie angefordert; Tests/Standalone ohne Profil-Wissen).
     """
     app = FastAPI(title="Stratum Dashboard", docs_url=None, redoc_url=None)
     # Schritt 7: geteilter Schalter (Auto-Apply) mit dem Worker-Thread. Ohne
@@ -587,8 +584,11 @@ def create_app(
 
     def _claim_model(task_type: str, requested: str) -> str:
         """Claim-Key (Worker-Auswahl) fuer einen Knoten -- core.task_routing mit
-        dem app-weiten code_capable-Flag gebunden."""
-        return claim_model(task_type, requested, code_capable=code_capable)
+        der app-weiten auto_capable-Menge gebunden. Ohne Profil-Wissen
+        (auto_capable None) bleibt der angeforderte Key unveraendert."""
+        if auto_capable is None:
+            return requested
+        return claim_model(task_type, requested, auto_capable=auto_capable)
 
     @app.post("/api/task", status_code=201)
     async def create_task(
@@ -871,13 +871,13 @@ def create_app(
                 continue
             if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
                 continue  # det (index) -> DetWorker, kein Prompt
-            # Schreib-Tasks ohne code-faehigen Kandidaten -> model:human, sonst
-            # wuerde der phi4-mini-Loop sie claimen und graceful failen. enqueue
-            # setzt _CONFIRM_MODEL; hier je Knoten umrouten (implement/fix
-            # haengen an einem index-Knoten -> vorm Claim ohnehin nicht faellig).
-            claim_model = _claim_model(node.task_type, _CONFIRM_MODEL)
-            if claim_model != _CONFIRM_MODEL:
-                queue.set_model(tid, claim_model)
+            # Knoten ohne erfuellbaren Kandidaten -> model:human, sonst wuerde der
+            # phi4-mini-Loop sie claimen und graceful failen (no_candidate). enqueue
+            # setzt _CONFIRM_MODEL; hier je Knoten umrouten (prob-Knoten haengen an
+            # einem index-Knoten -> vorm Claim ohnehin nicht faellig).
+            claim_key = _claim_model(node.task_type, _CONFIRM_MODEL)
+            if claim_key != _CONFIRM_MODEL:
+                queue.set_model(tid, claim_key)
             # Auto-Index je Knoten-Scope (Workspace des Keys) -> Prompt mit
             # Quellcode + Symbol-/Aufrufer-Kontext.
             _ensure_indexed(root, node.scope)

@@ -14,11 +14,20 @@ from fastapi.testclient import TestClient
 from core.ingest import ingest_content
 from core.queue import Queue
 from core.repository import Repository
+from core.router import Router
+from core.task_routing import auto_capable_task_types
 from core.template_registry import DagNode, TaskDag
 from interfaces.webgui.app import create_app
 from tests.conftest import TEST_API_KEY, TEST_OWNER
 
 AUTH = {"Authorization": f"Bearer {TEST_API_KEY}"}
+
+# Profil D (CPU-only, nur phi4-mini, keine Cloud): die auto_capable-Menge, gegen
+# die die Umleitung nicht-erfuellbarer Knoten auf model:human getestet wird. Hier
+# bleiben nur general-Tasks (explain/document/summarize) + det erfuellbar.
+_PROFILE_D = auto_capable_task_types(
+    Router(), installed=frozenset({"phi4-mini"}), cloud_active=False
+)
 
 _INSERT_CAP = (
     "INSERT INTO capabilities (owner, key_hash, key_prefix) VALUES (%s, %s, %s)"
@@ -1282,11 +1291,30 @@ class TestPlanConfirmDiscard:
         )
         c.post(f"/api/plan/{r.json()['id']}/confirm", headers=AUTH)
 
+    @staticmethod
+    def _confirm_debug_plan(c) -> None:
+        """Legt einen Plan mit einem debug-Knoten an und bestaetigt ihn."""
+        r = c.post(
+            "/api/intent",
+            json={
+                "prompt": "Fehler in network eingrenzen",
+                "goals": [
+                    {
+                        "task_type": "debug",
+                        "scope": "module:network",
+                        "depends_on": [],
+                    }
+                ],
+            },
+            headers=AUTH,
+        )
+        c.post(f"/api/plan/{r.json()['id']}/confirm", headers=AUTH)
+
     def test_confirm_routes_write_task_to_human_without_code_candidate(self, conn):
-        # Profil D ohne Cloud (code_capable=False): implement hat keinen
-        # code-faehigen Worker -> Claim-Key model:human, damit der phi4-mini-Loop
-        # ihn liegen laesst und der Dashboard-Einreichpfad greift.
-        app = create_app(Queue(conn), Repository(conn), code_capable=False)
+        # Profil D ohne Cloud: implement (code>=55) hat keinen erfuellbaren Worker
+        # -> Claim-Key model:human, damit der phi4-mini-Loop ihn liegen laesst und
+        # der Dashboard-Einreichpfad greift.
+        app = create_app(Queue(conn), Repository(conn), auto_capable=_PROFILE_D)
         with TestClient(app) as c:
             self._confirm_implement_plan(c)
         model = conn.execute(
@@ -1294,10 +1322,24 @@ class TestPlanConfirmDiscard:
         ).fetchone()[0]
         assert model == "human"
 
-    def test_confirm_keeps_write_model_with_code_candidate(self, conn):
-        # Mit erreichbarem Kandidaten (code_capable, Default) bleibt der
-        # regulaere Claim-Key -> der LlmWorker eskaliert selbst.
-        app = create_app(Queue(conn), Repository(conn))  # code_capable=True
+    def test_confirm_routes_reasoning_task_to_human_without_candidate(self, conn):
+        # Regression: reasoning-Tasks (debug/architecture/cross_module) lagen ueber
+        # phi4-minis Faehigkeitsband, wurden aber -- anders als implement/fix -- NICHT
+        # auf human umgeroutet. Der phi4-mini-Loop claimte den debug-Knoten und failte
+        # ihn graceful (escalated/no_candidate), was im UI wie 'haengt' aussah. Jetzt
+        # auf Profil D -> model:human.
+        app = create_app(Queue(conn), Repository(conn), auto_capable=_PROFILE_D)
+        with TestClient(app) as c:
+            self._confirm_debug_plan(c)
+        model = conn.execute(
+            "SELECT model FROM queue WHERE task_type='debug'"
+        ).fetchone()[0]
+        assert model == "human"
+
+    def test_confirm_keeps_model_when_capable(self, conn):
+        # Ist der task_type erfuellbar (hier: kein Profil injiziert -> Default kein
+        # Umrouten), bleibt der regulaere Claim-Key -> der LlmWorker eskaliert selbst.
+        app = create_app(Queue(conn), Repository(conn))  # auto_capable=None
         with TestClient(app) as c:
             self._confirm_implement_plan(c)
         model = conn.execute(
@@ -1307,7 +1349,7 @@ class TestPlanConfirmDiscard:
 
     def test_task_routes_write_task_to_human_without_code_candidate(self, conn):
         # Gleiche Umleitung auf dem Einzeltask-Pfad (POST /api/task).
-        app = create_app(Queue(conn), Repository(conn), code_capable=False)
+        app = create_app(Queue(conn), Repository(conn), auto_capable=_PROFILE_D)
         with TestClient(app) as c:
             r = c.post(
                 "/api/task",
