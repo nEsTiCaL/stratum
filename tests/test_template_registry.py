@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.template_registry import decompose
+from core.router import TaskType
+from core.template_registry import REGISTRY, decompose
 
 
 class StubResolver:
@@ -262,3 +263,22 @@ class TestUnknownTaskType:
     def test_unknown_raises_key_error(self):
         with pytest.raises(KeyError):
             decompose("nonexistent_type", "file:f.py", scope_resolver=_STUB)
+
+
+class TestRegistryNodeTypesDispatchable:
+    """Jeder Knoten-task_type in JEDEM Template muss ein gueltiger TaskType sein.
+
+    Sonst crasht der Worker beim Verarbeiten mit TaskType(...) -> ValueError
+    (so scheiterte frueher jeder debug-DAG am Platzhalter 'call_graph_env').
+    Diese Invariante haelt Templates und dispatchbare TaskTypes deckungsgleich.
+    """
+
+    def test_every_template_node_is_a_valid_task_type(self):
+        valid = {t.value for t in TaskType}
+        offenders = [
+            (goal, node.task_type)
+            for goal, nodes in REGISTRY.items()
+            for node in nodes
+            if node.task_type not in valid
+        ]
+        assert offenders == [], f"Unbekannte node-task_types: {offenders}"

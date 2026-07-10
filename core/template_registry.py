@@ -113,10 +113,14 @@ REGISTRY: dict[str, tuple[NodeTemplate, ...]] = {
         _n("n2", "dependency_map", ("n1",)),
         _n("n3", "refactor_suggest", ("n2",)),
     ),
-    # Gruppe D: schwer (Reasoning-Kette)
+    # Gruppe D: schwer (Reasoning-Kette). Mittelknoten = dependency_map (wie die
+    # Analyse-Ketten oben): ein realer det-Kontext-Schritt. Der frueher hier
+    # stehende Platzhalter "call_graph_env" war KEIN gueltiger TaskType und kein
+    # Worker fuehrte ihn aus -> jeder debug-DAG scheiterte am Mittelknoten
+    # (TaskType(...) -> ValueError). call_graph entsteht ohnehin schon im index.
     "debug": (
         _n("n1", "index"),
-        _n("n2", "call_graph_env", ("n1",)),
+        _n("n2", "dependency_map", ("n1",)),
         _n("n3", "debug", ("n2",)),
     ),
     "architecture": (
