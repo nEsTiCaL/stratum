@@ -5,6 +5,7 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Abgeschlossene Architektur-Schritte 1-5: memory-archiv/log-archiv-schritt-N.md
 (ausserhalb memory/, nur bei explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-10] decision | I-RW.2 fertig: DI=C2 (AppDeps-Container in app.state, Depends(get_deps)); create_app 1216->111 LOC, 5 Domaenen-Router + deps.py/schemas.py; Signatur eingefroren (0 Test-Churn), B008 via ruff extend-immutable-calls. 937 gruen -> `spec_refactor-webschicht`
 ## [2026-07-10] decision | I-RW.1 fertig: Prompt-Bau + DAG-Knoten-Materialisierung -> core/node_prep (EINE Quelle); app.py duenne Wrapper, serve._spawn_fix entdoppelt. 937 gruen -> `spec_refactor-webschicht`
 ## [2026-07-10] decision | Refactor-Analyse: core/ gesund, Web-Schicht einziger Hotspot (app.py 941-Z-Closure); Tier1 Logik->core (dedup app/serve), Tier2 APIRouter -> `spec_refactor-webschicht`
 ## [2026-07-09] decision | Dashboard-Schreibpfad zu: Auto-Apply nach gruenem verify (opt-out, RuntimeSettings Worker<->App, /api/settings) + done-Tasks sichtbar (list_tasks +limit/newest_first, /api/tasks+20 done) + Apply-UI/Diff im Ergebnis-Panel -> spec_schritt-7

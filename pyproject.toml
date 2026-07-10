@@ -63,6 +63,13 @@ select = ["F", "E", "I", "UP", "B"]
 [tool.ruff.lint.isort]
 known-first-party = ["core"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI-DI (I-RW.2): Depends()/Header() als Argument-Default ist das erwartete,
+# idiomatische Muster -- kein mutable-default-Fehler. B008 exemptiert bislang nur
+# builtin-annotierte Faelle (owner: str = Depends(...)) und wuerde die neuen
+# Container-Injektionen (deps: AppDeps = Depends(get_deps)) faelschlich melden.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header"]
+
 [tool.ruff.format]
 # Deckt sich mit .editorconfig/.gitattributes (LF erzwungen).
 line-ending = "lf"

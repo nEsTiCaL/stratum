@@ -73,9 +73,29 @@ create_app (nach Tier1 duenner) in APIRouter je Domaene splitten: observability
 (status/metrics/history/...), plan+intent, write-path (apply/workspace),
 human-path (claim/prompt/validate/submit), dev-harness. Endpoints/Pfade bleiben
 unveraendert (CLAUDE.md-curl-Beispiele gueltig, P8).
-DI-Ansatz OFFEN -- vor Umsetzung architektonisch entscheiden (stabile Basis fuer
-kuenftige Tests/Fixes). Kandidaten: Router-Factories aus create_app (minimaler
-Test-Churn) vs. Depends+app.state vs. Deps-Container.
+
+DI-Entscheidung (2026-07-10): **C2 = Deps-Container + app.state + Depends**. Ein
+frozen dataclass AppDeps (deps.py) haelt alle Laufzeit-Objekte + die frueheren
+create_app-Closures als Methoden (workspace_root_of/prompt_root/ensure_indexed/
+node_prompt/claim_model/store_plan; HTTP-nah: check_task_owner/load_current_plan/
+workspace_or_503). create_app legt EINE Instanz unter app.state.deps ab und
+include_routert 5 Router; Endpoints ziehen sie per Depends(get_deps). Verworfen:
+C-Factories mit langer Param-Liste (skaliert schlecht), roher app.state (untypisiert).
+Deciding-Achse: Endpoints als erstklassige, einzeln testbare Einheiten + native
+Test-Seams (dependency_overrides, direkter Funktionsaufruf) schlugen die minimale
+FastAPI-Flaeche -- der Spec-Auftrag lautet "stabile Basis fuer kuenftige Tests".
+Der eine untypisierte Punkt (request.app.state.deps) ist auf get_deps begrenzt
+(Rueckgabe-Annotation -> AppDeps).
+
+Umgesetzt 2026-07-10 (I-RW.2 fertig): app.py 1216 -> 111 LOC (reine Composition
+Root). Neue Module: deps.py (AppDeps + get_deps + require_capability/require_owner),
+schemas.py (alle Request-Bodies), routers/{observability,intent_plan,write,human,
+dev}.py. create_app-Signatur EINGEFROREN -> 0 Churn an den 32 Testaufrufstellen;
+serve.py unveraendert. B008 (Depends() in Arg-Default) via ruff
+flake8-bugbear.extend-immutable-calls=[fastapi.Depends,fastapi.Header] als
+idiomatisch markiert (pyproject; ruff exemptierte bisher nur builtin-annotierte
+Faelle). 937 Tests gruen (154 Endpoint-Tests unveraendert -> P8 belegt), lint+format
+gruen.
 
 ## Verweise
 
