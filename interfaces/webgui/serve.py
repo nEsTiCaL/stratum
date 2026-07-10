@@ -28,17 +28,16 @@ import uvicorn
 
 from core.apply_gate import apply_confirmed_patch
 from core.db import apply_migrations
-from core.diff_extract import build_patch_prompt
 from core.metrics import InferenceSample, MetricsStore
+from core.node_prep import build_node_prompt, materialize_prob_nodes
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
-from core.review_context import gather_context
 from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
-from core.task_routing import CONFIRM_MODEL, auto_capable_task_types, claim_model
+from core.task_routing import CONFIRM_MODEL, auto_capable_task_types
 from core.template_registry import DagNode, TaskDag, decompose
 from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
@@ -263,16 +262,10 @@ def _make_worker_loop(
         Kandidat). Kein Auto-Index noetig: der Scope wurde fuers Review indexiert."""
         root = _resolve_root(item)
         scope = item.scope
-        source = ""
-        if root is not None and scope.startswith("file:"):
-            src_path = root / scope[len("file:") :]
-            if src_path.exists():
-                source = src_path.read_text(encoding="utf-8")
-        context = gather_context(worker_repo, scope, source_root=root)
         instruction = "Behebe die im Review gefundenen Probleme:\n" + findings
-        prompt = build_patch_prompt(
-            "fix", scope, source, instruction=instruction, context=context
-        )
+        # Patch-Prompt via core.node_prep -- dieselbe Quelle wie der Confirm-/
+        # Human-Pfad (Quellcode + Graph-Kontext), frueher hier separat gebaut.
+        prompt = build_node_prompt(worker_repo, "fix", scope, instruction, root=root)
         dag = decompose(
             "fix",
             scope,
@@ -282,14 +275,16 @@ def _make_worker_loop(
         ids = fix_queue.enqueue(
             dag, CONFIRM_MODEL, owner=item.owner, capability_id=item.capability_id
         )
-        enqueued = [n for n in dag.nodes if n.status != "done"]
-        for node, tid in zip(enqueued, ids, strict=True):
-            if node.task_type != "fix":
-                continue  # index/verify: det, kein Prompt, Claim-Key bleibt
-            claim = claim_model("fix", CONFIRM_MODEL, auto_capable=auto_capable)
-            if claim != CONFIRM_MODEL:
-                fix_queue.set_model(tid, claim)
-            fix_queue.update_payload(tid, {"prompt": prompt})
+        # Materialisierung wie im Confirm-Pfad: der einzige prob-Knoten (fix)
+        # bekommt Claim-Routing + den vorab gebauten Prompt; index/verify bleiben
+        # det ohne Prompt. Kein Auto-Index (Scope schon fuers Review indexiert).
+        materialize_prob_nodes(
+            fix_queue,
+            dag,
+            ids,
+            auto_capable=auto_capable,
+            prompt_for=lambda _node: prompt,
+        )
 
     def _auto_apply(item, root: Path | None) -> None:
         """Auto-Apply nach gruenem verify (Schritt 7, opt-out). Liest den Schalter

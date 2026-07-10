@@ -244,7 +244,7 @@ Haeppchen: `spec_refactor-webschicht`.
 ```
 ID       Haeppchen                       Kl   dep       Detail
 -------  ------------------------------  ---  --------  ----------------
-I-RW.1   Logik-Extraktion nach core      det  -         `spec_refactor-webschicht`   offen
+I-RW.1   Logik-Extraktion nach core      det  -         `spec_refactor-webschicht`   fertig
 I-RW.2   APIRouter-Split je Domaene      det  I-RW.1    `spec_refactor-webschicht`   offen
 ```
 

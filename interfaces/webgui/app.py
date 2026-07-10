@@ -56,11 +56,12 @@ from core.apply_gate import apply_confirmed_patch
 from core.canary import regression_verdict
 from core.capacity import ResolvedCapacity
 from core.db import apply_migrations
-from core.diff_extract import build_patch_prompt, extract_diff
+from core.diff_extract import extract_diff
 from core.goal_suggest import suggest_goals
-from core.ingest import ingest_file, ingest_repo
+from core.ingest import ingest_repo
 from core.json_extract import extract_json
 from core.models.result_prob_schema import ArtifactType, ResultProb
+from core.node_prep import build_node_prompt, ensure_indexed, materialize_prob_nodes
 from core.plan_artifact import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SCOPE,
@@ -85,9 +86,8 @@ from core.planner import (
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue
 from core.repository import Repository
-from core.review_context import gather_context
-from core.review_format import build_content, build_review_prompt
-from core.router import TASK_REQUIREMENTS, TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
+from core.review_format import build_content
+from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.settings import RuntimeSettings
 from core.task_routing import (
@@ -532,25 +532,8 @@ def create_app(
         return source_root
 
     def _ensure_indexed(root: Path | None, scope: str) -> None:
-        """Auto-Index (Schritt 7): den file:-Scope aus `root` in den Graph ziehen,
-        damit der Prompt Symbol-Umriss (symbol_index) UND Aufrufer (impact)
-        bekommt. Ohne Index bleibt jeder Graph-Kontext leer. missing_ok ->
-        Greenfield (noch nicht existierende Datei) = leerer Index statt Fehler.
-        Best-effort: ein Index-Fehler (unparsebar o.ae.) darf die Task-Anlage
-        nicht kippen."""
-        if root is None or not scope.startswith("file:"):
-            return
-        try:
-            ingest_file(repo, root, scope[len("file:") :], missing_ok=True)
-        except Exception:  # noqa: BLE001 - Index ist Beiwerk, nicht die Task-Anlage
-            pass
-
-    def _scope_source(scope: str, root: Path | None) -> str:
-        if root is not None and scope.startswith("file:"):
-            src = root / scope[5:]
-            if src.exists():
-                return src.read_text(encoding="utf-8")
-        return ""
+        """core.node_prep.ensure_indexed an das App-repo gebunden."""
+        ensure_indexed(repo, root, scope)
 
     def _node_prompt(
         task_type: str,
@@ -560,27 +543,16 @@ def create_app(
         *,
         root: Path | None = None,
     ) -> str:
-        """Prob-Prompt je task_type -- eine Quelle fuer Worker- UND Human-Pfad.
-
-        implement/fix -> Patch-Prompt (Unified-Diff, Greenfield = neue Datei);
-        alle anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope in
-        `root` existiert) + Graph-Kontext (I-5.6). `root` = Workspace des API-Keys
-        (via _prompt_root); None -> source_root (Fallback fuer Anzeige ohne cap).
-        instruction = natuerlichsprachige Absicht (Plan-Prompt bzw. /api/task-
-        Hinweis); ein Goal traegt sie nicht, daher explizit durchgereicht."""
-        root = root if root is not None else source_root
-        source_code = _scope_source(scope, root)
-        context = gather_context(repo, scope, source_root=root)
-        if task_type in ("implement", "fix"):
-            return build_patch_prompt(
-                task_type,
-                scope,
-                source_code,
-                instruction=instruction,
-                context=context,
-                feedback=feedback,
-            )
-        return build_review_prompt(task_type, scope, source_code, instruction, context)
+        """core.node_prep.build_node_prompt an App-repo + source_root-Default
+        gebunden (root None -> source_root, Fallback fuer Anzeige ohne cap)."""
+        return build_node_prompt(
+            repo,
+            task_type,
+            scope,
+            instruction,
+            feedback,
+            root=root if root is not None else source_root,
+        )
 
     def _claim_model(task_type: str, requested: str) -> str:
         """Claim-Key (Worker-Auswahl) fuer einen Knoten -- core.task_routing mit
@@ -861,28 +833,21 @@ def create_app(
         )
         # Prob-Knoten brauchen einen Prompt im Payload (der Worker liest ihn); die
         # Zerlegung liefert je Goal nur task_type/scope -> die natuerlichsprachige
-        # Absicht kommt aus dem Plan-Prompt. det-Knoten (index) + verify laufen
-        # ohne Prompt. enqueue ueberspringt done-Knoten -> gleiche Reihenfolge.
+        # Absicht kommt aus dem Plan-Prompt. det/verify laufen ohne Prompt.
+        # Materialisierung (Claim-Routing + Prompt) via core.node_prep -- EINE
+        # Quelle, geteilt mit serve._spawn_fix.
         instruction = current.content.get("prompt", "")
         root = _prompt_root(owner, capability_id)
-        enqueued = [n for n in dag.nodes if n.status != "done"]
-        for node, tid in zip(enqueued, task_ids, strict=True):
-            if node.task_type == TaskType.verify.value:
-                continue
-            if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
-                continue  # det (index) -> DetWorker, kein Prompt
-            # Knoten ohne erfuellbaren Kandidaten -> model:human, sonst wuerde der
-            # phi4-mini-Loop sie claimen und graceful failen (no_candidate). enqueue
-            # setzt _CONFIRM_MODEL; hier je Knoten umrouten (prob-Knoten haengen an
-            # einem index-Knoten -> vorm Claim ohnehin nicht faellig).
-            claim_key = _claim_model(node.task_type, _CONFIRM_MODEL)
-            if claim_key != _CONFIRM_MODEL:
-                queue.set_model(tid, claim_key)
+
+        def _prompt_for(node: DagNode) -> str:
             # Auto-Index je Knoten-Scope (Workspace des Keys) -> Prompt mit
             # Quellcode + Symbol-/Aufrufer-Kontext.
             _ensure_indexed(root, node.scope)
-            prompt = _node_prompt(node.task_type, node.scope, instruction, root=root)
-            queue.update_payload(tid, {"prompt": prompt})
+            return _node_prompt(node.task_type, node.scope, instruction, root=root)
+
+        materialize_prob_nodes(
+            queue, dag, task_ids, auto_capable=auto_capable, prompt_for=_prompt_for
+        )
         confirmed = build_plan_artifact(
             current.content.get("prompt", ""),
             plan,

@@ -58,6 +58,15 @@ Ziel: Duplizierung getilgt, Logik unit-testbar, "eine Quelle" wieder wahr.
 Abnahme: neue Unit-Tests fuers core-Modul; app.py + serve.py delegieren; volle
 Suite gruen; lint+format gruen. Klasse det (test-driven, kein Modell).
 
+Umgesetzt 2026-07-10 (I-RW.1 fertig): neues Modul core/node_prep.py mit
+read_scope_source, ensure_indexed, build_node_prompt (Prompt je task_type) und
+materialize_prob_nodes (prob-Knoten -> Claim-Routing + Prompt; det/verify ohne).
+app.py haelt nur noch duenne Binde-Wrapper (_node_prompt/_ensure_indexed an
+repo/source_root gebunden), _scope_source geloescht; confirm_plan + create_task
+delegieren. serve._spawn_fix baut den Patch-Prompt nicht mehr selbst
+(build_patch_prompt/gather_context raus) -> build_node_prompt +
+materialize_prob_nodes. tests/test_node_prep.py (10 Tests). 937 gruen.
+
 ## Tier 2 (I-RW.2): APIRouter-Split je Domaene
 
 create_app (nach Tier1 duenner) in APIRouter je Domaene splitten: observability
