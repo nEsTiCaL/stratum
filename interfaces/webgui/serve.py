@@ -14,6 +14,7 @@ dann start ohne --seed (DB hat schon Tasks aus vorherigen Laeufen).
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import socket
@@ -179,30 +180,64 @@ def _make_worker_loop(
     def on_item_fail(item, reason: str) -> None:
         print(f"[worker] Task {item.id} ({item.task_type}) fehlgeschlagen: {reason}")
 
-    # Cloud-Seam (I-3.6): nur aktiv, wenn ein Anbieter konfiguriert ist
-    # (ANTHROPIC_API_KEY). Egress bleibt per EgressPolicy fail-safe -> ohne
-    # bewusstes STRATUM_SCAN_REAL kein realer Egress (Gate blockt), STRATUM_
-    # UNSAFE_EGRESS nur fuer Tests. Auf Profil D (kein Key) bleibt Cloud inaktiv.
-    cloud_sender = None
+    # Cloud-Seams (I-3.6/I-3.7 Multi-Provider): je konfiguriertem Anbieter ein
+    # Sender. Anthropic via ANTHROPIC_API_KEY; firmeninterner OpenAI-kompatibler
+    # vLLM via STRATUM_INTERNAL_LLM_URL (Modell-ID-Override STRATUM_INTERNAL_
+    # LLM_MODEL, Key STRATUM_INTERNAL_LLM_KEY, Denken STRATUM_INTERNAL_LLM_
+    # THINKING=0|1). Egress bleibt per EgressPolicy fail-safe -> ohne bewusstes
+    # STRATUM_SCAN_REAL kein realer Egress (Gate blockt, auch fuer den internen
+    # Endpunkt), STRATUM_UNSAFE_EGRESS nur fuer Tests.
+    cloud_senders: dict[Provider, object] = {}
     cloud_guard = None
     cloud_on_cost = None
     if os.environ.get("ANTHROPIC_API_KEY"):
         from core.cloud_adapter import AnthropicSender
+
+        cloud_senders[Provider.anthropic] = AnthropicSender()
+        print("[worker] Cloud-Sender aktiv (Anthropic)")
+    internal_url = os.environ.get("STRATUM_INTERNAL_LLM_URL")
+    if internal_url:
+        from core.cloud_adapter import CLOUD_MODEL_SPECS, INTERNAL_LOGICAL_NAME
+        from core.openai_sender import OpenAICompatSender
+
+        internal_key = os.environ.get("STRATUM_INTERNAL_LLM_KEY")
+        # Modell-ID ist deployment-privat (nie im Repo): env-Override oder
+        # Discovery via GET /v1/models. Beides leer -> internal bleibt aus
+        # (fail-safe), statt mit leerer ID auf die Leitung zu gehen.
+        model_id = os.environ.get("STRATUM_INTERNAL_LLM_MODEL") or next(
+            iter(OpenAICompatSender.list_models(internal_url, api_key=internal_key)),
+            None,
+        )
+        if not model_id:
+            print(
+                "[worker] Warnung: interner LLM-Endpunkt ohne Modell "
+                "(nicht erreichbar? STRATUM_INTERNAL_LLM_MODEL setzen) -- deaktiviert"
+            )
+        else:
+            CLOUD_MODEL_SPECS[INTERNAL_LOGICAL_NAME] = dataclasses.replace(
+                CLOUD_MODEL_SPECS[INTERNAL_LOGICAL_NAME], model_id=model_id
+            )
+            thinking = os.environ.get("STRATUM_INTERNAL_LLM_THINKING")
+            cloud_senders[Provider.internal] = OpenAICompatSender(
+                internal_url,
+                api_key=internal_key,
+                enable_thinking=None if thinking is None else thinking == "1",
+            )
+            print(f"[worker] Interner LLM-Sender aktiv ({internal_url}, {model_id})")
+    if cloud_senders:
         from core.cost_store import CostStore, make_on_cost
 
-        cloud_sender = AnthropicSender()
         # I-3.5-Kosten-Telemetrie + Tageskappung an den Cloud-Pfad (I-3.6-Folge):
         # on_cost schreibt CostRecords -> cloud_costs (speist /api/metrics),
         # guard blockt vor jedem Call bei Ueberschreitung des Tagesbudgets.
+        # Der interne Endpunkt (Preis 0) liefert darueber reine Token-Telemetrie.
         cap_usd = float(os.environ.get("STRATUM_DAILY_CAP_USD", "5.0"))
         cost_store = CostStore(worker_conn)
         cloud_guard, cloud_on_cost = make_on_cost(
             cost_store, cap_usd, date_fn=date.today
         )
-        print(
-            f"[worker] Cloud-Sender aktiv (Anthropic); Egress-Policy fail-safe; "
-            f"Tageskappung {cap_usd} USD"
-        )
+        print(f"[worker] Egress-Policy fail-safe; Tageskappung {cap_usd} USD")
+    cloud_sender = cloud_senders or None
     egress_policy = EgressPolicy(
         scan_real=os.environ.get("STRATUM_SCAN_REAL") == "1",
         unsafe_test_egress=os.environ.get("STRATUM_UNSAFE_EGRESS") == "1",
@@ -210,34 +245,39 @@ def _make_worker_loop(
 
     # Decompose-Seam (I-6.2): Intent-Zerlegung ist reasoning-schwer -> der Router
     # routet sie (task_type architecture) auf einen Cloud-Kandidaten; auf Profil D
-    # hat sie lokal keinen. Nur mit aktiver Cloud einen CloudAdapter bauen (teilt
-    # guard/on_cost -> Tageskappung + Kosten-Telemetrie gelten auch hier).
+    # hat sie lokal keinen. Nur Kandidaten, deren Provider einen Sender hat
+    # (I-3.7); der Adapter teilt guard/on_cost -> Tageskappung + Telemetrie.
     decompose_model: object | None = None
     decompose_producer = "unknown"
-    if cloud_sender is not None:
+    if cloud_senders:
         from core.cloud_adapter import CloudAdapter, resolve_spec
 
         for cand in router.candidates(TaskType.architecture):
-            if cand.is_cloud and (spec := resolve_spec(cand.model)) is not None:
-                decompose_model = CloudAdapter(
-                    spec=spec,
-                    sender=cloud_sender,
-                    guard=cloud_guard,
-                    on_cost=cloud_on_cost,
-                )
-                decompose_producer = cand.model
-                print(f"[intent] Decompose-Modell: {cand.model} (Cloud)")
-                break
+            if not cand.is_cloud:
+                continue
+            spec = resolve_spec(cand.model)
+            if spec is None or spec.provider not in cloud_senders:
+                continue
+            decompose_model = CloudAdapter(
+                spec=spec,
+                sender=cloud_senders[spec.provider],
+                guard=cloud_guard,
+                on_cost=cloud_on_cost,
+            )
+            decompose_producer = cand.model
+            print(f"[intent] Decompose-Modell: {cand.model} ({spec.provider.value})")
+            break
 
     # auto_capable: welche task_types hat unter diesem Profil ueberhaupt einen
     # erfuellbaren automatischen Worker (install-gefilterter lokaler Kandidat ODER
-    # aktive Cloud)? Aus der Router-Lage abgeleitet -> deckt alle Achsen ab
-    # (reasoning/code/general), nicht nur Schreib-Tasks. Der Rest -> model:human.
-    # Auf Profil D ohne Cloud bleiben so nur explain/document/summarize + det.
+    # Cloud-Kandidat MIT konfiguriertem Sender)? Aus der Router-Lage abgeleitet
+    # -> deckt alle Achsen ab (reasoning/code/general), nicht nur Schreib-Tasks.
+    # Der Rest -> model:human. Auf Profil D ohne Cloud/internen Endpunkt bleiben
+    # so nur explain/document/summarize + det.
     auto_capable = auto_capable_task_types(
         router,
         installed=frozenset(installed),
-        cloud_active=cloud_sender is not None,
+        cloud_providers=frozenset(cloud_senders),
     )
 
     root = Path(__file__).parent.parent.parent

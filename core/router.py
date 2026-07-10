@@ -85,6 +85,11 @@ _ROLE_TASKS = {
 
 class Provider(StrEnum):
     local = "local"
+    # firmeninterner Endpunkt (eigenes Netz, OpenAI-kompatibel): nicht lokal
+    # (andere Maschine), aber auch keine externe Cloud. Router behandelt ihn
+    # wie Cloud (is_cloud=True -> Bundling+Redaction-Gate), Sensitivity high
+    # bleibt konservativ lokal-only.
+    internal = "internal"
     anthropic = "anthropic"
     openai = "openai"
     google = "google"
@@ -155,6 +160,13 @@ _LOCAL = [
 # Cloud: logische Namen, echte IDs erst im S3-Adapter. free-Tier (Tageskontingent)
 # vor bezahlt; free-Anbieter trainieren ggf. auf Eingaben -> trains_on_input.
 _CLOUD = [
+    # Firmeninterner vLLM-Server (OpenAI-kompatibel, Preis 0, Daten bleiben im
+    # Haus): CostTier.free ohne free_quota/trains_on_input -> NICHT hinter dem
+    # allow_free-Opt-in, aber in der Eskalationsleiter vor allen bezahlten.
+    # Scores: Qwen3.6-35B-A3B (MoE, Reasoning) ~ Klasse qwen3-32b.
+    ModelCapability(
+        "qwen3.6-35b", Provider.internal, CostTier.free, 75, 80, 78, num_ctx=100000
+    ),
     ModelCapability(
         "gemini-flash",
         Provider.google,

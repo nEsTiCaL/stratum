@@ -17,7 +17,7 @@ und dem OllamaAdapter-on_metrics-Callback (I-2.8).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -62,7 +62,27 @@ _ANTHROPIC_SPECS: dict[str, CloudModelSpec] = {
     "opus": CloudModelSpec("opus", Provider.anthropic, "claude-opus-4-8", 5.00, 25.00),
 }
 
-CLOUD_MODEL_SPECS: dict[str, CloudModelSpec] = dict(_ANTHROPIC_SPECS)
+# Firmeninterner OpenAI-kompatibler Endpunkt (vLLM, Provider.internal): Preis 0
+# -> CostRecords liefern reine Token-Telemetrie. Die konkrete Modell-ID ist
+# deployment-privat und steht NIE im Repo: model_id="" ist ein Platzhalter,
+# den serve zur Laufzeit fuellt (STRATUM_INTERNAL_LLM_MODEL oder Discovery via
+# GET /v1/models). Ohne Sender fuer Provider.internal ueberspringt
+# cloud_model_factory den Kandidaten ohnehin (der leere Platzhalter geht also
+# nie auf die Leitung).
+INTERNAL_LOGICAL_NAME = "qwen3.6-35b"
+_INTERNAL_SPECS: dict[str, CloudModelSpec] = {
+    INTERNAL_LOGICAL_NAME: CloudModelSpec(
+        INTERNAL_LOGICAL_NAME,
+        Provider.internal,
+        "",
+        0.0,
+        0.0,
+    ),
+}
+
+CLOUD_MODEL_SPECS: dict[str, CloudModelSpec] = dict(_ANTHROPIC_SPECS) | dict(
+    _INTERNAL_SPECS
+)
 
 
 def resolve_spec(logical_name: str) -> CloudModelSpec | None:
@@ -248,7 +268,7 @@ class CloudAdapter:
 
 
 def cloud_model_factory(
-    sender: CloudSender,
+    sender: CloudSender | Mapping[Provider, CloudSender],
     *,
     on_cost: Callable[[CostRecord], None] | None = None,
     guard: Callable[[], None] | None = None,
@@ -259,6 +279,11 @@ def cloud_model_factory(
     -> CloudAdapter, oder None fuer unbekannte/opt-in Namen (Kandidat wird dann
     uebersprungen, wie bei fehlendem Adapter pre-S3).
 
+    sender: EIN Sender fuer alle Provider (Alt-Form) ODER Mapping
+    Provider->Sender (Multi-Provider): der Kandidaten-Spec waehlt den Sender
+    seines Providers; fehlt er im Mapping, wird der Kandidat uebersprungen
+    (None -- gleiche Semantik wie ein unbekannter logischer Name).
+
     guard: Pre-Send-Check (I-3.5 Tageskappung), wird an jeden CloudAdapter
     weitergegeben."""
 
@@ -266,9 +291,12 @@ def cloud_model_factory(
         spec = resolve_spec(logical_name)
         if spec is None:
             return None
+        s = sender.get(spec.provider) if isinstance(sender, Mapping) else sender
+        if s is None:
+            return None
         return CloudAdapter(
             spec=spec,
-            sender=sender,
+            sender=s,
             on_cost=on_cost,
             guard=guard,
             system=system,

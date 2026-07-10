@@ -125,6 +125,7 @@ I-3.1   Cloud-Adapter (Multi-Provider) gem   I-3.2/3.3 R3, SK(7), claude-api, `s
 I-3.4   Detektor-Bibliothek + scharf   det   I-3.3     R3   [HARTES GATE]   fertig
 I-3.5   Kosten-Telemetrie + Tageskap.  det   I-3.1     R3, SK(7)      fertig
 I-3.6   Cloud-Egress-Verdrahtung        det   I-3.1/3.3 S3(Luecke)     fertig
+I-3.7   Interner Provider (vLLM)        gem   I-3.6     `spec_schritt-3`   fertig
 ```
 
 Realer Cloud-Egress erst nach I-3.4.
@@ -140,6 +141,17 @@ Kosten-Telemetrie (I-3.5) verdrahtet: serve haengt bei aktivem cloud_sender
 CostStore+make_on_cost ein -> on_cost schreibt CostRecords (cloud_costs, speist
 /api/metrics), guard = Tageskappung (STRATUM_DAILY_CAP_USD, Default 5) vor jedem
 Call. Worker reicht on_cost/guard an den CloudAdapter durch (Seam-Test).
+
+I-3.7 (2026-07-10): firmeninterner vLLM-Endpunkt als Provider "internal" hinter
+dem CloudSender-Seam (core/openai_sender.OpenAICompatSender, OpenAI-Chat-Schema).
+Router: qwen3.6-35b (75/80/78, free-Rang vor bezahlt, deckt ALLE Achsen-Baender)
+-> auf Profil D laufen review/implement/debug/architecture/intent-Zerlegung
+jetzt automatisch. cloud_model_factory nimmt Mapping Provider->Sender;
+auto_capable_task_types prueft Sender-Verfuegbarkeit je Provider (statt
+cloud_active-Pauschale). Env: STRATUM_INTERNAL_LLM_URL/_MODEL/_KEY/_THINKING +
+STRATUM_SCAN_REAL=1 (WSL-.env, gitignored). URL + Modell-ID sind deployment-
+privat und stehen NIE im Repo: Modell-ID via env-Override ODER /v1/models-
+Discovery (list_models), Werte in .local/host.md. E2E belegt. `spec_schritt-3`.
 
 ## Schritt 4: Graph-Tiefe  (Spec: S4)
 

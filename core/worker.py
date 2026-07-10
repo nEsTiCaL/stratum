@@ -12,7 +12,7 @@ provenance) werden deterministisch vom Worker gesetzt.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -30,6 +30,7 @@ from core.router import (
     TASK_REQUIREMENTS,
     TASK_TYPE_TO_ARTIFACT_TYPE,
     TIER_CONFIDENCE,
+    Provider,
     Router,
     TaskType,
 )
@@ -78,13 +79,16 @@ class LlmWorker:
     lokal erschoepft UND eskalierbar (nicht hart gefailt), die Cloud-Kandidaten
     ueber Bundling (I-3.2) + Redaction-Gate (I-3.3/3.4, Position fix: nach
     Bundling, vor Adapter). Cloud laeuft nur, wenn ein cloud_sender konfiguriert
-    ist (sonst wie pre-S3: Cloud-Kandidaten entfallen). egress_policy ist
-    fail-safe (Default blockiert -> kein Egress ohne bewusstes Opt-in)."""
+    ist (sonst wie pre-S3: Cloud-Kandidaten entfallen). cloud_sender ist EIN
+    Sender fuer alle Provider ODER ein Mapping Provider->Sender (I-3.7
+    Multi-Provider; Kandidaten ohne Sender ueberspringt die factory).
+    egress_policy ist fail-safe (Default blockiert -> kein Egress ohne
+    bewusstes Opt-in)."""
 
     router: Router
     model_factory: Callable
     root: Path = field(default_factory=Path)
-    cloud_sender: CloudSender | None = None
+    cloud_sender: CloudSender | Mapping[Provider, CloudSender] | None = None
     egress_policy: EgressPolicy = field(default_factory=EgressPolicy)
     on_cost: Callable | None = None
     guard: Callable | None = None
@@ -110,9 +114,16 @@ class LlmWorker:
         # es an den Prompt zu haengen ist der Punkt, an dem der naechste Versuch
         # den vorherigen Verify-Fehler tatsaechlich sieht (geteilt mit dem
         # Human-Pfad: webgui claim/prompt nutzen dieselbe Funktion).
-        prompt = prompt_with_feedback(
-            item.payload["prompt"], item.payload.get("verify_feedback")
-        )
+        stored = item.payload.get("prompt")
+        if stored is None:
+            # Enqueue->update_payload-Fenster (create_task/materialize_prob_
+            # nodes): der Loop kann den Knoten claimen, BEVOR der Prompt in der
+            # payload steht. Dann selbst bauen -- dieselbe Quelle wie der
+            # Human-Claim-Fallback (interfaces/webgui/routers/human.py).
+            from core.node_prep import build_node_prompt
+
+            stored = build_node_prompt(repo, item.task_type, item.scope, root=self.root)
+        prompt = prompt_with_feedback(stored, item.payload.get("verify_feedback"))
 
         outcome = self._local_phase(task_type, prompt, local)
         if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:

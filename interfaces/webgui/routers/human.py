@@ -101,6 +101,23 @@ def _result_from_submission(
     )
 
 
+# Der Mensch kopiert diesen Prompt in einen externen Chatbot und die Antwort
+# zurueck ins Dashboard-Submit-Feld. Eine einzige, unformatierte Codeblock-Antwort
+# laesst sich sauber einfuegen und vom Submit-Parser (_result_from_submission ->
+# extract_diff fuer patch bzw. build_content sonst) verwerten -- formatierte Prosa
+# drumherum fuehrt sonst zu Diff-/Parse-Fehlern.
+_HUMAN_OUTPUT_HINT = (
+    "Gib die Antwort in einem einzigen großen Codeblock unformatiert zurück."
+)
+
+
+def _human_prompt(base: str, feedback: str | None) -> str:
+    """Menschlicher Prompt = Basis (+ Verify-Feedback der Rueckkante,
+    prompt_with_feedback als EINE Quelle mit dem LLM-Worker) + fixe Ausgabe-
+    Anweisung am Ende. Geteilt von claim + prompt."""
+    return f"{prompt_with_feedback(base, feedback)}\n\n{_HUMAN_OUTPUT_HINT}"
+
+
 @router.post("/api/claim/{task_id}")
 async def claim_task(
     task_id: int,
@@ -125,7 +142,7 @@ async def claim_task(
         "id": item.id,
         "task_type": item.task_type,
         "scope": item.scope,
-        "prompt": prompt_with_feedback(
+        "prompt": _human_prompt(
             stored or deps.node_prompt(item.task_type, item.scope),
             item.payload.get("verify_feedback"),
         ),
@@ -147,7 +164,7 @@ async def get_task_prompt(
         "id": task_id,
         "task_type": task_type,
         "scope": scope,
-        "prompt": prompt_with_feedback(
+        "prompt": _human_prompt(
             stored or deps.node_prompt(task_type, scope),
             info["payload"].get("verify_feedback"),
         ),

@@ -81,6 +81,8 @@ modell_cpu-profil.md     | CPU-only-Profil D: nur phi4-mini lokal, Coden/Reasoni
 plan_core.md             | Planungs-Kern: Abnahme-Leitlinie, Inkrement-Schema, Phasen,         | det|prob, bau-reihenfolge, secret-scan-gate,
                          |   Bau-Reihenfolge, Test-Infra, harte Reihenfolge-Regeln             |   test-infra
 plan_nutzstufen.md       | Nutzstufen N0-N6 (Dogfooding-Meilensteine)                          | n1-navigation, n2-wendepunkt, n3-cloud
+plan_anwendungsfaelle.md | Standard-Anwendungsfaelle A1-A13 (Nutzersicht, nach Haeufigkeit),   | anwendungsfall, haeufigkeit, abnahme,
+                         |   Abnahmekriterien; Basis fuer Umsetzungs-Mapping + Abdeckungstests |   grounding, katalog, testplan
 plan_det-linter.md       | offene Idee: det-Linter als guenstigste Review-Schicht ab S2        | ruff, producer, lint_findings, vertagt
 spec_schritt-1.md        | Inkremente Schritt 1 (Substrat) I-1.0..1.12                         | schema, scope, repository, tree-sitter, ingest
 spec_schritt-2.md        | Inkremente Schritt 2 (Orchestrator-Kern) I-2.0..2.8                 | capacity, router, queue, validator, worker

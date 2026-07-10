@@ -69,6 +69,40 @@ class TestCapabilityBand:
         assert "r1-distill" in names
 
 
+class TestInternalProvider:
+    """Firmeninterner vLLM (I-3.7): Provider.internal, CostTier.free ohne
+    free_quota -> nicht hinter dem allow_free-Opt-in, vor allen bezahlten."""
+
+    def test_internal_before_paid_cloud(self):
+        cands = Router().candidates("review")
+        names = _names(cands)
+        assert "qwen3.6-35b" in names
+        # frei (Rang 1) vor bezahlt (Rang 2+): interner Endpunkt ist die erste
+        # Cloud-Eskalationsstufe.
+        assert names.index("qwen3.6-35b") < names.index("haiku")
+        assert names.index("qwen3.6-35b") < names.index("sonnet")
+
+    def test_internal_needs_no_free_optin(self):
+        # kein free_quota/trains_on_input -> auch ohne allow_free Kandidat.
+        names = _names(Router().candidates("review", prefs=RouterPrefs()))
+        assert "qwen3.6-35b" in names
+        assert "gemini-flash" not in names  # echtes free-Tier bleibt Opt-in
+
+    def test_internal_covers_all_axes(self):
+        # Scores (75/80/78) liegen in jedem Band: code (implement min 55),
+        # reasoning (architecture min 70, crypto_audit min 80), general.
+        for tt in ("implement", "architecture", "crypto_audit", "explain"):
+            assert "qwen3.6-35b" in _names(Router().candidates(tt))
+
+    def test_internal_is_cloud_and_blocked_at_high(self):
+        # konservativ: intern != lokal -> Sensitivity high strikt lokal-only.
+        cands = Router().candidates("review")
+        internal = next(c for c in cands if c.model == "qwen3.6-35b")
+        assert internal.is_cloud
+        high = Router().candidates("review", sensitivity=Sensitivity.high)
+        assert "qwen3.6-35b" not in _names(high)
+
+
 class TestSensitivityGate:
     def test_high_strikes_all_cloud(self):
         cands = Router().candidates("review", sensitivity=Sensitivity.high)

@@ -672,7 +672,9 @@ class TestCloudPhase:
         outcome = worker.run(_item(task_type="explain"), repo)
 
         assert outcome.status == "done"
-        assert outcome.final_model == "haiku"  # erster Cloud-Kandidat
+        # erster Cloud-Kandidat: interner Endpunkt (free-Rang vor bezahlt, I-3.7);
+        # Alt-Form EIN Sender fuer alle Provider bedient ihn.
+        assert outcome.final_model == "qwen3.6-35b"
         assert len(sender.requests) == 1  # genau ein Egress
         assert sender.requests[0].cache_prefix is not None  # PASS -> Core als Cache
         assert any(a for a in repo.artifacts)  # Artefakt gespeichert
@@ -696,7 +698,10 @@ class TestCloudPhase:
 
     def test_on_cost_and_guard_invoked_on_cloud_call(self):
         # I-3.6 Folgeluecke: Cloud-Kosten (on_cost) + Tageskappungs-Guard laufen
-        # ueber den CloudAdapter, wenn die Cloud-Phase egress-t.
+        # ueber den CloudAdapter, wenn die Cloud-Phase egress-t. Sender als
+        # Mapping (I-3.7): nur Anthropic konfiguriert -> der interne Kandidat
+        # (qwen3.6-35b, vor haiku) wird uebersprungen, haiku bedient.
+        from core.router import Provider
         from core.secret_scan import EgressPolicy
 
         records: list = []
@@ -708,16 +713,46 @@ class TestCloudPhase:
         worker = LlmWorker(
             router=Router(),
             model_factory=local_factory,
-            cloud_sender=_FixedSender(_prob_response()),
+            cloud_sender={Provider.anthropic: _FixedSender(_prob_response())},
             egress_policy=EgressPolicy(unsafe_test_egress=True),
             on_cost=records.append,
             guard=lambda: guard_calls.append(1),
         )
-        worker.run(_item(task_type="explain"), _FakeRepo())
+        outcome = worker.run(_item(task_type="explain"), _FakeRepo())
 
+        assert outcome.final_model == "haiku"  # interner Kandidat ohne Sender
         assert len(guard_calls) == 1  # Pre-Send-Check (Tageskappung) lief
         assert len(records) == 1  # Kosten gemeldet
         assert records[0].cost_usd > 0  # haiku-Preis * Tokens
+
+    def test_missing_prompt_falls_back_to_node_prep(self, monkeypatch):
+        # Enqueue->update_payload-Fenster: der Loop kann einen Knoten claimen,
+        # BEVOR create_task/materialize_prob_nodes den Prompt in die payload
+        # geschrieben hat. Dann baut der Worker ihn selbst (core.node_prep,
+        # dieselbe Quelle wie der Human-Claim) statt KeyError 'prompt'.
+        import core.node_prep as node_prep
+
+        built: list = []
+
+        def fake_build(
+            repo, task_type, scope, instruction="", feedback="", *, root=None
+        ):
+            built.append((task_type, scope))
+            return "fallback-prompt"
+
+        monkeypatch.setattr(node_prep, "build_node_prompt", fake_build)
+        worker = LlmWorker(
+            router=Router(),
+            model_factory=lambda n: (
+                FakeModel(responses=[_prob_response()]) if n == "phi4-mini" else None
+            ),
+        )
+        # payload OHNE prompt (truthy, sonst greift der _item-Default-Prompt).
+        item = _item(task_type="explain", payload={"sensitivity": "none"})
+        outcome = worker.run(item, _FakeRepo())
+
+        assert outcome.status == "done"
+        assert built == [("explain", "file:core/foo.py")]
 
     def test_no_cloud_sender_skips_cloud(self):
         # Ohne cloud_sender bleibt es bei lokaler Eskalation, keine Gate-Trace.

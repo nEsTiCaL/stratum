@@ -25,9 +25,7 @@ AUTH = {"Authorization": f"Bearer {TEST_API_KEY}"}
 # Profil D (CPU-only, nur phi4-mini, keine Cloud): die auto_capable-Menge, gegen
 # die die Umleitung nicht-erfuellbarer Knoten auf model:human getestet wird. Hier
 # bleiben nur general-Tasks (explain/document/summarize) + det erfuellbar.
-_PROFILE_D = auto_capable_task_types(
-    Router(), installed=frozenset({"phi4-mini"}), cloud_active=False
-)
+_PROFILE_D = auto_capable_task_types(Router(), installed=frozenset({"phi4-mini"}))
 
 _INSERT_CAP = (
     "INSERT INTO capabilities (owner, key_hash, key_prefix) VALUES (%s, %s, %s)"
@@ -1560,6 +1558,34 @@ class TestClaimShowsVerifyFeedback:
             p = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
         assert "Vorheriger Verify-Fehler" in p
         assert "F841" in p
+
+
+class TestHumanPromptOutputHint:
+    """Jeder Human-Prompt (claim + prompt) endet mit der fixen Ausgabe-Anweisung:
+    eine einzige, unformatierte Codeblock-Antwort -> sauber ins Dashboard-Submit-
+    Feld einfuegbar und vom Parser (_result_from_submission) verwertbar."""
+
+    _HINT = "einem einzigen großen Codeblock unformatiert"
+
+    def _seed(self, conn):
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="review"), model="human", owner=TEST_OWNER
+        )
+        return queue, repo, item_id
+
+    def test_prompt_endpoint_has_hint(self, conn):
+        queue, repo, item_id = self._seed(conn)
+        with TestClient(create_app(queue, repo)) as c:
+            p = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
+        assert self._HINT in p
+
+    def test_claim_endpoint_has_hint(self, conn):
+        queue, repo, item_id = self._seed(conn)
+        with TestClient(create_app(queue, repo)) as c:
+            p = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
+        assert self._HINT in p
 
 
 class TestWorkspaceEndpoints:

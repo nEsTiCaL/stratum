@@ -20,7 +20,7 @@ der Router-Kandidatenlage abgeleitet -> deckt alle Achsen ab.
 
 from __future__ import annotations
 
-from core.router import Router
+from core.router import Provider, Router
 
 # Claim-Key fuer Knoten mit automatischem Worker (der LLM-Loop claimt sie).
 CONFIRM_MODEL = "phi4-mini"
@@ -34,13 +34,17 @@ def auto_capable_task_types(
     router: Router,
     *,
     installed: frozenset[str] | set[str] | None,
-    cloud_active: bool,
+    cloud_providers: frozenset[Provider] = frozenset(),
 ) -> frozenset[str]:
     """task_types, die der automatische Worker (Claim-Key CONFIRM_MODEL) unter dem
     aktuellen Profil abschliessen kann. det-Typen sind immer dabei (DetWorker,
     kein Modell). Ein prob-Typ ist dabei, wenn der Router einen install-gefilterten
-    lokalen Kandidaten liefert ODER Cloud aktiv ist und es einen Cloud-Kandidaten
-    gibt. Alles ausserhalb -> model:human (siehe claim_model)."""
+    lokalen Kandidaten liefert ODER einen Cloud-Kandidaten, dessen Provider einen
+    konfigurierten Sender hat (cloud_providers, I-3.7 Multi-Provider: ein
+    Kandidat OHNE Sender wuerde in der cloud_model_factory uebersprungen und darf
+    einen task_type nicht als erfuellbar zaehlen -- sonst claimt der Loop den
+    Knoten und failt graceful, das 098ab95-Symptom). Alles ausserhalb ->
+    model:human (siehe claim_model)."""
     capable: set[str] = set()
     for tt, req in router.requirements.items():
         if req.deterministic_model is not None:
@@ -48,7 +52,7 @@ def auto_capable_task_types(
             continue
         cands = router.candidates(tt, installed=installed)
         local = any(not c.is_cloud for c in cands)
-        cloud = cloud_active and any(c.is_cloud for c in cands)
+        cloud = any(c.is_cloud and c.provider in cloud_providers for c in cands)
         if local or cloud:
             capable.add(tt.value)
     return frozenset(capable)

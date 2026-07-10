@@ -19,9 +19,7 @@ from core.task_routing import auto_capable_task_types
 from core.template_registry import DagNode, TaskDag
 
 # Profil D (nur phi4-mini, keine Cloud): review/fix liegen ueber dem Band -> human.
-_PROFILE_D = auto_capable_task_types(
-    Router(), installed=frozenset({"phi4-mini"}), cloud_active=False
-)
+_PROFILE_D = auto_capable_task_types(Router(), installed=frozenset({"phi4-mini"}))
 
 
 def _node(

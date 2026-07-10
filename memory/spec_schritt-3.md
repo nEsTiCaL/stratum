@@ -186,3 +186,53 @@ Klasse  : det
 Reihenfolge innerhalb S3: I-3.2 -> I-3.3 -> I-3.1 (Adapter erst gegen
 aufgenommene Antworten/Stub) -> I-3.4 (scharf) -> I-3.5. Realer Egress erst
 nach I-3.4.
+
+## I-3.7  Interner Provider: OpenAI-kompatibler vLLM-Endpunkt (2026-07-10, fertig)
+
+Anlass: realer firmeninterner vLLM-Server (OpenAI-kompatibel, GPU, kostenlos,
+Daten bleiben im Haus) soll die Profil-D-Luecke schliessen (bisher liefen
+review/implement/debug/architecture nur ueber model:human). Entscheidung mit
+Nutzer: Anbindung ueber den CloudSender-Seam als Provider "internal" (NICHT
+als zweites lokales Backend) -> erbt Retry, Kosten-Telemetrie, Guard,
+Router-Eskalation und das Redaction-Gate ohne neuen Mechanismus.
+
+- **Router**: Provider.internal (is_cloud=True -> Bundling+Gate; Sensitivity
+  high bleibt konservativ lokal-only). ModelCapability qwen3.6-35b
+  (75/80/78, num_ctx 100000, CostTier.free OHNE free_quota/trains_on_input ->
+  kein allow_free-Opt-in noetig, Eskalationsrang: nach lokal, vor bezahlt).
+  Deckt ALLE Achsen-Baender (auch architecture min 70, crypto_audit min 80).
+- **Spec**: CLOUD_MODEL_SPECS["qwen3.6-35b"] (INTERNAL_LOGICAL_NAME), Preis
+  0/0 -> CostRecords = reine Token-Telemetrie. Modell-ID ist deployment-privat
+  und steht NIE im Repo (model_id="" als Platzhalter): serve fuellt sie zur
+  Laufzeit aus STRATUM_INTERNAL_LLM_MODEL oder per Discovery
+  (OpenAICompatSender.list_models, GET /v1/models); beides leer -> internal
+  bleibt fail-safe deaktiviert. Konkrete Werte: .local/host.md (S9).
+- **Sender**: core/openai_sender.OpenAICompatSender -- POST {base}/chat/
+  completions, cache_prefix als Prompt-ANFANG (vLLM-Prefix-Cache, kein
+  cache_control), 429/5xx/Transport -> TransientCloudError, "context" ->
+  ContextExceededError. Reasoning-Modelle: content=null (length mitten im
+  Denken) -> leerer Text -> Validator-fail statt Crash; enable_thinking
+  via chat_template_kwargs (STRATUM_INTERNAL_LLM_THINKING=0|1, unset =
+  Server-Default).
+- **Multi-Provider**: cloud_model_factory nimmt CloudSender ODER Mapping
+  Provider->Sender (Kandidat ohne Sender -> None -> uebersprungen).
+  auto_capable_task_types: cloud_providers-Set statt cloud_active-Bool --
+  ein Cloud-Kandidat zaehlt nur mit konfiguriertem Sender seines Providers
+  (sonst 098ab95-Symptom: Loop claimt und failt graceful).
+- **serve**: cloud_senders-Dict (anthropic bei ANTHROPIC_API_KEY, internal
+  bei STRATUM_INTERNAL_LLM_URL); Decompose-Seam waehlt den ersten
+  architecture-Cloud-Kandidaten MIT Sender -> Intent-Zerlegung laeuft auf
+  Profil D jetzt automatisch ueber den internen Endpunkt (503-Henne/Ei weg).
+- **Race-Fix (Fund beim E2E)**: create_task enqueue-te VOR dem Prompt-Bau ->
+  Auto-Loop claimte im Fenster einen payload-losen Task (KeyError 'prompt';
+  bisher verdeckt, weil review&Co auf model:human lagen). Fix doppelt:
+  intent_plan.create_task baut den Prompt VOR enqueue; LlmWorker.run baut
+  fehlenden Prompt selbst via core.node_prep.build_node_prompt (gleiche
+  Quelle wie der Human-Claim-Fallback; deckt auch das Confirm-Pfad-Fenster).
+- Host-Werte (URL, .env-Eintraege): .local/host.md (gitignored, S9).
+
+E2E belegt (Container): review file:tools/ollama_query.py -> done in ~30 s,
+producer qwen3.6-35b, confidence 0.78 (free-Tier), Markdown-Split korrekt,
+dateibezogene Findings. Gate-Kette aktiv (STRATUM_SCAN_REAL=1). 961 Tests
+gruen (24 neu: openai_sender 10, router 4, cloud_adapter 3+2, task_routing 3,
+worker 2 angepasst + 1 Fallback), lint+format gruen.

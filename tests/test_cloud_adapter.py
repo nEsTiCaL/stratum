@@ -42,6 +42,17 @@ class TestLogicalNameMapping:
         assert resolve_spec("groq-llama") is None
         assert resolve_spec("does-not-exist") is None
 
+    def test_internal_spec_is_free_and_internal(self):
+        # I-3.7: firmeninterner vLLM-Endpunkt, Preis 0 -> reine Token-Telemetrie.
+        spec = resolve_spec("qwen3.6-35b")
+        assert spec is not None
+        assert spec.provider is Provider.internal
+        assert spec.price_in_per_mtok == 0.0
+        assert spec.price_out_per_mtok == 0.0
+        # Modell-ID ist deployment-privat -> im Repo NUR der leere Platzhalter
+        # (serve fuellt zur Laufzeit via env oder /v1/models-Discovery).
+        assert spec.model_id == ""
+
 
 class TestCostAccounting:
     def test_input_output_cost(self):
@@ -138,6 +149,24 @@ class TestModelFactory:
         factory = cloud_model_factory(ReplayCloudSender({}))
         assert factory("gpt") is None  # opt-in, unverdrahtet
         assert factory("phi4-mini") is None  # lokal, kein Cloud-Spec
+
+    def test_factory_mapping_dispatches_per_provider(self):
+        # I-3.7 Multi-Provider: Mapping Provider->Sender; der Kandidaten-Spec
+        # waehlt den Sender seines Providers.
+        anthropic = ReplayCloudSender({})
+        internal = ReplayCloudSender({})
+        factory = cloud_model_factory(
+            {Provider.anthropic: anthropic, Provider.internal: internal}
+        )
+        assert factory("sonnet").sender is anthropic
+        assert factory("qwen3.6-35b").sender is internal
+
+    def test_factory_mapping_skips_provider_without_sender(self):
+        # Nur der interne Sender konfiguriert -> Anthropic-Kandidaten werden
+        # uebersprungen (None), wie unbekannte logische Namen.
+        factory = cloud_model_factory({Provider.internal: ReplayCloudSender({})})
+        assert factory("sonnet") is None
+        assert factory("qwen3.6-35b") is not None
 
 
 _RESULT_PROB_LABEL = """\
