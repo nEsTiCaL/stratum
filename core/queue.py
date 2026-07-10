@@ -268,6 +268,34 @@ class Queue:
                     (json.dumps(payload), item_id),
                 )
 
+    def mark_applied(self, *, owner: str, scope: str) -> int:
+        """Markiert alle done-Tasks eines (owner, scope) als angewendet
+        (payload.applied=true). Nach (Auto-)Apply verschwindet die abgeschlossene,
+        angewandte Arbeit aus der Uebersicht (list_tasks(exclude_applied=True)) und
+        ein erneuter Apply desselben Patches wird zum No-Op statt zum
+        Kontext-Mismatch (409). Gibt die Zahl markierter Zeilen zurueck."""
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue "
+                    "SET payload = COALESCE(payload, '{}'::jsonb) "
+                    "|| '{\"applied\": true}'::jsonb "
+                    "WHERE owner = %s AND scope = %s AND status = 'done'",
+                    (owner, scope),
+                )
+                return cur.rowcount
+
+    def is_applied(self, *, owner: str, scope: str) -> bool:
+        """True, wenn fuer (owner, scope) bereits ein angewandter done-Task
+        vorliegt -- Idempotenz-Wache fuer /api/apply (Doppel-Apply -> No-Op)."""
+        row = self._conn.execute(
+            "SELECT 1 FROM queue "
+            "WHERE owner = %s AND scope = %s AND status = 'done' "
+            "AND COALESCE((payload->>'applied')::boolean, false) LIMIT 1",
+            (owner, scope),
+        ).fetchone()
+        return row is not None
+
     def get_status(self, item_id: int) -> str | None:
         """Gibt den aktuellen Status eines Tasks zurueck (alle Statuswerte)."""
         row = self._conn.execute(
@@ -304,6 +332,7 @@ class Queue:
         owner: str | None = None,
         limit: int | None = None,
         newest_first: bool = False,
+        exclude_applied: bool = False,
     ) -> list[dict[str, Any]]:
         """Listet Tasks fuer das Dashboard (read-only, kein Locking).
 
@@ -311,7 +340,9 @@ class Queue:
         nur Tasks dieses Owners. Reihenfolge created_at asc (newest_first=True ->
         desc, fuer die begrenzte done-Liste). limit begrenzt die Zeilenzahl -- so
         laesst sich eine kurze Liste zuletzt abgeschlossener Tasks holen, ohne die
-        Uebersicht mit der gesamten Historie zu fluten.
+        Uebersicht mit der gesamten Historie zu fluten. exclude_applied=True
+        blendet Tasks aus, deren Patch schon angewendet wurde (payload.applied) --
+        die abgeschlossene, angewandte Arbeit verschwindet dann aus der Uebersicht.
         """
         placeholders = ",".join(["%s"] * len(statuses))
         params: list[Any] = list(statuses)
@@ -319,6 +350,9 @@ class Queue:
         if owner is not None:
             owner_clause = " AND owner = %s"
             params.append(owner)
+        applied_clause = ""
+        if exclude_applied:
+            applied_clause = " AND NOT COALESCE((payload->>'applied')::boolean, false)"
         order = "DESC" if newest_first else "ASC"
         limit_clause = ""
         if limit is not None:
@@ -327,7 +361,8 @@ class Queue:
         rows = self._conn.execute(
             f"SELECT id, dag_id, task_type, scope, model, status, "
             f"attempts, created_at, claimed_at "
-            f"FROM queue WHERE status IN ({placeholders}){owner_clause} "
+            f"FROM queue WHERE status IN ({placeholders}){owner_clause}"
+            f"{applied_clause} "
             f"ORDER BY created_at {order}{limit_clause}",
             params,
         ).fetchall()

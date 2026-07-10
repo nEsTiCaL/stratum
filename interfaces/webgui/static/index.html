@@ -1366,7 +1366,10 @@
       return;
     }
     if (msg) { msg.textContent = `Angewendet: ${d.scope || _resultScope}`; msg.className = 'rp-msg ok'; }
+    const actions = document.getElementById('rp-actions');
+    if (actions) actions.innerHTML = '<span class="badge badge-done">angewendet ✓</span>';
     fetchWorkspace();
+    fetchTasks();   // angewandter Task verschwindet aus der Uebersicht
   }
 
   // ── Einstellungen (Auto-Apply-Schalter) ────────────────────────────────────

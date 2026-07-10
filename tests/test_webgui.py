@@ -1561,3 +1561,46 @@ class TestWorkspaceEndpoints:
             with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
                 assert zf.namelist() == ["src/main.py"]
                 assert zf.read("src/main.py") == b"print('hi')\n"
+
+
+class TestAppliedTasks:
+    """Betriebsschliff Schritt 7: angewendete Tasks verschwinden aus /api/tasks,
+    und ein erneuter /api/apply auf einen bereits angewendeten scope ist ein
+    No-Op (kein Kontext-Mismatch-409 durch Doppel-Apply nach Auto-Apply)."""
+
+    _SCOPE = "file:core/queue.py"
+
+    def _client(self, conn, base):
+        # workspace_base gesetzt -> _workspace_root_of liefert einen echten Pfad
+        # (sonst 503 vor der is_applied-Wache).
+        app = create_app(Queue(conn), Repository(conn), workspace_base=base)
+        return TestClient(app, raise_server_exceptions=True)
+
+    def _done_implement(self, conn) -> int:
+        q = Queue(conn)
+        (item_id,) = q.enqueue(
+            _dag(task_type="implement"), model="human", owner=TEST_OWNER
+        )
+        q.complete(item_id)
+        return item_id
+
+    def test_tasks_hides_applied(self, conn, tmp_path):
+        item_id = self._done_implement(conn)
+        with self._client(conn, tmp_path) as c:
+            shown = [t["id"] for t in c.get("/api/tasks", headers=AUTH).json()]
+            assert item_id in shown  # done-Task zunaechst sichtbar
+            Queue(conn).mark_applied(owner=TEST_OWNER, scope=self._SCOPE)
+            after = [t["id"] for t in c.get("/api/tasks", headers=AUTH).json()]
+        assert item_id not in after  # nach Apply ausgeblendet
+
+    def test_apply_noop_when_already_applied(self, conn, tmp_path):
+        self._done_implement(conn)
+        Queue(conn).mark_applied(owner=TEST_OWNER, scope=self._SCOPE)
+        with self._client(conn, tmp_path) as c:
+            r = c.post(
+                "/api/apply",
+                json={"scope": self._SCOPE, "confirm": True},
+                headers=AUTH,
+            )
+        assert r.status_code == 200
+        assert r.json()["reason"] == "bereits angewendet"

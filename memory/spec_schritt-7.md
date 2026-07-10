@@ -204,3 +204,37 @@ Umsetzung: core/settings (neu), worker.auto_apply-Hook, queue.list_tasks
 +limit/+newest_first, app (/api/settings, /api/tasks+done, _DONE_LIMIT),
 serve._auto_apply+RuntimeSettings-Verdrahtung, static/index.html (Badge, Panel,
 Toggle), docker-compose (Volume+env). 895 Tests gruen, lint+format gruen.
+
+## Applied-Tracking (2026-07-10): angewandte Tasks ausblenden + Apply idempotent
+
+Folgefund beim manuellen Dogfooding (Greenfield tools/ollama_query.py): nach
+gruenem verify + Auto-Apply blieb der fertige Task in der Uebersicht, und ein
+manueller "Anwenden"-Klick wendete denselben (modify-)Diff ein ZWEITES Mal an ->
+Kontext-Mismatch-409 auf der bereits geaenderten Datei ("erwartet <alte Zeile>,
+gefunden <neue Zeile>"). Wurzel: der Apply-Zustand wurde nirgends festgehalten
+(/api/patches kannte nur `verified`, kein `applied`).
+
+- **payload.applied als Apply-Marke.** `queue.mark_applied(owner, scope)` setzt
+  payload.applied=true auf ALLEN done-Tasks eines (owner, scope); `queue.is_applied`
+  fragt es ab. Kein Schema-Change (payload ist jsonb, per jsonb-Merge gesetzt).
+- **Ausblenden.** `queue.list_tasks(exclude_applied=True)` filtert done+applied
+  (`NOT COALESCE((payload->>'applied')::boolean, false)`); GET /api/tasks nutzt es
+  fuer die done-Liste -> die abgeschlossene, angewandte Arbeit verschwindet.
+- **Markieren nach Erfolg.** `serve._auto_apply` (nach gruenem verify) UND POST
+  /api/apply rufen `mark_applied` nach erfolgreichem Apply.
+- **Idempotenz.** POST /api/apply prueft `is_applied` ZUERST: schon angewendet ->
+  No-Op-Erfolg `{"reason":"bereits angewendet"}` statt apply_confirmed_patch/409.
+  (Ein modify-Diff ist nicht zweimal anwendbar -- der Kontext erwartet den alten
+  Zustand.) apply_gate selbst blieb unveraendert.
+- **Frontend.** Apply-Button -> "angewendet ✓" (badge-done) + fetchTasks() nach
+  Apply -> der angewandte Task verschwindet sofort aus der Uebersicht.
+
+Umsetzung: core/queue (mark_applied/is_applied/list_tasks+exclude_applied),
+app (/api/tasks-Filter, /api/apply Idempotenz+Mark), serve._auto_apply-Mark,
+static/index.html. 902 Tests gruen (7 neu: TestMarkApplied x5, TestAppliedTasks
+x2), lint+format gruen. Live-E2E im Container belegt: nach mark_applied ->
+/api/tasks []; Doppel-Apply -> 200 "bereits angewendet" (kein 409).
+
+Ops-Notiz: fastapi liegt inzwischen AUCH in der WSL-.venv (0.138.2) -> test_webgui
+ist lokal per pytest lauffaehig; die gegenteilige Notiz in `ops_docker-server`
+(".[web] nur im Image") ist damit fuer diesen Host veraltet.

@@ -301,11 +301,15 @@ def _make_worker_loop(
         result = apply_confirmed_patch(worker_repo, root, item.scope, confirmed=True)
         if result.applied:
             print(f"[worker] Auto-Apply: {item.scope} -> {result.reason}")
+            # Angewandte, abgeschlossene Arbeit aus der Uebersicht nehmen und einen
+            # erneuten Apply zum No-Op machen (list_tasks(exclude_applied=True)).
+            worker_queue.mark_applied(owner=item.owner, scope=item.scope)
         else:
             print(f"[worker] Auto-Apply uebersprungen ({item.scope}): {result.reason}")
 
+    worker_queue = Queue(worker_conn)
     loop = WorkerLoop(
-        queue=Queue(worker_conn),
+        queue=worker_queue,
         repo=worker_repo,
         det_worker=DetWorker(root=root),
         llm_worker=LlmWorker(

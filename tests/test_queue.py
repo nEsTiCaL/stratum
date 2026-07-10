@@ -336,3 +336,73 @@ class TestGetTaskInfoPayload:
         q = Queue(conn)
         ids = q.enqueue(_dag("d", [_node("n1")]), model="phi4-mini")
         assert q.get_task_info(ids[0])["payload"] == {}
+
+
+class TestMarkApplied:
+    """Betriebsschliff Schritt 7: angewendete done-Tasks ausblenden + Idempotenz.
+
+    mark_applied setzt payload.applied auf allen done-Tasks eines (owner, scope);
+    is_applied fragt es ab (Idempotenz-Wache fuer /api/apply); list_tasks(
+    exclude_applied=True) blendet sie aus -> angewandte Arbeit verschwindet.
+    """
+
+    def _done(self, q: Queue, *, dag_id: str, scope: str, owner: str) -> int:
+        (item_id,) = q.enqueue(
+            _dag(dag_id, [_node("n1", scope=scope)]),
+            model="phi4-mini",
+            owner=owner,
+        )
+        q.complete(item_id)
+        return item_id
+
+    def test_is_applied_false_before_mark(self, conn):
+        q = Queue(conn)
+        self._done(q, dag_id="d", scope="file:x.py", owner="alice")
+        assert q.is_applied(owner="alice", scope="file:x.py") is False
+
+    def test_mark_applied_flips_is_applied(self, conn):
+        q = Queue(conn)
+        self._done(q, dag_id="d", scope="file:x.py", owner="alice")
+        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
+        assert q.is_applied(owner="alice", scope="file:x.py") is True
+
+    def test_mark_applied_scoped_to_owner_and_scope(self, conn):
+        q = Queue(conn)
+        self._done(q, dag_id="d1", scope="file:x.py", owner="alice")
+        keep_scope = self._done(q, dag_id="d2", scope="file:y.py", owner="alice")
+        keep_owner = self._done(q, dag_id="d3", scope="file:x.py", owner="bob")
+        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
+        assert q.is_applied(owner="alice", scope="file:y.py") is False
+        assert q.is_applied(owner="bob", scope="file:x.py") is False
+        visible = {
+            t["id"] for t in q.list_tasks(statuses=("done",), exclude_applied=True)
+        }
+        assert keep_scope in visible and keep_owner in visible
+
+    def test_mark_applied_only_done_rows(self, conn):
+        # Ein pending-Task gleichen (owner, scope) wird NICHT markiert.
+        q = Queue(conn)
+        (pending_id,) = q.enqueue(
+            _dag("dp", [_node("n1", scope="file:x.py")]),
+            model="phi4-mini",
+            owner="alice",
+        )
+        self._done(q, dag_id="dd", scope="file:x.py", owner="alice")
+        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
+        assert pending_id in {t["id"] for t in q.list_tasks(owner="alice")}
+
+    def test_exclude_applied_hides_only_marked(self, conn):
+        q = Queue(conn)
+        done_id = self._done(q, dag_id="d", scope="file:x.py", owner="alice")
+        q.mark_applied(owner="alice", scope="file:x.py")
+        # Default (exclude_applied=False) zeigt den done-Task weiterhin ...
+        shown = {t["id"] for t in q.list_tasks(owner="alice", statuses=("done",))}
+        assert done_id in shown
+        # ... exclude_applied=True blendet ihn aus.
+        hidden = {
+            t["id"]
+            for t in q.list_tasks(
+                owner="alice", statuses=("done",), exclude_applied=True
+            )
+        }
+        assert done_id not in hidden

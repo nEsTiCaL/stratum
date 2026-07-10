@@ -404,7 +404,11 @@ def create_app(
         if progress_store:
             active = _augment_progress(active, progress_store)
         done = queue.list_tasks(
-            owner=owner, statuses=("done",), limit=_DONE_LIMIT, newest_first=True
+            owner=owner,
+            statuses=("done",),
+            limit=_DONE_LIMIT,
+            newest_first=True,
+            exclude_applied=True,
         )
         return active + done
 
@@ -922,9 +926,21 @@ def create_app(
         root = _workspace_root_of(owner, capability_id)
         if root is None:
             raise HTTPException(status_code=503, detail="kein Schreibziel konfiguriert")
+        # Idempotenz: ist der Patch fuer diesen scope schon angewendet, waere ein
+        # zweiter Apply ein Kontext-Mismatch (409) auf der bereits geaenderten
+        # Datei -> als No-Op-Erfolg zurueckgeben (z.B. Klick nach Auto-Apply).
+        if queue.is_applied(owner=owner, scope=body.scope):
+            return {
+                "applied": True,
+                "reason": "bereits angewendet",
+                "scope": body.scope,
+            }
         result = apply_confirmed_patch(repo, root, body.scope, confirmed=body.confirm)
         if not result.applied:
             raise HTTPException(status_code=409, detail=result.reason)
+        # Angewandte, abgeschlossene Arbeit aus der Uebersicht nehmen (verschwindet
+        # aus /api/tasks) und kuenftigen Doppel-Apply zum No-Op machen.
+        queue.mark_applied(owner=owner, scope=body.scope)
         return {"applied": True, "reason": result.reason, "scope": result.target_scope}
 
     # ── Workspace lesen (Projekt anzeigen/herunterladen) ───────────────────────
