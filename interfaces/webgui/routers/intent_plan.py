@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.goal_suggest import suggest_goals
+from core.ingest import file_scope, source_files
 from core.plan_artifact import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SCOPE,
@@ -36,6 +37,7 @@ from core.planner import (
     build_dag,
     build_decompose_prompt,
 )
+from core.rename_expand import rename_plan
 from core.router import TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.task_routing import CONFIRM_MODEL
@@ -46,6 +48,7 @@ from interfaces.webgui.schemas import (
     IntentBody,
     PlanEditBody,
     PlanGoalBody,
+    RenameBody,
     TaskCreateBody,
 )
 
@@ -119,6 +122,43 @@ async def create_task(
     item_id = ids[0]
     deps.queue.update_payload(item_id, {"prompt": prompt})
     return {"id": item_id}
+
+
+@router.post("/api/rename", status_code=201)
+async def create_rename(
+    body: RenameBody,
+    cap: tuple[str, int] = Depends(require_capability),
+    deps: AppDeps = Depends(get_deps),
+) -> dict[str, Any]:
+    """E6: deterministische Rename-Expansion -> Plan-Artefakt (status=proposed).
+
+    Ein Rename ist keine Zerlegung zum Raten: Definition (symbol_index) + Nutzer
+    (impact ueber die file:-Import-Kanten aus E0) werden det aus dem Store
+    gezogen -- je betroffener Datei ein fix-Ziel. Eingegrenzt auf den Workspace
+    des Keys (find_symbol/impact sehen den globalen, nicht owner-getrennten Index
+    -- ein gleichnamiges Symbol in einem fremden Baum bleibt unangetastet).
+    Danach confirm -> build_dag -> patch/verify/apply je Datei (voller Write-Path).
+    """
+    owner, capability_id = cap
+    if not body.symbol or not body.new_name:
+        raise HTTPException(status_code=422, detail="symbol und new_name noetig")
+    root = deps.workspace_or_503(owner, capability_id)
+    allowed = frozenset(file_scope(rel) for rel in source_files(root))
+    expansion = rename_plan(
+        deps.repo,
+        symbol=body.symbol,
+        new_name=body.new_name,
+        allowed_scopes=allowed,
+        kind=body.kind,
+    )
+    if not expansion.plan.goals:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Symbol {body.symbol!r} im Workspace nicht gefunden/indexiert",
+        )
+    return deps.store_plan(
+        expansion.instruction, expansion.plan, producer="rename-expand"
+    )
 
 
 @router.post("/api/intent", status_code=201)

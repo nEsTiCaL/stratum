@@ -58,3 +58,10 @@ class IntentBody(BaseModel):
 
 class PlanEditBody(BaseModel):
     goals: list[PlanGoalBody]
+
+
+class RenameBody(BaseModel):
+    symbol: str
+    new_name: str
+    # optionaler kind-Filter (function/class/...) zur Disambiguierung
+    kind: str | None = None

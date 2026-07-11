@@ -23,6 +23,7 @@ gleichnamige Symbole verschiedener Klassen einer Datei auseinander.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -47,12 +48,25 @@ def _qualified_name(sym: dict) -> str:
 
 
 def edges_from_dependency_graph(
-    scope: str, content: dict, source_hash: str
+    scope: str,
+    content: dict,
+    source_hash: str,
+    resolve_module: Callable[[str], str | None] | None = None,
 ) -> list[GraphEdge]:
-    """Import-Kanten aus dependency_graph.content."""
+    """Import-Kanten aus dependency_graph.content.
+
+    resolve_module (optional, am Ingest injiziert -- dort sind Sprache UND
+    Working-Tree-Layout bekannt): loest einen absoluten Modul-Namen, den der
+    Extraktor NICHT aufloesen konnte (target=None, z.B. Python 'pkg.mod' --
+    R1-Grenze "FS-Aufloesung erst S4"), gegen das Repo-Layout zu einem repo-
+    relativen Dateipfad auf. Trifft er -> file:-Kante (impact()/deps sehen den
+    Nutzer); sonst externe module:-Kante (stdlib/3rd-party). Ohne Resolver
+    unveraendert: jedes target=None -> module: (Golden-Verhalten S1)."""
     edges = []
     for imp in content.get("imports", []):
         target = imp.get("target")
+        if not target and resolve_module is not None:
+            target = resolve_module(imp["raw"])
         dst = f"file:{target}" if target else f"module:{imp['raw']}"
         edges.append(
             GraphEdge(
@@ -120,10 +134,12 @@ def all_edges_for_artifacts(
     dep_content: dict,
     call_content: dict,
     source_hash: str,
+    resolve_module: Callable[[str], str | None] | None = None,
 ) -> list[GraphEdge]:
-    """Alle drei Kantensorten auf einmal ableiten (fuer ingest_content)."""
+    """Alle drei Kantensorten auf einmal ableiten (fuer ingest_content).
+    resolve_module wird an die Import-Kanten durchgereicht (Modul->Datei, S4)."""
     return (
         edges_from_symbol_index(scope, symbol_content, source_hash)
-        + edges_from_dependency_graph(scope, dep_content, source_hash)
+        + edges_from_dependency_graph(scope, dep_content, source_hash, resolve_module)
         + edges_from_call_graph(scope, call_content, source_hash)
     )

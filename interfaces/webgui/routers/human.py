@@ -81,7 +81,7 @@ def _result_from_submission(
         )
 
     # 2. Freier Text / Markdown -> gemeinsamer Content-Builder (Human == LLM).
-    content = build_content(response)
+    content = build_content(response, task_type)
     if not content.get("text", "").strip():
         raise ValueError(
             "Antwort enthaelt keinen verwertbaren Text. Bitte den vollstaendigen "

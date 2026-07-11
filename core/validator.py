@@ -103,7 +103,7 @@ class Validator:
             return self._validate_det(response)
         if task_type in (TaskType.implement, TaskType.fix):
             return self._validate_patch(response)
-        return self._validate_prob(response)
+        return self._validate_prob(response, task_type)
 
     def _validate_det(self, response: str) -> ValidationResult:
         try:
@@ -119,13 +119,15 @@ class Validator:
             )
         return ValidationResult(passed=True, trigger="pass")
 
-    def _validate_prob(self, response: str) -> ValidationResult:
+    def _validate_prob(
+        self, response: str, task_type: TaskType | None = None
+    ) -> ValidationResult:
         # prob-Antwort ist freies Markdown (core.review_format); einzige
         # Pflicht: Text nicht leer. Confidence, findings etc. baut der Worker
         # deterministisch — der Validator prueft sie nicht.
         from core.review_format import build_content
 
-        if not build_content(response).get("text"):
+        if not build_content(response, task_type).get("text"):
             return ValidationResult(
                 passed=False,
                 trigger="prob_schema_fail",

@@ -76,6 +76,59 @@ def file_scope(path: str) -> str:
     return Scope(typ=ScopeType.file, path=str(path)).format()
 
 
+# Quelldatei-Endungen (fuer die Modul->Datei-Aufloesung, S4) + Rausch-
+# Verzeichnisse, die beim Layout-Scan uebersprungen werden.
+_SOURCE_EXTENSIONS = frozenset(_EXTENSION_LANGUAGE)
+_PRUNE_DIRS = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".workspaces",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+    }
+)
+
+
+def source_files(root: Path) -> frozenset[str]:
+    """Repo-relative posix-Pfade aller Quelldateien im Working Tree. Basis fuer
+    die Aufloesung absoluter Importe am Ingest (S4): der Extraktor kennt nur die
+    eine Datei, das Layout kennt erst diese Ebene. Rausch-Verzeichnisse (.git,
+    __pycache__, venv, node_modules ...) werden uebersprungen."""
+    root = root.resolve()
+    out: set[str] = set()
+    for ext in _SOURCE_EXTENSIONS:
+        for p in root.rglob(f"*{ext}"):
+            rel = p.relative_to(root)
+            if any(part in _PRUNE_DIRS for part in rel.parts):
+                continue
+            out.add(rel.as_posix())
+    return frozenset(out)
+
+
+def _python_module_resolver(
+    known_files: frozenset[str],
+) -> Callable[[str], str | None]:
+    """Absoluter Python-Modulname -> repo-relativer .py-Pfad, falls im Layout
+    vorhanden (sonst None = extern). 'pkg.mod' -> pkg/mod.py bzw.
+    pkg/mod/__init__.py. Nur die Python-Konvention (Punkt->/, .py) -- andere
+    Sprachen loesen ueber ihre eigene Profil-Achse (relative_ext/res_path/
+    namespace_passthrough) bereits am Extraktor auf."""
+
+    def resolve(raw: str) -> str | None:
+        base = raw.replace(".", "/")
+        for cand in (f"{base}.py", f"{base}/__init__.py"):
+            if cand in known_files:
+                return cand
+        return None
+
+    return resolve
+
+
 def ingest_content(
     repo: Repository,
     path: str,
@@ -85,6 +138,7 @@ def ingest_content(
     scan: SecretScan | None = None,
     session_id: str = "ingest",
     invalidate: bool = False,
+    known_files: frozenset[str] | None = None,
 ) -> IngestResult:
     """Indexiert Dateiinhalt und legt alle Artefakte ab (alte superseded).
 
@@ -115,12 +169,20 @@ def ingest_content(
             detail={"artifact_type": result.artifact_type.value},
         )
 
+    # Modul->Datei-Aufloesung (S4) nur fuer Python (Punkt-Konvention) und nur,
+    # wenn das Layout bekannt ist (known_files vom Working Tree durchgereicht).
+    resolve_module = (
+        _python_module_resolver(known_files)
+        if known_files is not None and language == "python"
+        else None
+    )
     edges = all_edges_for_artifacts(
         scope,
         symbol_content=built["symbol_index"].content,  # type: ignore[union-attr]
         dep_content=built["dependency_graph"].content,  # type: ignore[union-attr]
         call_content=built["call_graph"].content,  # type: ignore[union-attr]
         source_hash=source_hash,
+        resolve_module=resolve_module,
     )
     repo.put_edges(scope, edges)
 
@@ -155,6 +217,7 @@ def ingest_file(
     session_id: str = "ingest",
     invalidate: bool = False,
     missing_ok: bool = False,
+    known_files: frozenset[str] | None = None,
 ) -> IngestResult:
     """Liest eine Datei aus dem Working Tree und ingestiert sie. Gemeinsamer
     Einstieg fuer Watch und git-Hook (identische Ingestion). invalidate=True
@@ -171,6 +234,11 @@ def ingest_file(
     else:
         content = abs_path.read_bytes()
     norm = abs_path.resolve().relative_to(root.resolve()).as_posix()
+    # Layout fuer die Modul->Datei-Aufloesung (S4). Einzel-Ingest (Watch/Worker/
+    # Apply): einmal vom Root scannen. Bulk (ingest_repo): einmal vorab berechnet
+    # und durchgereicht, damit der Scan nicht pro Datei laeuft.
+    if known_files is None:
+        known_files = source_files(root)
     return ingest_content(
         repo,
         norm,
@@ -179,6 +247,7 @@ def ingest_file(
         scan=scan,
         session_id=session_id,
         invalidate=invalidate,
+        known_files=known_files,
     )
 
 
@@ -252,9 +321,16 @@ def ingest_repo(
                 rel_paths.append(rel)
     rel_paths.sort()
 
+    known_files = source_files(root)
     results = [
         ingest_file(
-            repo, root, rel, source_hash=source_hash, scan=scan, session_id=session_id
+            repo,
+            root,
+            rel,
+            source_hash=source_hash,
+            scan=scan,
+            session_id=session_id,
+            known_files=known_files,
         )
         for rel in rel_paths
     ]

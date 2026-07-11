@@ -11,14 +11,19 @@ RESULTIERENDEN Inhalte, schreibt aber nichts. Der Aufrufer entscheidet, wohin
 (Verify: Temp-File + Lint; Apply-Gate: echter Tree). Sprachagnostisch -- ein
 Unified-Diff ist reine Zeilenlogik, kein Zielsprachen-Parser.
 
-Semantik: EXAKTER Kontext-Match, kein Fuzz. Passt ein Hunk nicht zeilengenau,
--> ok=False mit Fundstelle. Ein Patch, der nicht sauber greift, IST ein
-Verify-fail -- kein Reinraten in falschen Kontext.
+Semantik: EXAKTER Kontext-Match bei POSITIONS-Fuzz (E4). Der Kontext (Kontext-
+und Minus-Zeilen eines Hunks) muss verbatim im Working Tree stehen -- KEIN
+Reinraten in fremden Kontext. ABER die deklarierte Zeilennummer (@@ -N) wird
+NICHT vertraut: LLM-Diffs setzen sie notorisch falsch (Symptom "Kontext passt
+nicht bei Zeile N"). Darum wird das Hunk-Vorbild (die erwartete zusammenhaengende
+Zeilenfolge) im Datei-Inhalt GESUCHT -- die Fundstelle am naechsten zur
+deklarierten Zeile gewinnt. Findet sich der Kontext nirgends, -> ok=False
+(echter Verify-fail). Das repariert die haeufigste LLM-Patch-Untreue (richtiger
+Kontext, falsche Zeile), ohne die Anwendung in falschen Kontext zu erlauben.
 
-Eine bewusste Toleranz gibt es NUR bei der Hunk-Kopf-Zaehlung: LLM-Diffs
-deklarieren die Zeilenzahl notorisch falsch. Folgen nach erschoepfter Zaehlung
-weitere +/- Zeilen (und kein Struktur-Header), gehoeren sie noch zum Hunk --
-Inhalt schlaegt Zaehlung. Kontext-Match bleibt davon unberuehrt exakt.
+Eine zweite Toleranz betrifft die Hunk-Kopf-Zaehlung: folgen nach erschoepfter
+deklarierter Zeilenzahl weitere +/- Zeilen (und kein Struktur-Header), gehoeren
+sie noch zum Hunk -- Inhalt schlaegt Zaehlung.
 """
 
 from __future__ import annotations
@@ -159,6 +164,33 @@ def _mismatch(path: str, hunk_start: int, cursor: int, cur: list[str], want: str
     )
 
 
+def _old_image(hunk: _Hunk) -> list[str]:
+    """Die Zeilen, die VOR dem Hunk im Working Tree stehen muessen (Kontext ' '
+    + entfernte '-', in Reihenfolge; '+' und '\\' zaehlen nicht zum Vorbild)."""
+    return [bl[1:] for bl in hunk.lines if bl[:1] in (" ", "-")]
+
+
+def _find_hunk_pos(
+    cur_lines: list[str], image: list[str], declared: int, cursor: int
+) -> int | None:
+    """Position (>= cursor), an der `image` zusammenhaengend in cur_lines steht,
+    am naechsten zur deklarierten Zeile. None = Kontext nirgends gefunden.
+
+    image leer (reine Einfuegung ohne Kontext): keine Suche moeglich -> an die
+    deklarierte Stelle (auf [cursor, len] geklemmt). Kontext-Zeilen sind der
+    Anker; die Suche startet erst ab cursor (Hunk-Reihenfolge/keine Ueberlappung).
+    """
+    if not image:
+        return max(cursor, min(declared, len(cur_lines)))
+    last = len(cur_lines) - len(image)
+    best: int | None = None
+    for p in range(cursor, last + 1):
+        if cur_lines[p : p + len(image)] == image:
+            if best is None or abs(p - declared) < abs(best - declared):
+                best = p
+    return best
+
+
 def _apply_one(fd: _FileDiff, read_current: ReadCurrent) -> FileChange | str:
     create = fd.old_path is None
     delete = fd.new_path is None
@@ -182,11 +214,15 @@ def _apply_one(fd: _FileDiff, read_current: ReadCurrent) -> FileChange | str:
     cursor = 0
     new_no_newline = False
     for hunk in fd.hunks:
-        start = hunk.old_start - 1 if hunk.old_start > 0 else 0
-        if start < cursor:
-            return f"{path}: ueberlappende Hunks bei Zeile {hunk.old_start}"
-        if start > len(cur_lines):
-            return f"{path}: Hunk-Start {hunk.old_start} hinter Dateiende"
+        declared = hunk.old_start - 1 if hunk.old_start > 0 else 0
+        # Positions-Fuzz: den Hunk-Kontext suchen statt der deklarierten Zeile
+        # zu trauen (LLM-Diffs zaehlen falsch). Suche ab cursor -> Hunks bleiben
+        # geordnet und ueberlappungsfrei.
+        image = _old_image(hunk)
+        start = _find_hunk_pos(cur_lines, image, declared, cursor)
+        if start is None:
+            first = image[0] if image else ""
+            return _mismatch(path, hunk.old_start, cursor, cur_lines, first)
         out.extend(cur_lines[cursor:start])
         cursor = start
         prev = ""

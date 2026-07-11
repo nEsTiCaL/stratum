@@ -152,3 +152,30 @@ class TestHunkCountTolerance:
         r = apply_diff(diff, _reader({}))
         assert r.ok
         assert r.changes[0].new_content == "a\n"
+
+
+class TestFuzzyPosition:
+    """E4: falsche @@-Zeilennummer, korrekter Kontext -> wird angewandt."""
+
+    def test_wrong_line_number_correct_context_applies(self):
+        # Kontext c/d liegt real bei Zeile 3, der Hunk deklariert faelschlich @@ -1.
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,2 @@\n c\n-d\n+D\n"
+        r = apply_diff(diff, _reader({"x.py": "a\nb\nc\nd\ne\n"}))
+        assert r.ok
+        assert r.changes[0].new_content == "a\nb\nc\nD\ne\n"
+
+    def test_context_absent_anywhere_still_fails(self):
+        # Kein passender Kontext irgendwo -> weiterhin ok=False (kein Reinraten).
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,2 @@\n q\n-r\n+R\n"
+        r = apply_diff(diff, _reader({"x.py": "a\nb\nc\n"}))
+        assert not r.ok
+        assert "Kontext passt nicht" in r.reason
+
+    def test_nearest_occurrence_to_declared_wins(self):
+        # 'p' kommt zweimal vor; die deklarierte Zeile (@@ -5) waehlt das zweite.
+        content = "p\nx\np\nx\np\nx\n"  # 'p' bei Zeile 1,3,5
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -5,1 +5,2 @@\n p\n+Q\n"
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert r.ok
+        # Einfuegung nach dem 'p' bei Zeile 5 (naechstes zur Deklaration).
+        assert r.changes[0].new_content == "p\nx\np\nx\np\nQ\nx\n"

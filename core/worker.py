@@ -261,7 +261,7 @@ class LlmWorker:
                 "target_scope": item.scope,
             }
         else:
-            content = build_content(outcome.response)
+            content = build_content(outcome.response, item.task_type)
 
         repo.put_artifact(
             ResultProb(

@@ -19,6 +19,7 @@ nutzbar.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 # Task-spezifische Leitfragen (Reviewer-Fokus). Default fuer alle nicht gelisteten.
 _QUESTIONS: dict[str, str] = {
@@ -75,6 +76,71 @@ _PROMPT_HEADER = (
 )
 
 
+# Antwortschema je task_type (E1): der Review-Header + 4-Ueberschriften-Split ist
+# fuer analytische Typen (review/explain/summarize/debug/...) richtig, ZWINGT aber
+# document/test_gen in eine Review-Form (Abnahme strukturell unerreichbar -- ein
+# document-Task lieferte Bug-Findings statt Docstrings, test_gen ein Review statt
+# Tests). Darum ein eigenes Schema fuer die Typen, deren Antwortform eine andere
+# ist. review_split=False -> die ganze (fence-bereinigte) Antwort geht nach
+# content.text (kein Aufteilen in findings/recommendations).
+@dataclass(frozen=True)
+class _AnswerSchema:
+    header: str
+    questions: str
+    review_split: bool
+
+
+_DOCUMENT_HEADER = (
+    "Du dokumentierst Code. Du bekommst eine Quelldatei und schreibst die "
+    "Dokumentation ihrer oeffentlichen Symbole.\n"
+    "Antworte ausschliesslich mit Markdown: je oeffentlichem Symbol ein "
+    "Abschnitt mit der exakten Signatur als Ueberschrift und darunter Zweck, "
+    "Parameter, Rueckgabe und Fehlerfaelle. KEINE Bug-/Review-Analyse, KEINE "
+    "der Review-Ueberschriften.\n"
+    "Beispiel (gekuerzt):\n"
+    "### `merge_defaults(values: dict, defaults: dict) -> dict`\n"
+    "Vereinigt zwei dicts; `values` gewinnt bei gleichen Schluesseln, ohne die "
+    "Argumente zu mutieren. Parameter: `values`, `defaults`. Rueckgabe: neues "
+    "dict. Fehlerfaelle: keine.\n\n"
+    "---"
+)
+_TESTGEN_HEADER = (
+    "Du schreibst automatisierte Tests. Du bekommst eine Quelldatei und "
+    "erzeugst eine lauffaehige Testdatei dafuer.\n"
+    "Antworte ausschliesslich mit GENAU EINEM Codeblock, der die komplette "
+    "Testdatei enthaelt: reale Importpfade aus dem Scope, je relevantem "
+    "Verhalten eine Testfunktion. KEINE Prosa, KEINE Review-Ueberschriften, "
+    "nichts ausserhalb des Codeblocks.\n"
+    "Beispiel (gekuerzt):\n"
+    "```python\n"
+    "from minicore.report import merge_defaults\n\n\n"
+    "def test_merge_defaults_does_not_mutate():\n"
+    '    defaults = {"a": 1}\n'
+    '    merge_defaults({"b": 2}, defaults)\n'
+    '    assert defaults == {"a": 1}\n'
+    "```\n\n"
+    "---"
+)
+
+_SCHEMAS: dict[str, _AnswerSchema] = {
+    "document": _AnswerSchema(
+        header=_DOCUMENT_HEADER,
+        questions=(
+            "Dokumentiere alle oeffentlichen Symbole des Scopes; halte dich "
+            "exakt an die realen Signaturen."
+        ),
+        review_split=False,
+    ),
+    "test_gen": _AnswerSchema(
+        header=_TESTGEN_HEADER,
+        questions=(
+            "Schreibe die Tests fuer den Scope; decke Kernverhalten und Randfaelle ab."
+        ),
+        review_split=False,
+    ),
+}
+
+
 def build_review_prompt(
     task_type: str,
     scope: str,
@@ -87,12 +153,19 @@ def build_review_prompt(
     Ein einziger String — passt fuer den Ollama-`prompt` (kein separater
     System-Prompt) genauso wie fuers Dashboard-Kopierfeld. `context` (I-5.6,
     optional) traegt Graph-Kontext (Testdatei, Aufrufer) nach dem Quellcode ein;
-    leer -> keine Section.
+    leer -> keine Section. Das Antwortschema (_SCHEMAS) haengt am task_type;
+    unbekannt -> Review-Header + task-spezifische/Default-Leitfragen.
     """
     from core.ingest import source_language
 
-    questions = _QUESTIONS.get(task_type, _QUESTIONS_DEFAULT)
-    parts = [_PROMPT_HEADER, f"\nScope: {scope}"]
+    schema = _SCHEMAS.get(str(task_type))
+    if schema is None:
+        header = _PROMPT_HEADER
+        questions = _QUESTIONS.get(str(task_type), _QUESTIONS_DEFAULT)
+    else:
+        header = schema.header
+        questions = schema.questions
+    parts = [header, f"\nScope: {scope}"]
     if source_code:
         target = scope[len("file:") :] if scope.startswith("file:") else scope
         fence = source_language(target) or ""
@@ -145,14 +218,21 @@ def split_review_sections(text: str) -> dict[str, str]:
     return {k: "\n".join(v).strip() for k, v in buckets.items() if "\n".join(v).strip()}
 
 
-def build_content(response: str) -> dict[str, str]:
+def build_content(response: str, task_type: str | None = None) -> dict[str, str]:
     """Baut das content-dict aus einer freien Markdown-Antwort.
 
     Ueberschriften-Split nur uebernehmen, wenn er wirklich aufgeteilt hat
     (text-Feld gefuellt UND mind. ein strukturiertes Feld) — sonst faellt die
     ganze (fence-bereinigte) Antwort in content.text.
+
+    task_type steuert das Schema (E1): document/test_gen liefern KEINE Review-
+    Struktur -> die ganze Antwort geht nach content.text (kein Section-Split).
+    None (Default) = Review-Verhalten (abwaertskompatibel).
     """
     text = strip_code_fence(response)
+    schema = _SCHEMAS.get(str(task_type)) if task_type is not None else None
+    if schema is not None and not schema.review_split:
+        return {"text": text.strip()}
     sections = split_review_sections(text)
     if sections.get("text") and (
         sections.get("findings") or sections.get("recommendations")

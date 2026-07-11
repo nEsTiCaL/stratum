@@ -10,7 +10,14 @@ from pathlib import Path
 
 from watchdog.events import FileModifiedEvent
 
-from core.ingest import file_scope, ingest_content, ingest_file, ingest_repo
+from core.ingest import (
+    _python_module_resolver,
+    file_scope,
+    ingest_content,
+    ingest_file,
+    ingest_repo,
+    source_files,
+)
 from core.repository import Repository
 from core.watch import IngestEventHandler
 
@@ -214,3 +221,52 @@ class TestIngestRepo:
         results = ingest_repo(repo, tmp_path, resolve_hash=lambda _root: "h")
 
         assert [r.scope for r in results] == sorted(r.scope for r in results)
+
+
+class TestModuleResolution:
+    """E0 #1: absolute Importe -> file:-Kanten (Modul->Datei-Aufloesung am Ingest)."""
+
+    def test_python_module_resolver_hits_and_misses(self):
+        resolve = _python_module_resolver(
+            frozenset({"pkg/mod.py", "pkg/sub/__init__.py"})
+        )
+        assert resolve("pkg.mod") == "pkg/mod.py"
+        assert resolve("pkg.sub") == "pkg/sub/__init__.py"  # Paket -> __init__
+        assert resolve("os") is None  # stdlib
+        assert resolve("pkg.missing") is None
+
+    def testsource_files_scans_and_prunes(self, tmp_path):
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "__pycache__").mkdir()
+        (tmp_path / "__pycache__" / "junk.py").write_text("x = 1\n", encoding="utf-8")
+        (tmp_path / "notes.txt").write_text("hi\n", encoding="utf-8")
+
+        files = source_files(tmp_path)
+        assert "pkg/mod.py" in files
+        assert "pkg/__init__.py" in files
+        assert all("__pycache__" not in f for f in files)  # Rausch-Dir gepruned
+        assert "notes.txt" not in files  # keine Quelldatei-Endung
+
+    def test_absolute_import_becomes_file_edge(self, conn, tmp_path):
+        pkg = tmp_path / "minipkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
+        (pkg / "b.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+        (pkg / "a.py").write_text(
+            "from minipkg.b import f\n\n\ndef g():\n    return f()\n", encoding="utf-8"
+        )
+        repo = Repository(conn)
+        ingest_repo(
+            repo,
+            tmp_path,
+            globs=("minipkg/**/*.py",),
+            resolve_hash=lambda _root: "h",
+        )
+
+        edges = repo.get_edges("file:minipkg/a.py")
+        import_dsts = {e.dst for e in edges if e.edge_type == "import"}
+        assert "file:minipkg/b.py" in import_dsts  # frueher module:minipkg.b
+        # impact() (wer nutzt b?) findet a jetzt -- vorher leer.
+        assert "file:minipkg/a.py" in repo.impact("file:minipkg/b.py")

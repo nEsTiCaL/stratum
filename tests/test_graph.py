@@ -76,6 +76,51 @@ class TestEdgesFromDependencyGraph:
     def test_empty_imports(self):
         assert edges_from_dependency_graph(SCOPE, {"imports": []}, HASH) == []
 
+    def test_resolver_lifts_absolute_import_to_file(self):
+        # Absoluter Import (target=None): der injizierte Resolver hebt ihn auf
+        # eine file:-Kante, damit impact()/deps den Nutzer sehen (E0 #1).
+        content = {
+            "imports": [
+                {"raw": "core.db", "target": None, "kind": "symbol", "span": [1, 1]}
+            ]
+        }
+        edges = edges_from_dependency_graph(
+            SCOPE, content, HASH, lambda raw: "core/db.py" if raw == "core.db" else None
+        )
+        assert edges[0].dst == "file:core/db.py"
+
+    def test_resolver_miss_stays_module(self):
+        # Extern (stdlib/3rd-party): Resolver trifft nicht -> module:-Kante bleibt.
+        content = {
+            "imports": [
+                {"raw": "subprocess", "target": None, "kind": "module", "span": [1, 1]}
+            ]
+        }
+        edges = edges_from_dependency_graph(SCOPE, content, HASH, lambda raw: None)
+        assert edges[0].dst == "module:subprocess"
+
+    def test_resolver_does_not_override_resolved_target(self):
+        # Bereits aufgeloest (relativer Import): Resolver wird nicht befragt.
+        content = {
+            "imports": [
+                {
+                    "raw": ".session",
+                    "target": "core/session.py",
+                    "kind": "relative",
+                    "span": [1, 1],
+                }
+            ]
+        }
+        called = []
+
+        def resolver(raw):
+            called.append(raw)
+            return "WRONG"
+
+        edges = edges_from_dependency_graph(SCOPE, content, HASH, resolver)
+        assert edges[0].dst == "file:core/session.py"
+        assert called == []
+
 
 class TestEdgesFromCallGraph:
     def test_resolved_call_with_confidence(self):
