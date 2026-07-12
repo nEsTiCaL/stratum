@@ -495,3 +495,52 @@ dann Ursache beheben, Test via API wiederholen und im Ergebnis vermerken.
   funktionale Korrektheit hier per Inspektion (defaults.copy() behebt die
   In-Place-Mutation). OFFEN bleibt nur die Klassifikationsfrage oben (direkter
   /api/task-fix = Sackgasse: bewusst so, weil A-Faelle Subtasks sind, oder Fix?).
+
+### Beginner-Use-Case-Lauf 2026-07-12 (Agent+Nutzer) -- 5 reale Anfaenger-Formulierungen
+
+Ziel (Nutzer): 5 Top-Level-UC so formuliert, wie ein Anfaenger sie tippt, in
+Reihenfolge 5->1 (leicht->schwer). Fixture: bewusst naives qwen-Verbindungs-
+Skript qwendemo/qwen_client.py, per Stratum-Write-Path erzeugt (siehe Finding
+#0 -- docker cp war unter REST-only-Regel geblockt, es GIBT keinen REST-Upload).
+UC5 API-Key-Frage, UC4 Datei-Speichern ergaenzen, UC3 "was macht die Datei",
+UC2 leere Antwort fixen, UC1 Skript neu erstellen.
+
+- **Write-Path 5/5 sauber (der grosse Fortschritt).** Bootstrap-create, UC4
+  implement, UC2 fix (2 Iter.), UC1 create: jeder baute index->write->verify->
+  auto-apply, fuzzy-Apply (#4) griff JEDES Mal -- kein "Kontext passt nicht"-Fail
+  wie in Vorsessions. Write-Path unter Realbedingungen bestaetigt.
+- **Token-Oekonomie exzellent (gemessen an GET /api/prompt der Write-Knoten):**
+  implement/fix-Prompt ~270-490 Tokens = nur Diff-Instruktion + Zieldatei +
+  Symbol-Umriss. det-Module korrekt+sinnvoll: Symbol-Umriss aus det-Index real,
+  Aufrufer-/Testdatei-Bloecke korrekt LEER (Standalone-Skript hat keine) -- kein
+  erfundener, kein irrelevanter Kontext. Feinheiten: (a) Symbol-Umriss bei
+  Mini-Datei redundant (~40 Tok, Nutzen erst bei grossen Dateien/Aufrufern);
+  (b) VOLLER Dateiinhalt im Prompt -> bei grossen Dateien DER Kostentreiber
+  (Ausschnitt-Strategie waere der Hebel, nicht das det-Beiwerk).
+- **UC4/UC1: VOLL BESTANDEN.** UC4 minimaler idiomatischer Patch (open(...,"w",
+  encoding="utf-8"), nutzt Rueckgabewert, kein Dup). UC1 frische Datei, qwen
+  waehlt urllib.request statt requests (weniger Deps) -- gute Greenfield-Wahl.
+- **UC2: BESTANDEN nach Iteration.** Iter1 (vager Prompt "Reasoning-Modell"):
+  Symptom-Fix (message.get(reasoning_content,'') or content -> None-sicher), aber
+  Wurzel (max_tokens=50) verfehlt. Iter2 ("Token-Limit zu niedrig"): max_tokens
+  50->4096 = Wurzel-Fix. Loop "finde andere Loesung" traegt; ABER Modell fand die
+  Wurzel erst mit explizitem Hinweis. + Systemgrenze: lint-Gate (apply+ruff) ist
+  gruen auch bei inhaltlich falschem Iter1-Fix -> "gruen != geloest".
+- **UC3: System+Inhalt PASS.** summarize phi4, Zweck korrekt, 0 Halluzination
+  (kleine Datei haelt phi4 geerdet -- besser als A12/router.py), aktuellen Stand
+  (UC4-Datei-Speichern) mitgelesen.
+- **UC5: TEILWEISE.** explain phi4, Grounding ok, aber Antwort ist ein REVIEW,
+  nicht die beantwortete Frage; Env-Var-Tipp nur beilaeufig im Schluss-Hinweis.
+
+**4 abgeleitete Entscheidungen (mit Nutzer 2026-07-12) -> arbeitsplan I-UX.1..5:**
+1. **Finding #0 Upload-Pfad** (I-UX.1): Nutzer MUSS sein Projekt schreiben koennen
+   (Einzeldatei + Projekt-Ersatz). Groesste Nutzbarkeitsluecke.
+2. **Intent-Verdrahtung** (I-UX.2/3): Classifier existiert, ist unverdrahtet ->
+   Freitext->task_type; Read-Sub-Intent (Frage/Ueberblick/Review) + task-bewusster
+   Format-Suffix (der globale "ein grosser Codeblock"-Suffix widerspricht heute
+   den 4 Review-Ueberschriften -> Selbstwiderspruch im explain-Prompt).
+3. **Architect-Schritt** (I-UX.4): det-Kontext auf Design-Ebene an Planer
+   (heute graph-blind, E6) UND implement.
+4. **Rename verify->lint_gate** (I-UX.5): VerifyWorker=apply-dry+ruff ist ein
+   Lint-Gate, keine Verifikation; verify(Tests)/review(LLM-Diff-Urteil) sind
+   eigene spaetere Inkremente. apply_gate.py (Schreib-Gate) bleibt.

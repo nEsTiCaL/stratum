@@ -27,6 +27,11 @@ class ApplyBody(BaseModel):
     confirm: bool = False
 
 
+class WorkspaceFileBody(BaseModel):
+    path: str
+    content: str
+
+
 class SettingsBody(BaseModel):
     auto_apply: bool
 

@@ -10,12 +10,12 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
 from core.apply_gate import apply_confirmed_patch
 from interfaces.webgui.deps import AppDeps, get_deps, require_capability, require_owner
-from interfaces.webgui.schemas import ApplyBody
+from interfaces.webgui.schemas import ApplyBody, WorkspaceFileBody
 
 router = APIRouter()
 
@@ -141,3 +141,67 @@ async def workspace_archive(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Workspace schreiben (I-UX.1): eigenes Projekt einbringen/ersetzen ────────
+
+
+@router.put("/api/workspace/file")
+async def workspace_write_file(
+    body: WorkspaceFileBody,
+    cap: tuple[str, int] = Depends(require_capability),
+    deps: AppDeps = Depends(get_deps),
+) -> dict[str, Any]:
+    """Schreibt/ueberschreibt EINE Workspace-Datei dieses API-Keys (Traversal-
+    Guard wie die read-Seite). Legt fehlende Elternverzeichnisse an. Der Nutzer
+    darf sein Projekt jederzeit selbst einbringen -- getrennt vom Patch-Apply-Gate
+    (das nur bestaetigte, lint-gepruefte Diffs schreibt)."""
+    owner, capability_id = cap
+    root = deps.workspace_or_503(owner, capability_id).resolve()
+    target = (root / body.path).resolve()
+    if root not in target.parents and target != root:
+        raise HTTPException(status_code=400, detail="Pfad ausserhalb des Workspace")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body.content, encoding="utf-8")
+    return {"path": body.path, "written": True}
+
+
+@router.post("/api/workspace/archive")
+async def workspace_upload_archive(
+    request: Request,
+    cap: tuple[str, int] = Depends(require_capability),
+    deps: AppDeps = Depends(get_deps),
+) -> dict[str, Any]:
+    """Ersetzt das Projekt dieses API-Keys durch ein hochgeladenes ZIP (Rohbody,
+    application/zip). Erst werden ALLE Eintraege geprueft (Traversal/absolut ->
+    400, nichts geschrieben), dann die sichtbaren Bestandsdateien entfernt und die
+    sicheren Eintraege entpackt. Versteckte Segmente (.git o.ae.) werden -- wie auf
+    der read-Seite -- ignoriert und bleiben unangetastet."""
+    owner, capability_id = cap
+    root = deps.workspace_or_503(owner, capability_id).resolve()
+    raw = await request.body()
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="kein gueltiges ZIP") from exc
+
+    safe_entries: list[tuple[str, Path]] = []
+    for name in archive.namelist():
+        if name.endswith("/"):
+            continue  # reiner Verzeichniseintrag
+        target = (root / name).resolve()
+        if root not in target.parents:
+            raise HTTPException(
+                status_code=400, detail=f"unsicherer Pfad im Archiv: {name}"
+            )
+        if any(part.startswith(".") for part in target.relative_to(root).parts):
+            continue  # versteckte Segmente ueberspringen (konsistent mit read)
+        safe_entries.append((name, target))
+
+    # Projekt ersetzen: sichtbare Bestandsdateien weg, dann sichere Eintraege rein.
+    for p, _rel in _workspace_files(root):
+        p.unlink()
+    for name, target in safe_entries:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(archive.read(name))
+    return {"replaced": len(safe_entries)}

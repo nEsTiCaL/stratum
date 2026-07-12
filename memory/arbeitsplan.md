@@ -260,6 +260,37 @@ I-RW.1   Logik-Extraktion nach core      det  -         `spec_refactor-webschich
 I-RW.2   APIRouter-Split je Domaene      det  I-RW.1    `spec_refactor-webschicht`   fertig
 ```
 
+## Nutzbarkeit / Beginner-Flow  (Belege: `ops_abdeckungstests` Beginner-UC-Lauf 2026-07-12)
+
+Aus dem Beginner-Use-Case-Lauf (5 reale Anfaenger-Formulierungen, 5->1) mit dem
+Nutzer abgeleitet. Write-Path (implement/fix -> DAG -> fuzzy-Apply) trug 5/5
+sauber; die Luecken liegen im EINSTIEG (Datei rein), in der INTENT-Erkennung
+(Freitext -> was will der Nutzer) und im BENENNEN der Pruefschritte.
+
+```
+ID       Haeppchen                                    Kl   dep       Detail
+-------  -------------------------------------------  ---  --------  ----------------
+I-UX.1   Workspace-Write (Einzeldatei + Projekt-      det  -         Finding #0: kein Upload-Weg
+         Ersatz): PUT /api/workspace/file, POST                     (nur read-only). Traversal-
+         /api/workspace/archive (ZIP entpacken)                     Guard wie GET.  fertig 2026-07-12
+                                                                    (7 Tests, 145 webgui gruen)
+I-UX.2   Intent-Verdrahtung: Classifier (existiert,   gem  I-UX.1?   core/classifier.py ist gebaut,
+         core/classifier.py) an Endpoint -> Freitext                aber an KEINEN Endpoint
+         -> task_type + scope (Anfaenger waehlt nie                 angeschlossen. Intent-Block #1.
+         einen task_type)
+I-UX.3   Sub-Intent Read: explain/summarize erkennt   gem  I-UX.2    Frage landet heute nur als
+         Frage vs. Ueberblick vs. Review; globaler                  "Hinweis" in Review-Vorlage;
+         Format-Suffix wird task-bewusst (behebt                    globaler Suffix "ein grosser
+         Selbstwiderspruch im Prompt)                               Codeblock" widerspricht "4 Ueberschr."
+I-UX.4   Architect-Schritt: det-Kontext auf Design-   gem  I-UX.2    E6 "Planer graph-blind":
+         Ebene an Planer/implement (welche Symbole/                 build_decompose_prompt bekommt
+         Konventionen existieren, was wiederverwenden)              NUR Freitext, kein impact/calls.
+I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
+         apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
+         verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene
+         Schritte reserviert (Test-Ausf./LLM-Review)                Inkremente, jetzt NUR Name.
+```
+
 ## Status
 
 Die Tabellen oben sind die einzige Fortschritts-Wahrheit (rules P7); Details je

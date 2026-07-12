@@ -1709,6 +1709,100 @@ class TestWorkspaceEndpoints:
                 assert zf.namelist() == ["src/main.py"]
                 assert zf.read("src/main.py") == b"print('hi')\n"
 
+    # ── Schreiben (I-UX.1): Einzeldatei + Projekt-Ersatz via Upload ──────────
+
+    def test_put_file_requires_auth(self, conn, tmp_path):
+        c, _repo = self._client(conn, tmp_path)
+        with c:
+            r = c.put("/api/workspace/file", json={"path": "x.py", "content": "1"})
+            assert r.status_code == 401
+
+    def test_put_file_creates_and_reads_back(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            r = c.put(
+                "/api/workspace/file",
+                headers=AUTH,
+                json={"path": "pkg/neu.py", "content": "x = 1\n"},
+            )
+            assert r.status_code == 200
+            assert r.json()["path"] == "pkg/neu.py"
+            got = c.get("/api/workspace/file?path=pkg/neu.py", headers=AUTH)
+            assert got.json()["content"] == "x = 1\n"
+
+    def test_put_file_overwrites(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            self._seed_workspace(repo, tmp_path)
+            c.put(
+                "/api/workspace/file",
+                headers=AUTH,
+                json={"path": "src/main.py", "content": "print('neu')\n"},
+            )
+            got = c.get("/api/workspace/file?path=src/main.py", headers=AUTH)
+            assert got.json()["content"] == "print('neu')\n"
+
+    def test_put_file_traversal_rejected(self, conn, tmp_path):
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            root = self._seed_workspace(repo, tmp_path)
+            r = c.put(
+                "/api/workspace/file",
+                headers=AUTH,
+                json={"path": "../../evil.py", "content": "boom"},
+            )
+            assert r.status_code == 400
+            assert not (root.parent.parent / "evil.py").exists()
+
+    def test_upload_archive_replaces_project(self, conn, tmp_path):
+        import io
+        import zipfile
+
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            root = self._seed_workspace(repo, tmp_path)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("app/run.py", "print('replaced')\n")
+                zf.writestr("readme.txt", "hallo\n")
+            r = c.post(
+                "/api/workspace/archive",
+                headers={**AUTH, "Content-Type": "application/zip"},
+                content=buf.getvalue(),
+            )
+            assert r.status_code == 200
+            files = c.get("/api/workspace/files", headers=AUTH).json()["files"]
+            paths = sorted(f["path"] for f in files)
+            # altes src/main.py ist weg, neue Dateien da
+            assert paths == ["app/run.py", "readme.txt"]
+            # versteckte Dateien (.git) bleiben unangetastet
+            assert (root / ".git" / "config").exists()
+
+    def test_upload_archive_requires_auth(self, conn, tmp_path):
+        c, _repo = self._client(conn, tmp_path)
+        with c:
+            r = c.post("/api/workspace/archive", content=b"PK")
+            assert r.status_code == 401
+
+    def test_upload_archive_rejects_traversal_entry(self, conn, tmp_path):
+        import io
+        import zipfile
+
+        c, repo = self._client(conn, tmp_path)
+        with c:
+            root = self._seed_workspace(repo, tmp_path)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("../evil.py", "boom")
+            r = c.post(
+                "/api/workspace/archive",
+                headers={**AUTH, "Content-Type": "application/zip"},
+                content=buf.getvalue(),
+            )
+            assert r.status_code == 400
+            assert not (root.parent.parent / "evil.py").exists()
+
 
 class TestAppliedTasks:
     """Betriebsschliff Schritt 7: angewendete Tasks verschwinden aus /api/tasks,
