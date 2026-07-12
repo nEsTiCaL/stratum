@@ -329,6 +329,13 @@ Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (API-Key-Auth, Polling statt SSE) nutzbar, N1- und Prob-Dogfooding aktiv
 (`ops_n1-queries`, `ops_prob-dogfooding`).
 
+Aktueller Fokus (2026-07-12): Beginner-Flow-Familie I-UX. UX.1 (Upload), UX.2
+(Intent im Hauptpfad), UX.5 (Rename lint_gate) fertig+committed+gepusht. NAECHSTER
+SCHRITT: I-UX.3 (explain/summarize frage-zentriertes Schema), danach I-UX.4
+(Architect). Voller Wiedereinstieg + exakte Stellen: `spec_beginner-flow`.
+OFFEN/DEPLOY: laufender Container auf altem Code -> Rebuild + `-m core.db migrate`
+(Migration 0011), damit UX.1/2/5 live sind.
+
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
 ```
