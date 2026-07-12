@@ -259,6 +259,36 @@ class TestArchitectureTemplate:
 # --------- unknown task_type ---------
 
 
+class TestArchitectInWriteTemplates:
+    """I-UX.4b: implement/fix bauen index -> architect -> implement/fix -> lint_gate
+    (der architect-Entwurf sitzt zwischen Kontext und Patch)."""
+
+    def test_implement_chain(self):
+        dag = decompose("implement", "file:new.py", scope_resolver=_STUB)
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "architect",
+            "implement",
+            "lint_gate",
+        ]
+
+    def test_fix_chain(self):
+        dag = decompose("fix", "file:a.py", scope_resolver=_STUB)
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "architect",
+            "fix",
+            "lint_gate",
+        ]
+
+    def test_architect_sits_between_index_and_implement(self):
+        dag = decompose("implement", "file:new.py", scope_resolver=_STUB)
+        by_type = {n.task_type: n for n in dag.nodes}
+        assert by_type["architect"].depends_on == (by_type["index"].id,)
+        assert by_type["implement"].depends_on == (by_type["architect"].id,)
+        assert by_type["lint_gate"].depends_on == (by_type["implement"].id,)
+
+
 class TestUnknownTaskType:
     def test_unknown_raises_key_error(self):
         with pytest.raises(KeyError):

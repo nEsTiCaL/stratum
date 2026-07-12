@@ -137,18 +137,21 @@ REGISTRY: dict[str, tuple[NodeTemplate, ...]] = {
         _n("n1", "index"),
         _n("n2", "crypto_audit", ("n1",), flags=_EXCLUSIVE),
     ),
-    # Gruppe F: schreibend (Schritt 7). Kontext (index) -> Patch (implement/fix,
+    # Gruppe F: schreibend (Schritt 7). Kontext (index) -> Entwurf (architect,
+    # prob, I-UX.4: Design-Artefakt, was wiederverwenden) -> Patch (implement/fix,
     # prob) -> Verify (det, LintGateWorker). Die Rueckkante verify->implement
     # (I-7.4) lebt in der Queue, nicht im Template.
     "implement": (
         _n("n1", "index"),
-        _n("n2", "implement", ("n1",)),
-        _n("n3", "lint_gate", ("n2",)),
+        _n("n2", "architect", ("n1",)),
+        _n("n3", "implement", ("n2",)),
+        _n("n4", "lint_gate", ("n3",)),
     ),
     "fix": (
         _n("n1", "index"),
-        _n("n2", "fix", ("n1",)),
-        _n("n3", "lint_gate", ("n2",)),
+        _n("n2", "architect", ("n1",)),
+        _n("n3", "fix", ("n2",)),
+        _n("n4", "lint_gate", ("n3",)),
     ),
 }
 

@@ -88,9 +88,10 @@ class _AnswerSchema:
     header: str
     questions: str
     review_split: bool
-    # I-UX.3: extra_prompt ist die FRAGE des Nutzers und damit die primaere
-    # Aufgabe (explain) -- nicht als "Hinweis:" ans Ende degradiert.
-    answers_question: bool = False
+    # I-UX.3/4: Label, unter dem der Freitext (extra_prompt) eingefuehrt wird.
+    # None -> "Hinweis:" (nachrangig, Default). Gesetzt -> der Freitext ist die
+    # PRIMAERE Aufgabe (explain: die Frage; architect: die Aenderungsabsicht).
+    prompt_label: str | None = None
 
 
 _DOCUMENT_HEADER = (
@@ -144,6 +145,21 @@ _SUMMARIZE_HEADER = (
     "---"
 )
 
+_ARCHITECT_HEADER = (
+    "Du bist ein Software-Architekt. Du bekommst eine Aenderungsabsicht und den "
+    "vorhandenen Kontext (Quellcode, Abhaengigkeiten, Aufrufer) und entwirfst, "
+    "WIE die Aenderung umgesetzt wird -- BEVOR Code geschrieben wird.\n"
+    "Antworte in knapper Markdown-Prosa mit diesen Punkten:\n"
+    "- Wiederverwendung: welche EXISTIERENDEN Symbole/Dateien/Konventionen "
+    "genutzt oder erweitert werden (nenne konkrete Namen aus dem Kontext); "
+    "nichts neu anlegen, was es schon gibt.\n"
+    "- Ansatz: die geplanten Schritte als Stichpunkte.\n"
+    "- Ziel: welche Datei(en)/Symbole angefasst werden.\n"
+    "- Risiken/Randfaelle, die die Umsetzung beachten muss.\n"
+    "KEIN Code, KEIN Diff -- nur der Entwurf.\n\n"
+    "---"
+)
+
 _SCHEMAS: dict[str, _AnswerSchema] = {
     "explain": _AnswerSchema(
         header=_EXPLAIN_HEADER,
@@ -152,7 +168,16 @@ _SCHEMAS: dict[str, _AnswerSchema] = {
             "Symbolen/Zeilen. Ohne konkrete Frage: erklaere Zweck und Struktur."
         ),
         review_split=False,
-        answers_question=True,
+        prompt_label="Frage des Nutzers (beantworte sie direkt)",
+    ),
+    "architect": _AnswerSchema(
+        header=_ARCHITECT_HEADER,
+        questions=(
+            "Entwirf die Umsetzung der Absicht auf Basis des vorhandenen "
+            "Kontexts; priorisiere Wiederverwendung vor Neuschreiben."
+        ),
+        review_split=False,
+        prompt_label="Aenderungsabsicht des Nutzers",
     ),
     "summarize": _AnswerSchema(
         header=_SUMMARIZE_HEADER,
@@ -201,11 +226,11 @@ def build_review_prompt(
     if schema is None:
         header = _PROMPT_HEADER
         questions = _QUESTIONS.get(str(task_type), _QUESTIONS_DEFAULT)
-        answers_question = False
+        prompt_label = None
     else:
         header = schema.header
         questions = schema.questions
-        answers_question = schema.answers_question
+        prompt_label = schema.prompt_label
     parts = [header, f"\nScope: {scope}"]
     if source_code:
         target = scope[len("file:") :] if scope.startswith("file:") else scope
@@ -214,12 +239,10 @@ def build_review_prompt(
     if context:
         parts.append(f"\n{context}")
     if extra_prompt:
-        # answers_question (explain): der Freitext IST die Aufgabe, nicht ein
-        # nachrangiger "Hinweis:".
-        if answers_question:
-            parts.append(f"\nFrage des Nutzers (beantworte sie direkt): {extra_prompt}")
-        else:
-            parts.append(f"\nHinweis: {extra_prompt}")
+        # prompt_label gesetzt (explain/architect): der Freitext IST die primaere
+        # Aufgabe unter diesem Label, nicht ein nachrangiger "Hinweis:".
+        label = prompt_label or "Hinweis"
+        parts.append(f"\n{label}: {extra_prompt}")
     parts.append(f"\n{questions}")
     return "\n".join(parts)
 

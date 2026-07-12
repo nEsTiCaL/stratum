@@ -197,11 +197,18 @@ class TestImplementDecomposition:
     def test_implement_sub_dag_shape(self):
         dag = decompose("implement", "file:core/foo.py", scope_resolver=_FakeResolver())
         by_type = {n.task_type: n for n in dag.nodes}
-        assert set(by_type) == {"index", "implement", "lint_gate"}
-        # verify haengt an implement, implement an index
-        assert by_type["lint_gate"].depends_on == ("n2",)
-        assert by_type["implement"].depends_on == ("n1",)
+        # I-UX.4b: architect-Entwurf sitzt zwischen index und implement.
+        assert set(by_type) == {"index", "architect", "implement", "lint_gate"}
+        # lint_gate haengt an implement, implement an architect, architect an index
+        assert by_type["lint_gate"].depends_on == ("n3",)
+        assert by_type["implement"].depends_on == ("n2",)
+        assert by_type["architect"].depends_on == ("n1",)
 
     def test_fix_sub_dag_shape(self):
         dag = decompose("fix", "file:core/foo.py", scope_resolver=_FakeResolver())
-        assert {n.task_type for n in dag.nodes} == {"index", "fix", "lint_gate"}
+        assert {n.task_type for n in dag.nodes} == {
+            "index",
+            "architect",
+            "fix",
+            "lint_gate",
+        }

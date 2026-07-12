@@ -12,6 +12,9 @@ import pytest
 from core.capacity import MODEL_CONFIG, HardwareFacts
 from core.router import (
     MODEL_CAPABILITIES,
+    TASK_REQUIREMENTS,
+    TASK_TYPE_TO_ARTIFACT_TYPE,
+    Axis,
     Candidate,
     CostTier,
     Provider,
@@ -40,6 +43,26 @@ class TestDetTypes:
             prefs=RouterPrefs(forbidden=("tree-sitter",)),
         )
         assert _names(cands) == ["tree-sitter"]
+
+
+class TestArchitectTaskType:
+    """I-UX.4b: architect ist ein prob-Reasoning-Task, der ein design-Artefakt
+    erzeugt und routbar ist (auf Profil D via internem vLLM/Cloud, nicht lokal)."""
+
+    def test_maps_to_design_artifact(self):
+        assert TASK_TYPE_TO_ARTIFACT_TYPE[TaskType.architect] == "design"
+
+    def test_requirement_is_reasoning(self):
+        req = TASK_REQUIREMENTS[TaskType.architect]
+        assert req.axis == Axis.reasoning
+        assert req.deterministic_model is None  # prob, kein DetWorker
+
+    def test_routable(self):
+        assert _names(Router().candidates("architect"))  # nicht leer
+
+    def test_excludes_local_phi4_below_band(self):
+        # min_cap=60 reasoning schliesst phi4-mini aus (wie implement lokal raus).
+        assert "phi4-mini" not in _names(Router().candidates("architect"))
 
 
 class TestCapabilityBand:

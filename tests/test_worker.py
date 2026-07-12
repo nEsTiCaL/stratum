@@ -266,6 +266,14 @@ class TestLlmWorker:
         worker.run(_item(task_type="summarize"), repo)
         assert repo.artifacts[0].artifact_type.value == "code_summary"
 
+    def test_artifact_type_architect_is_design(self):
+        # I-UX.4b: architect -> design-Artefakt (prob), FakeModel-Antwort landet
+        # als content.text (Design-Schema, review_split=False).
+        worker = self._make_worker(FakeModel(responses=[_prob_response()]))
+        repo = _FakeRepo()
+        worker.run(_item(task_type="architect"), repo)
+        assert repo.artifacts[0].artifact_type.value == "design"
+
     def test_scope_from_queue_item(self):
         """scope kommt aus dem QueueItem, nicht aus der LLM-Antwort."""
         worker = self._make_worker(FakeModel(responses=[_prob_response()]))

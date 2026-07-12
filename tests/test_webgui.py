@@ -135,7 +135,7 @@ class TestDirectWriteTask:
         assert body["id"] == body["task_ids"][0]
         assert "dag_id" in body
         rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
-        assert [row[0] for row in rows] == ["index", "fix", "lint_gate"]
+        assert [row[0] for row in rows] == ["index", "architect", "fix", "lint_gate"]
 
     def test_implement_task_builds_full_write_dag(self, client, conn):
         r = client.post(
@@ -145,7 +145,12 @@ class TestDirectWriteTask:
         )
         assert r.status_code == 201
         rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
-        assert [row[0] for row in rows] == ["index", "implement", "lint_gate"]
+        assert [row[0] for row in rows] == [
+            "index",
+            "architect",
+            "implement",
+            "lint_gate",
+        ]
 
     def test_read_task_stays_single_node(self, client, conn):
         r = client.post(

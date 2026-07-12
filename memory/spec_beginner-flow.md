@@ -88,12 +88,22 @@ prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
   TestDesignArtifact (prob ja / det nein). 1005 gruen, lint ok. NOTIZ: JSON+Go
   tragen noch "verify_report" (UX.5-Rename nur in Pydantic) -- kein aktives
   Drift-Gate, Pydantic ist Wahrheitsmodell; vorbestehende Drift NICHT angefasst.
-- **4b (gem) NAECHSTES:** task_type `architect` (Router TaskRequirement reasoning-
-  Achse wie architecture; TASK_TYPE_TO_ARTIFACT_TYPE[architect]="design"). REGISTRY
-  implement/fix: index->architect->implement/fix->lint_gate. architect-Prompt-
-  Builder (Workspace-/Graph-Umriss + Goal-Instruktion). Tests: FakeModel->design,
-  DAG-Form.
-- **4c (gem):** implement/fix-Prompt konsumiert das aktuelle `design`-Artefakt des
+- **4b (gem) FERTIG 2026-07-12:** task_type `architect` (router.TaskType Gruppe F;
+  TaskRequirement reasoning 60-100 -> Profil D via internem vLLM/Cloud, phi4-mini
+  raus; TASK_TYPE_TO_ARTIFACT_TYPE[architect]="design"). REGISTRY implement/fix:
+  index->architect->implement/fix->lint_gate (4-Knoten, architect zwischen index
+  und Patch). Prompt: architect laeuft ueber build_review_prompt (node_prep else-
+  Zweig, kein Sonderpfad) mit neuem _SCHEMAS["architect"] (_ARCHITECT_HEADER:
+  Wiederverwendung/Ansatz/Ziel/Risiken, KEIN Code, review_split=False). Framing
+  generalisiert: `_AnswerSchema.answers_question` -> `prompt_label` (explain +
+  architect fuehren den Freitext als primaere Aufgabe unter eigenem Label ein).
+  Instruktion erreicht architect ueber denselben _prompt_for-Mechanismus wie
+  implement (deps.enqueue_plan reicht die Plan-Instruktion an ALLE prob-Knoten).
+  Tests: TestArchitectTaskType (router), TestArchitectSchema (prompt/content),
+  TestArchitectInWriteTemplates (DAG-Form), worker test_artifact_type_architect_
+  is_design. 4 Bestands-Shape-Tests auf 4 Knoten angepasst (test_patch x2,
+  test_webgui x2). 1015 gruen, lint ok.
+- **4c (gem) NAECHSTES:** implement/fix-Prompt konsumiert das aktuelle `design`-Artefakt des
   Scopes (node_prep.build_node_prompt liest via repo, haengt als Kontext an,
   analog gather_context/verify_feedback). Test: implement-Prompt traegt Design.
 - **4d (gem, danach):** groessen-gegateter Plan-Ebenen-architect (plan.large) --

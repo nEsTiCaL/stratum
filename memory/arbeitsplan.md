@@ -293,8 +293,12 @@ I-UX.4   Architect-Schritt (Variante b, GEFALLEN):    gem  I-UX.2    E6 "Planer 
          eigener prob-"architect"-Knoten + Design-                  abhaengig (Nutzer): kleine/Einzel-
          Artefakt. Groessen-gegatet: klein->pro Goal,               Goals -> pro-Goal-architect; grosse
          gross->Plan-Ebene. Schnitt 4a-4d s.u.                      Plaene -> Plan-Ebenen-architect.
-                                                                    4a fertig 2026-07-12 (Artefakttyp
-                                                                    design, 6 Enum-Stellen+Go, 1005 gruen).
+                                                                    4a+4b fertig 2026-07-12 (4a: Artefakt
+                                                                    design; 4b: task_type architect,
+                                                                    Router reasoning 60-100, Registry
+                                                                    index->architect->impl->lint, Design-
+                                                                    Schema, FakeModel->design. 1015 gruen).
+                                                                    OFFEN: 4c (impl konsumiert design), 4d.
 I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene

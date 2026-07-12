@@ -92,6 +92,32 @@ class TestReadIntentSchema:
         assert set(content) == {"text"}
 
 
+class TestArchitectSchema:
+    """I-UX.4b: architect entwirft (Design-Prompt), keine Review-Form; die
+    Aenderungsabsicht ist die primaere Aufgabe (nicht 'Hinweis:')."""
+
+    def test_architect_design_prompt_not_review(self):
+        prompt = build_review_prompt(
+            "architect",
+            "file:core/x.py",
+            "x = 1",
+            extra_prompt="Fuege eine Login-Funktion hinzu",
+        )
+        assert "## 3. Bugs & Schwachstellen" not in prompt
+        assert "Wiederverwendung" in prompt  # Design-Header
+        # Aenderungsabsicht ist primaere Aufgabe unter eigenem Label, nicht "Hinweis:".
+        assert (
+            "Aenderungsabsicht des Nutzers: Fuege eine Login-Funktion hinzu" in prompt
+        )
+        assert "Hinweis:" not in prompt
+
+    def test_architect_response_whole_to_text(self):
+        content = build_content(
+            "Wiederverwendung: Login.validate. Ansatz: neuen Helper H.", "architect"
+        )
+        assert set(content) == {"text"}
+
+
 class TestContentSchema:
     def test_review_splits_into_fields(self):
         content = build_content(_REVIEW_RESPONSE, "review")
