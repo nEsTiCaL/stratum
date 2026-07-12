@@ -81,7 +81,8 @@
             "docstring",
             "plan",
             "patch",
-            "verify_report"
+            "verify_report",
+            "design"
           ]
         },
         "scope": { "type": "string" },

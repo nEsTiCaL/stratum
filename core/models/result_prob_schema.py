@@ -22,6 +22,7 @@ class ArtifactType(StrEnum):
     docstring = 'docstring'
     plan = 'plan'
     patch = 'patch'
+    design = 'design'
 
 
 class ResultProb(BaseModel):

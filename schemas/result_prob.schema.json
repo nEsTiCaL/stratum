@@ -18,7 +18,8 @@
         "test_generation",
         "docstring",
         "plan",
-        "patch"
+        "patch",
+        "design"
       ],
       "description": "Typ des prob-Artefakts, vom Worker aus task_type abgeleitet (deterministisch)"
     },

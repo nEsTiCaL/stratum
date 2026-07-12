@@ -74,13 +74,33 @@ Exakte Stellen:
   UX.2-Rest: Anfaenger nennt oft keine Datei).
 
 Entwurfsentscheidung GEFALLEN (Nutzer, 2026-07-12): **(b) eigener prob-
-"architect"-Knoten vor implement**. Nicht (a) (=det-Kontext nur in den decompose-
-Prompt). Begruendung des Nutzers-Wahl: reviewbares Design-Artefakt, kann Scope-
-Inferenz + Design tragen. Konsequenzen fuer den Bau: neuer task_type "architect",
-Template-Registry-Knoten, Routing (prob, cloud/intern-faehig), Rueckkante bzw.
-DAG-Einbettung vor implement, Codegen/Schema fuer das Design-Artefakt, Tests.
-Groesseres Inkrement als (a) -- entsprechend schneiden. Implement behaelt seinen
-datei-lokalen Kontext (node_prep.build_node_prompt) unveraendert.
+"architect"-Knoten**, nicht (a) (=det-Kontext nur in den decompose-Prompt).
+Verfeinerung (Nutzer): **groessen-abhaengig** -- kleine/Einzel-Goals ueber einen
+pro-Goal-architect (im implement/fix-Sub-DAG), GROSSE Plaene ueber einen
+uebergeordneten Plan-Ebenen-architect (nutzt `plan.large`). Artefakt: neuer
+prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
+
+**Schnitt (Primitive zuerst, dann Groessen-Gating):**
+- **4a (det) FERTIG 2026-07-12:** Artefakttyp `design` (prob). Enum-Wert an 6
+  Stellen (schemas/result_prob+provenance+events.json, core/models/result_prob+
+  provenance+events_schema.py) + cli/schema/generated.go (Const+enumValues).
+  content bleibt freies dict ({text: <markdown-design>}). Contract-Test
+  TestDesignArtifact (prob ja / det nein). 1005 gruen, lint ok. NOTIZ: JSON+Go
+  tragen noch "verify_report" (UX.5-Rename nur in Pydantic) -- kein aktives
+  Drift-Gate, Pydantic ist Wahrheitsmodell; vorbestehende Drift NICHT angefasst.
+- **4b (gem) NAECHSTES:** task_type `architect` (Router TaskRequirement reasoning-
+  Achse wie architecture; TASK_TYPE_TO_ARTIFACT_TYPE[architect]="design"). REGISTRY
+  implement/fix: index->architect->implement/fix->lint_gate. architect-Prompt-
+  Builder (Workspace-/Graph-Umriss + Goal-Instruktion). Tests: FakeModel->design,
+  DAG-Form.
+- **4c (gem):** implement/fix-Prompt konsumiert das aktuelle `design`-Artefakt des
+  Scopes (node_prep.build_node_prompt liest via repo, haengt als Kontext an,
+  analog gather_context/verify_feedback). Test: implement-Prompt traegt Design.
+- **4d (gem, danach):** groessen-gegateter Plan-Ebenen-architect (plan.large) --
+  ersetzt dort den pro-Goal-architect (kein Doppel). Heuristik dort festlegen.
+
+OFFEN separat: Scope-Inferenz aus Freitext (Anfaenger nennt keine Datei) ist
+UPSTREAM (Classifier/Decompose), NICHT der architect-Knoten -> eigenes Haeppchen.
 
 ## Empfohlene Reihenfolge
 I-UX.3 zuerst (klein, schliesst sichtbarsten Beginner-Befund), dann I-UX.4

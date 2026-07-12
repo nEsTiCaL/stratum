@@ -289,9 +289,12 @@ I-UX.3   Sub-Intent Read: explain/summarize erkennt   gem  I-UX.2    fertig 2026
                                                                     False. Human-Suffix task-bewusst
                                                                     (_output_hint: Diff->Codeblock,
                                                                     Read->Prosa). 1003 gruen, lint ok.
-I-UX.4   Architect-Schritt: det-Kontext auf Design-   gem  I-UX.2    E6 "Planer graph-blind":
-         Ebene an Planer/implement (welche Symbole/                 build_decompose_prompt bekommt
-         Konventionen existieren, was wiederverwenden)              NUR Freitext, kein impact/calls.
+I-UX.4   Architect-Schritt (Variante b, GEFALLEN):    gem  I-UX.2    E6 "Planer graph-blind". Groessen-
+         eigener prob-"architect"-Knoten + Design-                  abhaengig (Nutzer): kleine/Einzel-
+         Artefakt. Groessen-gegatet: klein->pro Goal,               Goals -> pro-Goal-architect; grosse
+         gross->Plan-Ebene. Schnitt 4a-4d s.u.                      Plaene -> Plan-Ebenen-architect.
+                                                                    4a fertig 2026-07-12 (Artefakttyp
+                                                                    design, 6 Enum-Stellen+Go, 1005 gruen).
 I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene

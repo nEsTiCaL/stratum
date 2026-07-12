@@ -294,6 +294,7 @@ const ResultEventArtifactTypeReviewFindings ResultEventArtifactType = "review_fi
 const ResultEventArtifactTypeSymbolIndex ResultEventArtifactType = "symbol_index"
 const ResultEventArtifactTypeTestGeneration ResultEventArtifactType = "test_generation"
 const ResultEventArtifactTypeVerifyReport ResultEventArtifactType = "verify_report"
+const ResultEventArtifactTypeDesign ResultEventArtifactType = "design"
 
 var enumValues_ResultEventArtifactType = []interface{}{
 	"symbol_index",
@@ -309,6 +310,7 @@ var enumValues_ResultEventArtifactType = []interface{}{
 	"plan",
 	"patch",
 	"verify_report",
+	"design",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

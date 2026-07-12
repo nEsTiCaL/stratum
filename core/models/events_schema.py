@@ -71,6 +71,7 @@ class ArtifactType(StrEnum):
     plan = 'plan'
     patch = 'patch'
     lint_report = 'lint_report'
+    design = 'design'
 
 
 class ProducerClass(StrEnum):

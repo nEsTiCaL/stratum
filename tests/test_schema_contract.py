@@ -213,6 +213,30 @@ class TestPatchArtifact:
             )
 
 
+class TestDesignArtifact:
+    """I-UX.4a: design ist ein prob-Artefakt (architect-Knoten, LLM-Entwurf ->
+    was wiederverwenden/welcher Ansatz; confidence Pflicht)."""
+
+    def test_design_accepted_as_prob(self):
+        r = ResultProb(
+            artifact_type="design",
+            scope="file:src/auth.py",
+            content={"text": "Wiederverwenden: Login.validate; neuer Helper H."},
+            confidence=0.8,
+            provenance={**_PROV_PROB, "artifact_type": "design"},
+        )
+        assert r.artifact_type.value == "design"
+
+    def test_design_rejected_as_det(self):
+        with pytest.raises(ValidationError):
+            ResultDet(
+                artifact_type="design",
+                scope="file:src/auth.py",
+                content={},
+                provenance={**_PROV_DET, "artifact_type": "design"},
+            )
+
+
 class TestScopePattern:
     @pytest.mark.parametrize(
         "scope",
