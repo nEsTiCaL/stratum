@@ -41,30 +41,26 @@ model_metrics). Erst danach sind UX.1/2/5 am laufenden Server sichtbar.
 
 ## Naechste Schritte (direkt startbar)
 
-### I-UX.3 -- Read-Sub-Intent + task-bewusster Format-Suffix  (EMPFOHLEN ZUERST)
-Ziel: explain (mit Frage) beantwortet DIE FRAGE; summarize gibt Ueberblick;
-Review-4-Ueberschriften nur noch fuer review. Behebt UC5/UC3-Befund.
-
-Exakte Stellen:
-- `core/review_format.py`: `_SCHEMAS` (Zeile ~125) hat schon document/test_gen
-  (#2b-Muster, `_AnswerSchema`, `review_split=False`). NEU: Eintraege fuer
-  `explain` (frage-zentriert: "Beantworte die Frage des Nutzers direkt, belege
-  mit realen Symbolen/Zeilen; wenn keine Frage, erklaere Zweck+Struktur") und
-  `summarize` (Ueberblick). `_QUESTIONS`/`_QUESTIONS_DEFAULT` (Z.25/39) sind die
-  Default-Leitfragen -> nur noch fuer review-Default.
-- **Format-Suffix-Widerspruch:** `interfaces/webgui/routers/human.py:110`
-  ("Gib die Antwort in einem einzigen großen Codeblock unformatiert zurück.")
-  wird breit an Prompts gehaengt und widerspricht den 4 Ueberschriften. Quelle
-  pruefen (wer haengt ihn an den NICHT-human-Prompt? erschien in explain-Prompt
-  155 UND write-Prompt 157) und schema-abhaengig machen: Diff-Tasks -> Codeblock;
-  Read/Frage -> Markdown/Prosa, KEIN Codeblock-Zwang.
-- Verdrahtung `build_content(response, task_type)` ist schon durchgereicht
-  (worker/validator/human) -- Schema-Auswahl haengt an task_type.
-
-Testplan (det, prompt-inspektiv, FakeModel): `GET /api/prompt` fuer explain traegt
-die Frage als PRIMAERE Aufgabe (nicht "Hinweis"), KEINE 4-Ueberschriften-Vorlage,
-KEIN widerspruechlicher Codeblock-Suffix. Muster: `tests/test_answer_schema.py`
-(existiert, #2b). Danach optional Live-Re-Run UC5/UC3.
+### I-UX.3 -- Read-Sub-Intent + task-bewusster Format-Suffix  FERTIG 2026-07-12
+Umgesetzt (Commit ausstehend):
+- `core/review_format.py`: `_AnswerSchema` um Feld `answers_question` erweitert.
+  Neue `_SCHEMAS`-Eintraege `explain` (answers_question=True, review_split=False)
+  + `summarize` (Ueberblick, review_split=False) mit eigenen Headern
+  `_EXPLAIN_HEADER`/`_SUMMARIZE_HEADER`. In `build_review_prompt`: bei
+  answers_question wird `extra_prompt` als "Frage des Nutzers (beantworte sie
+  direkt): ..." zur PRIMAEREN Aufgabe (statt nachrangigem "Hinweis:"). Review-4-
+  Ueberschriften nur noch fuer review + unbekannte analytische Typen (debug etc.).
+- `interfaces/webgui/routers/human.py`: `_HUMAN_OUTPUT_HINT` -> task-bewusst
+  (`_output_hint(task_type)`): Diff-Tasks (implement/fix, `_DIFF_TASK_TYPES`) ->
+  Codeblock-Zwang (Diff-Paste); lesende/analytische -> Markdown-Prosa, KEIN
+  Codeblock-Zwang. `_human_prompt` nimmt jetzt task_type (claim + prompt-Endpoint).
+  BEFUND-KORREKTUR: der Suffix war NUR im human-Pfad (nicht im LLM-Worker-Prompt);
+  der Live-Run-Eindruck "auch im NICHT-human-Prompt" kam daher, dass die Tasks
+  human-geroutet waren.
+- Tests: `tests/test_answer_schema.py` (Klasse TestReadIntentSchema, 5 neu),
+  `tests/test_webgui.py` (TestHumanPromptOutputHint auf Diff-vs-Read umgestellt;
+  TestClaimEndpoint/summarize-Assertion auf Ueberblick-Schema korrigiert). 1003
+  gruen, lint+format ok. Optional offen: Live-Re-Run UC5/UC3 am laufenden Server.
 
 ### I-UX.4 -- Architect: det-Kontext an den Planer  (GROESSER, Entwurf offen)
 Ziel: `build_decompose_prompt` ist graph-blind (E6). Planer soll wissen, welche
@@ -77,10 +73,14 @@ Exakte Stellen:
   (Workspace-Symbole/Graph). Ggf. auch scope-INFERENZ aus Freitext (offener
   UX.2-Rest: Anfaenger nennt oft keine Datei).
 
-Offene Entwurfsentscheidung (mit Nutzer klaeren): (a) det-Kontext IN den
-decompose-Prompt einspeisen (kein neuer Knoten) vs. (b) eigener prob-"architect"-
-Knoten vor implement. Bisherige Neigung: (a) fuer den Planer. Implement bekommt
-datei-lokalen Kontext bereits.
+Entwurfsentscheidung GEFALLEN (Nutzer, 2026-07-12): **(b) eigener prob-
+"architect"-Knoten vor implement**. Nicht (a) (=det-Kontext nur in den decompose-
+Prompt). Begruendung des Nutzers-Wahl: reviewbares Design-Artefakt, kann Scope-
+Inferenz + Design tragen. Konsequenzen fuer den Bau: neuer task_type "architect",
+Template-Registry-Knoten, Routing (prob, cloud/intern-faehig), Rueckkante bzw.
+DAG-Einbettung vor implement, Codegen/Schema fuer das Design-Artefakt, Tests.
+Groesseres Inkrement als (a) -- entsprechend schneiden. Implement behaelt seinen
+datei-lokalen Kontext (node_prep.build_node_prompt) unveraendert.
 
 ## Empfohlene Reihenfolge
 I-UX.3 zuerst (klein, schliesst sichtbarsten Beginner-Befund), dann I-UX.4

@@ -39,8 +39,57 @@ class TestPromptSchemaSelection:
         assert "codeblock" in prompt.lower()
 
     def test_unknown_type_falls_back_to_review_header(self):
-        prompt = build_review_prompt("explain", "file:core/x.py", "x = 1")
+        # debug ist analytisch und behaelt die Review-4-Ueberschriften-Form.
+        prompt = build_review_prompt("debug", "file:core/x.py", "x = 1")
         assert "## 1. Struktur & Verantwortlichkeiten" in prompt
+
+
+class TestReadIntentSchema:
+    """I-UX.3: explain beantwortet die FRAGE des Nutzers (nicht Review-Form),
+    summarize gibt einen Ueberblick. Keine 4-Review-Ueberschriften, kein
+    Codeblock-Zwang -- die Nutzerfrage ist die primaere Aufgabe, kein 'Hinweis:'."""
+
+    def test_explain_makes_question_primary(self):
+        prompt = build_review_prompt(
+            "explain",
+            "file:core/x.py",
+            "x = 1",
+            extra_prompt="Was macht die Funktion connect()?",
+        )
+        assert "Was macht die Funktion connect()?" in prompt
+        assert "(beantworte sie direkt):" in prompt  # primaerer Frage-Block
+        assert "Hinweis:" not in prompt  # nicht als Randnotiz degradiert
+        assert "## 3. Bugs & Schwachstellen" not in prompt  # keine Review-Form
+        assert "erklaer" in prompt.lower()
+
+    def test_explain_without_question_explains_purpose(self):
+        prompt = build_review_prompt("explain", "file:core/x.py", "x = 1")
+        assert "## 1. Struktur & Verantwortlichkeiten" not in prompt
+        assert "(beantworte sie direkt):" not in prompt  # kein Frage-Block
+        assert "zweck" in prompt.lower()
+
+    def test_summarize_gives_overview_not_review(self):
+        prompt = build_review_prompt("summarize", "file:core/x.py", "x = 1")
+        assert "## 3. Bugs & Schwachstellen" not in prompt
+        assert "ueberblick" in prompt.lower()
+
+    def test_explain_response_whole_to_text(self):
+        # Enthaelt die explain-Antwort zufaellig eine Review-artige Ueberschrift,
+        # wird sie NICHT in findings gesplittet -- explain ist keine Review-Form.
+        answer = (
+            "Die Funktion `connect()` oeffnet eine Verbindung.\n"
+            "## 3. Bugs & Schwachstellen\n"
+            "Das ist hier nur Prosa, keine Findings.\n"
+        )
+        content = build_content(answer, "explain")
+        assert set(content) == {"text"}
+        assert "connect()" in content["text"]
+
+    def test_summarize_response_whole_to_text(self):
+        content = build_content(
+            "Diese Datei kapselt den Client. Kernklasse: `Foo`.", "summarize"
+        )
+        assert set(content) == {"text"}
 
 
 class TestContentSchema:

@@ -88,6 +88,9 @@ class _AnswerSchema:
     header: str
     questions: str
     review_split: bool
+    # I-UX.3: extra_prompt ist die FRAGE des Nutzers und damit die primaere
+    # Aufgabe (explain) -- nicht als "Hinweis:" ans Ende degradiert.
+    answers_question: bool = False
 
 
 _DOCUMENT_HEADER = (
@@ -122,7 +125,43 @@ _TESTGEN_HEADER = (
     "---"
 )
 
+_EXPLAIN_HEADER = (
+    "Du erklaerst Code. Du bekommst eine Quelldatei und beantwortest die Frage "
+    "des Nutzers dazu.\n"
+    "Antworte in klarer Markdown-Prosa. Belege deine Antwort mit realen "
+    "Symbolen/Zeilen aus der Datei (nenne Funktions-/Klassennamen und Zeilen). "
+    "Gibt es keine konkrete Frage, erklaere Zweck und Struktur der Datei. KEINE "
+    "Review-Ueberschriften, KEINE Bug-Suche, KEIN alles-umschliessender "
+    "Codeblock (einzelne Code-Schnipsel als Inline-/Blockcode sind ok).\n\n"
+    "---"
+)
+_SUMMARIZE_HEADER = (
+    "Du fasst Code zusammen. Du bekommst eine Quelldatei und gibst einen knappen "
+    "Ueberblick.\n"
+    "Antworte in kurzer Markdown-Prosa: Zweck der Datei, die wichtigsten Symbole "
+    "und ihr Zusammenspiel. KEINE Review-Ueberschriften, KEINE Bug-Analyse, KEIN "
+    "alles-umschliessender Codeblock.\n\n"
+    "---"
+)
+
 _SCHEMAS: dict[str, _AnswerSchema] = {
+    "explain": _AnswerSchema(
+        header=_EXPLAIN_HEADER,
+        questions=(
+            "Beantworte die Frage des Nutzers direkt und belege sie mit realen "
+            "Symbolen/Zeilen. Ohne konkrete Frage: erklaere Zweck und Struktur."
+        ),
+        review_split=False,
+        answers_question=True,
+    ),
+    "summarize": _AnswerSchema(
+        header=_SUMMARIZE_HEADER,
+        questions=(
+            "Gib einen knappen Ueberblick: Zweck der Datei, wichtigste Symbole "
+            "und ihr Zusammenspiel."
+        ),
+        review_split=False,
+    ),
     "document": _AnswerSchema(
         header=_DOCUMENT_HEADER,
         questions=(
@@ -162,9 +201,11 @@ def build_review_prompt(
     if schema is None:
         header = _PROMPT_HEADER
         questions = _QUESTIONS.get(str(task_type), _QUESTIONS_DEFAULT)
+        answers_question = False
     else:
         header = schema.header
         questions = schema.questions
+        answers_question = schema.answers_question
     parts = [header, f"\nScope: {scope}"]
     if source_code:
         target = scope[len("file:") :] if scope.startswith("file:") else scope
@@ -173,7 +214,12 @@ def build_review_prompt(
     if context:
         parts.append(f"\n{context}")
     if extra_prompt:
-        parts.append(f"\nHinweis: {extra_prompt}")
+        # answers_question (explain): der Freitext IST die Aufgabe, nicht ein
+        # nachrangiger "Hinweis:".
+        if answers_question:
+            parts.append(f"\nFrage des Nutzers (beantworte sie direkt): {extra_prompt}")
+        else:
+            parts.append(f"\nHinweis: {extra_prompt}")
     parts.append(f"\n{questions}")
     return "\n".join(parts)
 

@@ -281,10 +281,14 @@ I-UX.2   Intent-Verdrahtung: Classifier (existiert,   gem  -         Entscheidun
                                                                     fertig 2026-07-12 (4 Tests).
                                                                     OFFEN: scope-Inferenz aus
                                                                     Freitext (-> I-UX.4 Architect).
-I-UX.3   Sub-Intent Read: explain/summarize erkennt   gem  I-UX.2    Frage landet heute nur als
-         Frage vs. Ueberblick vs. Review; globaler                  "Hinweis" in Review-Vorlage;
-         Format-Suffix wird task-bewusst (behebt                    globaler Suffix "ein grosser
-         Selbstwiderspruch im Prompt)                               Codeblock" widerspricht "4 Ueberschr."
+I-UX.3   Sub-Intent Read: explain/summarize erkennt   gem  I-UX.2    fertig 2026-07-12: _SCHEMAS +
+         Frage vs. Ueberblick vs. Review; globaler                  explain (answers_question=True ->
+         Format-Suffix wird task-bewusst (behebt                    Freitext=primaerer Frage-Block,
+         Selbstwiderspruch im Prompt)                               nicht "Hinweis:") + summarize
+                                                                    (Ueberblick), beide review_split=
+                                                                    False. Human-Suffix task-bewusst
+                                                                    (_output_hint: Diff->Codeblock,
+                                                                    Read->Prosa). 1003 gruen, lint ok.
 I-UX.4   Architect-Schritt: det-Kontext auf Design-   gem  I-UX.2    E6 "Planer graph-blind":
          Ebene an Planer/implement (welche Symbole/                 build_decompose_prompt bekommt
          Konventionen existieren, was wiederverwenden)              NUR Freitext, kein impact/calls.
@@ -330,11 +334,12 @@ Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 (`ops_n1-queries`, `ops_prob-dogfooding`).
 
 Aktueller Fokus (2026-07-12): Beginner-Flow-Familie I-UX. UX.1 (Upload), UX.2
-(Intent im Hauptpfad), UX.5 (Rename lint_gate) fertig+committed+gepusht. NAECHSTER
-SCHRITT: I-UX.3 (explain/summarize frage-zentriertes Schema), danach I-UX.4
-(Architect). Voller Wiedereinstieg + exakte Stellen: `spec_beginner-flow`.
-OFFEN/DEPLOY: laufender Container auf altem Code -> Rebuild + `-m core.db migrate`
-(Migration 0011), damit UX.1/2/5 live sind.
+(Intent im Hauptpfad), UX.5 (Rename lint_gate) fertig+committed+gepusht. UX.3
+(explain/summarize frage-zentriertes Schema + task-bewusster Human-Suffix) fertig,
+Commit ausstehend. NAECHSTER SCHRITT: I-UX.4 (Architect) -- Entscheidung GEFALLEN:
+Variante (b) eigener prob-"architect"-Knoten (nicht (a)). Voller Wiedereinstieg +
+exakte Stellen: `spec_beginner-flow`. OFFEN/DEPLOY: laufender Container auf altem
+Code -> Rebuild + `-m core.db migrate` (Migration 0011), damit UX.1/2/5 live sind.
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

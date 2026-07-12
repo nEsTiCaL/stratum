@@ -469,7 +469,9 @@ class TestClaimEndpoint:
         assert "system_prompt" not in body
         assert "user_message" not in body
         assert "Scope: file:core/queue.py" in body["prompt"]
-        assert "## 1. Struktur & Verantwortlichkeiten" in body["prompt"]
+        # summarize -> Ueberblick-Schema (I-UX.3), nicht die Review-Ueberschriften.
+        assert "Ueberblick" in body["prompt"]
+        assert "## 1. Struktur & Verantwortlichkeiten" not in body["prompt"]
 
     def test_claim_requires_auth(self, client_with_task):
         c, item_id = client_with_task
@@ -1671,31 +1673,39 @@ class TestClaimShowsVerifyFeedback:
 
 
 class TestHumanPromptOutputHint:
-    """Jeder Human-Prompt (claim + prompt) endet mit der fixen Ausgabe-Anweisung:
-    eine einzige, unformatierte Codeblock-Antwort -> sauber ins Dashboard-Submit-
-    Feld einfuegbar und vom Parser (_result_from_submission) verwertbar."""
+    """I-UX.3: Der Ausgabe-Hinweis am Human-Prompt ist task-bewusst. Diff-Tasks
+    (implement/fix -> Patch) brauchen einen alles-umschliessenden Codeblock fuer
+    den sauberen Diff-Paste; lesende/analytische Tasks (review/explain/...)
+    liefern Markdown-Prosa -- der Codeblock-Zwang widerspraeche dem Read-Schema."""
 
-    _HINT = "einem einzigen großen Codeblock unformatiert"
+    _DIFF_HINT = "einem einzigen großen Codeblock unformatiert"
 
-    def _seed(self, conn):
+    def _seed(self, conn, task_type):
         queue = Queue(conn)
         repo = Repository(conn)
         (item_id,) = queue.enqueue(
-            _dag(task_type="review"), model="human", owner=TEST_OWNER
+            _dag(task_type=task_type), model="human", owner=TEST_OWNER
         )
         return queue, repo, item_id
 
-    def test_prompt_endpoint_has_hint(self, conn):
-        queue, repo, item_id = self._seed(conn)
-        with TestClient(create_app(queue, repo)) as c:
+    def test_diff_task_gets_codeblock_hint(self, conn):
+        _q, _r, item_id = self._seed(conn, "fix")
+        with TestClient(create_app(_q, _r)) as c:
             p = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
-        assert self._HINT in p
+        assert self._DIFF_HINT in p
 
-    def test_claim_endpoint_has_hint(self, conn):
-        queue, repo, item_id = self._seed(conn)
-        with TestClient(create_app(queue, repo)) as c:
+    def test_read_task_has_no_codeblock_zwang(self, conn):
+        _q, _r, item_id = self._seed(conn, "review")
+        with TestClient(create_app(_q, _r)) as c:
+            p = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
+        assert self._DIFF_HINT not in p
+        assert "prosa" in p.lower()
+
+    def test_claim_diff_task_gets_codeblock_hint(self, conn):
+        _q, _r, item_id = self._seed(conn, "implement")
+        with TestClient(create_app(_q, _r)) as c:
             p = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
-        assert self._HINT in p
+        assert self._DIFF_HINT in p
 
 
 class TestWorkspaceEndpoints:

@@ -102,20 +102,36 @@ def _result_from_submission(
 
 
 # Der Mensch kopiert diesen Prompt in einen externen Chatbot und die Antwort
-# zurueck ins Dashboard-Submit-Feld. Eine einzige, unformatierte Codeblock-Antwort
-# laesst sich sauber einfuegen und vom Submit-Parser (_result_from_submission ->
-# extract_diff fuer patch bzw. build_content sonst) verwerten -- formatierte Prosa
-# drumherum fuehrt sonst zu Diff-/Parse-Fehlern.
-_HUMAN_OUTPUT_HINT = (
+# zurueck ins Dashboard-Submit-Feld. I-UX.3: der Ausgabe-Hinweis ist task-bewusst.
+# Diff-Tasks (implement/fix -> Patch): eine einzige, unformatierte Codeblock-
+# Antwort laesst sich sauber einfuegen und vom Submit-Parser (extract_diff)
+# verwerten -- formatierte Prosa drumherum fuehrt sonst zu Diff-/Parse-Fehlern.
+# Lesende/analytische Tasks (review/explain/summarize/...): Markdown-Prosa; der
+# Codeblock-Zwang widerspraeche dem Read-Schema (build_content splittet/uebernimmt
+# die Prosa, kein Diff erwartet).
+_DIFF_TASK_TYPES = frozenset({"implement", "fix"})
+_HUMAN_OUTPUT_HINT_DIFF = (
     "Gib die Antwort in einem einzigen großen Codeblock unformatiert zurück."
+)
+_HUMAN_OUTPUT_HINT_TEXT = (
+    "Antworte in Markdown-Prosa. Verpacke die Antwort NICHT in einen alles-"
+    "umschliessenden Codeblock (einzelne Code-Schnipsel als Inline-/Blockcode "
+    "sind ok)."
 )
 
 
-def _human_prompt(base: str, feedback: str | None) -> str:
+def _output_hint(task_type: str) -> str:
+    """Ausgabe-Anweisung je Antwortform: Diff-Tasks -> Codeblock, sonst Prosa."""
+    if task_type in _DIFF_TASK_TYPES:
+        return _HUMAN_OUTPUT_HINT_DIFF
+    return _HUMAN_OUTPUT_HINT_TEXT
+
+
+def _human_prompt(base: str, feedback: str | None, task_type: str) -> str:
     """Menschlicher Prompt = Basis (+ Verify-Feedback der Rueckkante,
-    prompt_with_feedback als EINE Quelle mit dem LLM-Worker) + fixe Ausgabe-
-    Anweisung am Ende. Geteilt von claim + prompt."""
-    return f"{prompt_with_feedback(base, feedback)}\n\n{_HUMAN_OUTPUT_HINT}"
+    prompt_with_feedback als EINE Quelle mit dem LLM-Worker) + task-bewusste
+    Ausgabe-Anweisung am Ende. Geteilt von claim + prompt."""
+    return f"{prompt_with_feedback(base, feedback)}\n\n{_output_hint(task_type)}"
 
 
 @router.post("/api/claim/{task_id}")
@@ -145,6 +161,7 @@ async def claim_task(
         "prompt": _human_prompt(
             stored or deps.node_prompt(item.task_type, item.scope),
             item.payload.get("verify_feedback"),
+            item.task_type,
         ),
     }
 
@@ -167,6 +184,7 @@ async def get_task_prompt(
         "prompt": _human_prompt(
             stored or deps.node_prompt(task_type, scope),
             info["payload"].get("verify_feedback"),
+            task_type,
         ),
     }
 
