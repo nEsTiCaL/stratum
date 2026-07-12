@@ -28,7 +28,7 @@ LARGE_PLAN_THRESHOLD = 5
 # Planbare (nutzer-auswaehlbare) task_types fuer den Cockpit-Dropdown (ueber
 # GET /api/intent/task-types). Abgeleitet aus der einzigen Wahrheitsquelle
 # core/plan_format.PLANNABLE_TASK_TYPES (dort mit Beschreibung, speist den
-# Prompt). verify fehlt bewusst -- det VerifyWorker-Typ, kein waehlbares Goal.
+# Prompt). verify fehlt bewusst -- det LintGateWorker-Typ, kein waehlbares Goal.
 # build_decompose_prompt wird hier re-exportiert (I-2.7-API; app.py nutzt es
 # fuer POST /api/intent/prompt).
 PLANNER_TASK_TYPES: tuple[TaskType, ...] = tuple(

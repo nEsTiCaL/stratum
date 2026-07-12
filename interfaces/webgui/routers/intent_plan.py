@@ -52,7 +52,7 @@ from interfaces.webgui.schemas import (
 router = APIRouter()
 
 # Schreibende task_types (Artefakt = "patch"): sie brauchen den vollen
-# index->write->verify-Nachlauf (Auto-Apply hinter dem VerifyWorker). Ein direkter
+# index->write->verify-Nachlauf (Auto-Apply hinter dem LintGateWorker). Ein direkter
 # Ein-Knoten-Task liefe sonst als Sackgassen-Patch ins Leere -- daher ueber
 # build_dag/enqueue_plan wie ein bestaetigter Plan (Entscheidung 2026-07-11:
 # Nutzbarkeit + Wiederverwendung, dieselbe Write-Path-Quelle wie confirm_plan).

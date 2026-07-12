@@ -1,9 +1,9 @@
-"""VerifyWorker (I-7.3): empirische Pruefung eines Patches -- git-frei.
+"""LintGateWorker (I-7.3): empirische Pruefung eines Patches -- git-frei.
 
-Der VerifyWorker ist ein EIGENER det-Worker (Entscheidung 2026-07-04). Er wendet
+Der LintGateWorker ist ein EIGENER det-Worker (Entscheidung 2026-07-04). Er wendet
 ein patch-Artefakt git-frei an (core.patch_apply, gegen den Working Tree --
 committed ODER nicht) und lintet die gepatchten Dateien. Ergebnis ist ein
-verify_report (det-Artefakt). Er schreibt NIE in den echten Tree.
+lint_report (det-Artefakt). Er schreibt NIE in den echten Tree.
 
 Warum kein git/pytest mehr (Entscheidung 2026-07-05):
 - git-Worktree @HEAD sah nicht committete Dateien nicht -> Requirement verletzt;
@@ -49,7 +49,7 @@ _MAX_LINT_OUTPUT = 1500
 
 
 @dataclass(frozen=True)
-class VerifyOutcome:
+class LintOutcome:
     """Ergebnis eines Verify-Laufs. passed = Patch sauber appliziert UND kein
     Linter rot. applied trennt 'Patch passte nicht' von 'Linter rot'."""
 
@@ -93,7 +93,7 @@ def lint_patch(
     timeout_s: int = DEFAULT_TIMEOUT_S,
     run_cmd: Callable[..., tuple[int, str]] | None = None,
     read_current: ReadCurrent | None = None,
-) -> VerifyOutcome:
+) -> LintOutcome:
     """Wendet den Diff git-frei an und lintet jede gepatchte Datei per-File.
 
     Kein Worktree, kein tree-Snapshot (Entscheidung: per-File linten). Fehlt ein
@@ -105,7 +105,7 @@ def lint_patch(
 
     result = apply_diff(diff, read_current)
     if not result.ok:
-        return VerifyOutcome(False, False, result.reason, ())
+        return LintOutcome(False, False, result.reason, ())
 
     entries: list[dict] = []
     passed = True
@@ -133,7 +133,7 @@ def lint_patch(
                         "exit_code": -1,
                     }
                 )
-                return VerifyOutcome(
+                return LintOutcome(
                     False, True, f"Linter-Timeout: {chg.path}", tuple(entries)
                 )
             except FileNotFoundError:
@@ -177,10 +177,10 @@ def lint_patch(
         summary = "sauber appliziert; kein Linter fuer Zielsprache (neutral)"
     else:
         summary = "sauber appliziert; Linter gruen"
-    return VerifyOutcome(passed, True, summary, tuple(entries))
+    return LintOutcome(passed, True, summary, tuple(entries))
 
 
-def feedback_text(outcome: VerifyOutcome) -> str:
+def feedback_text(outcome: LintOutcome) -> str:
     """Rueckkante-Feedback (I-7.4): Summary + Linter-Findings der roten Dateien.
 
     Nur "Linter meldet Fehler" ist als Feedback wertlos -- erst die konkreten
@@ -206,21 +206,21 @@ def prompt_with_feedback(prompt: str, feedback: str | None) -> str:
 
 
 @dataclass
-class VerifyWorker:
+class LintGateWorker:
     """Laedt das patch-Artefakt eines scope, prueft es git-frei und schreibt ein
-    verify_report (det). sandbox ist injizierbar (Seam)."""
+    lint_report (det). sandbox ist injizierbar (Seam)."""
 
     root: Path = field(default_factory=Path)
-    sandbox: Callable[..., VerifyOutcome] = lint_patch
+    sandbox: Callable[..., LintOutcome] = lint_patch
     linters: Mapping[str, tuple[str, ...]] = field(
         default_factory=lambda: dict(DEFAULT_LINTERS)
     )
     timeout_s: int = DEFAULT_TIMEOUT_S
 
-    def run(self, item: QueueItem, repo: Repository) -> VerifyOutcome:
+    def run(self, item: QueueItem, repo: Repository) -> LintOutcome:
         patch = repo.get_current(item.scope, "patch")
         if patch is None:
-            outcome = VerifyOutcome(False, False, "kein patch-Artefakt fuer scope", ())
+            outcome = LintOutcome(False, False, "kein patch-Artefakt fuer scope", ())
             diff = ""
         else:
             diff = patch.content.get("diff", "")
@@ -231,7 +231,7 @@ class VerifyWorker:
         return outcome
 
     def _store_report(
-        self, scope: str, diff: str, outcome: VerifyOutcome, repo: Repository
+        self, scope: str, diff: str, outcome: LintOutcome, repo: Repository
     ) -> None:
         from core.ingest import resolve_source_hash
 
@@ -243,12 +243,12 @@ class VerifyWorker:
             producer_version="1",
             producer_class="det",
             timestamp=datetime.now(UTC),
-            artifact_type="verify_report",
+            artifact_type="lint_report",
             scope=scope,
         )
         repo.put_artifact(
             ResultDet(
-                artifact_type="verify_report",
+                artifact_type="lint_report",
                 scope=scope,
                 content={
                     "passed": outcome.passed,

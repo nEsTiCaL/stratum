@@ -292,6 +292,16 @@ I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene
          Schritte reserviert (Test-Ausf./LLM-Review)                Inkremente, jetzt NUR Name.
+                                                                    fertig 2026-07-12: task_type
+                                                                    verify->lint_gate, artifact
+                                                                    verify_report->lint_report,
+                                                                    VerifyWorker->LintGateWorker,
+                                                                    VerifyOutcome->LintOutcome,
+                                                                    core/verify_worker.py->lint_gate.py,
+                                                                    Migration 0011 (queue+artifacts+
+                                                                    model_metrics). repository.verify_
+                                                                    api_key (Auth) BLEIBT. Prosa-"verify"
+                                                                    in Docstrings tw. gelassen. 997 gruen.
 ```
 
 ## Status

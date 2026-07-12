@@ -135,7 +135,7 @@ class TestDirectWriteTask:
         assert body["id"] == body["task_ids"][0]
         assert "dag_id" in body
         rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
-        assert [row[0] for row in rows] == ["index", "fix", "verify"]
+        assert [row[0] for row in rows] == ["index", "fix", "lint_gate"]
 
     def test_implement_task_builds_full_write_dag(self, client, conn):
         r = client.post(
@@ -145,7 +145,7 @@ class TestDirectWriteTask:
         )
         assert r.status_code == 201
         rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
-        assert [row[0] for row in rows] == ["index", "implement", "verify"]
+        assert [row[0] for row in rows] == ["index", "implement", "lint_gate"]
 
     def test_read_task_stays_single_node(self, client, conn):
         r = client.post(
@@ -1131,7 +1131,7 @@ class TestIntentPromptEndpoints:
             body = c.get("/api/intent/task-types", headers=AUTH).json()
         assert body["task_types"] == [t.value for t in PLANNER_TASK_TYPES]
         assert "implement" in body["task_types"]
-        assert "verify" not in body["task_types"]  # det-Typ, nicht waehlbar
+        assert "lint_gate" not in body["task_types"]  # det-Typ, nicht waehlbar
 
     def test_prompt_requires_auth(self, conn):
         with self._c(conn) as c:
@@ -1568,7 +1568,7 @@ def client_with_implement_task(conn):
 class TestPatchSubmit:
     """Regression Task-8-Vorfall: Human-Submit fuer implement/fix muss dasselbe
     patch-content-Layout ablegen wie der LLM-Worker (content.diff), sonst liest
-    der VerifyWorker einen leeren Diff ("kein anwendbarer Hunk", Endlos-
+    der LintGateWorker einen leeren Diff ("kein anwendbarer Hunk", Endlos-
     Rueckkante)."""
 
     def test_submit_stores_content_diff(self, client_with_implement_task):

@@ -9,7 +9,7 @@ separat via build_patch_prompt). Hier zentralisiert und damit unit-testbar:
   - build_node_prompt: Prob-Prompt je task_type (Quellcode + Graph-Kontext).
   - ensure_indexed:    Auto-Index eines file:-Scopes (best-effort).
   - materialize_prob_nodes: prob-Knoten eines eingereihten DAG mit Claim-Key-
-    Routing + Prompt versehen; det/verify bleiben ohne Prompt (Det-/VerifyWorker).
+    Routing + Prompt versehen; det/verify bleiben ohne Prompt (Det-/LintGateWorker).
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def materialize_prob_nodes(
 ) -> None:
     """Fuer jeden eingereihten prob-Knoten (nicht det, nicht verify): Claim-Key
     ueber claim_model umrouten (set_model bei Abweichung) und Prompt setzen.
-    det (DetWorker) + verify (VerifyWorker) bleiben ohne Prompt auf base_model.
+    det (DetWorker) + verify (LintGateWorker) bleiben ohne Prompt auf base_model.
 
     auto_capable None -> kein Umrouten (Tests/Standalone ohne Profil-Wissen; wie
     der fruehere _claim_model-Kurzschluss). prompt_for(node) liefert den Prompt je
@@ -104,7 +104,7 @@ def materialize_prob_nodes(
     pending-Knoten, gleiche Reihenfolge wie die non-done-Knoten des DAG)."""
     enqueued = [n for n in dag.nodes if n.status != "done"]
     for node, tid in zip(enqueued, task_ids, strict=True):
-        if node.task_type == TaskType.verify.value:
+        if node.task_type == TaskType.lint_gate.value:
             continue
         if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
             continue  # det -> DetWorker, kein Prompt, Claim-Key bleibt

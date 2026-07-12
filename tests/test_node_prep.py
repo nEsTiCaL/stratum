@@ -78,7 +78,7 @@ class TestMaterializeProbNodes:
             nodes=[
                 _node("n1", task_type="index", depends_on=()),
                 _node("n2", task_type="review", depends_on=("n1",)),
-                _node("n3", task_type="verify", depends_on=("n2",)),
+                _node("n3", task_type="lint_gate", depends_on=("n2",)),
             ],
         )
         q = Queue(conn)

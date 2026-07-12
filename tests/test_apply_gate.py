@@ -16,7 +16,7 @@ _ROOT = Path(".")
 
 
 class _Repo:
-    """Liefert patch/verify_report je nach Verfuegbarkeit."""
+    """Liefert patch/lint_report je nach Verfuegbarkeit."""
 
     def __init__(self, *, patch=True, verified=True):
         self._patch = (
@@ -33,7 +33,7 @@ class _Repo:
     def get_current(self, scope, artifact_type, *, trustworthy=False):
         if artifact_type == "patch":
             return self._patch
-        if artifact_type == "verify_report":
+        if artifact_type == "lint_report":
             return self._report
         return None
 
@@ -86,7 +86,7 @@ class TestGate:
             apply_fn=apply_fn,
         )
         assert not r.applied and acalls == []
-        assert "verify_report" in r.reason
+        assert "lint_report" in r.reason
 
     def test_missing_report_no_write(self):
         apply_fn, acalls = _spy_apply()
@@ -195,10 +195,10 @@ def _put_patch(repo):
 def _put_report(repo, passed):
     repo.put_artifact(
         ResultDet(
-            artifact_type="verify_report",
+            artifact_type="lint_report",
             scope=_SCOPE,
             content={"passed": passed, "applied": True, "summary": "x", "commands": []},
-            provenance=_prov("verify_report", "det"),
+            provenance=_prov("lint_report", "det"),
         )
     )
 
@@ -231,7 +231,7 @@ class TestApplyRest:
             "/api/apply", json={"scope": _SCOPE, "confirm": True}, headers=_AUTH
         )
         assert r.status_code == 409
-        assert "verify_report" in r.json()["detail"]
+        assert "lint_report" in r.json()["detail"]
 
     def test_apply_requires_auth(self, apply_client):
         client, _ = apply_client

@@ -201,7 +201,7 @@ class Queue:
         Gibt True zurueck, wenn mindestens ein Vorgaenger neu geoeffnet wurde;
         False bei Kappung (kein Vorgaenger mehr unter max_attempts) -> der
         Aufrufer laesst den verify-Knoten terminal fehlschlagen (Belegkette:
-        Patch- + verify_report-Artefakt bleiben im Store).
+        Patch- + lint_report-Artefakt bleiben im Store).
         """
         deps = list(verify_item.depends_on)
         if not deps:

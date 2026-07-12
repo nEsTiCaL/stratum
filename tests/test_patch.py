@@ -197,11 +197,11 @@ class TestImplementDecomposition:
     def test_implement_sub_dag_shape(self):
         dag = decompose("implement", "file:core/foo.py", scope_resolver=_FakeResolver())
         by_type = {n.task_type: n for n in dag.nodes}
-        assert set(by_type) == {"index", "implement", "verify"}
+        assert set(by_type) == {"index", "implement", "lint_gate"}
         # verify haengt an implement, implement an index
-        assert by_type["verify"].depends_on == ("n2",)
+        assert by_type["lint_gate"].depends_on == ("n2",)
         assert by_type["implement"].depends_on == ("n1",)
 
     def test_fix_sub_dag_shape(self):
         dag = decompose("fix", "file:core/foo.py", scope_resolver=_FakeResolver())
-        assert {n.task_type for n in dag.nodes} == {"index", "fix", "verify"}
+        assert {n.task_type for n in dag.nodes} == {"index", "fix", "lint_gate"}

@@ -223,10 +223,10 @@ def test_prompt_template_contains_implement_and_fix():
 def test_planner_task_types_source_of_truth():
     from core.planner import PLANNER_TASK_TYPES
 
-    # Nutzer-auswaehlbare Typen: implement/fix drin, det VerifyWorker-Typ raus.
+    # Nutzer-auswaehlbare Typen: implement/fix drin, det LintGateWorker-Typ raus.
     assert TaskType.implement in PLANNER_TASK_TYPES
     assert TaskType.fix in PLANNER_TASK_TYPES
-    assert TaskType.verify not in PLANNER_TASK_TYPES
+    assert TaskType.lint_gate not in PLANNER_TASK_TYPES
 
 
 def test_build_decompose_prompt_embeds_task_and_types():

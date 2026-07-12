@@ -2,16 +2,16 @@
 
 Zwei Ebenen:
 - Queue.reopen_after_verify gegen echtes Postgres (reopen/Kappung/Feedback)
-- WorkerLoop-Dispatch des verify-Knotens (Fake-Queue/-VerifyWorker):
+- WorkerLoop-Dispatch des verify-Knotens (Fake-Queue/-LintGateWorker):
   pass -> complete; rot+reopen -> Rueckkante; rot+Kappung -> fail
 """
 
 from __future__ import annotations
 
+from core.lint_gate import LintOutcome
 from core.queue import Queue, QueueItem
 from core.router import Router
 from core.template_registry import DagNode, TaskDag
-from core.verify_worker import VerifyOutcome
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 
 
@@ -31,7 +31,7 @@ def _fix_verify_dag(dag_id="d"):
         dag_id,
         [
             _node("n2", "implement"),
-            _node("n3", "verify", depends_on=("n2",)),
+            _node("n3", "lint_gate", depends_on=("n2",)),
         ],
     )
 
@@ -41,9 +41,9 @@ def _verify_item(item_id, dag_id="d", depends_on=("n2",)):
         id=item_id,
         dag_id=dag_id,
         node_id="n3",
-        task_type="verify",
+        task_type="lint_gate",
         scope="file:core/x.py",
-        model="verify",
+        model="lint_gate",
         depends_on=depends_on,
         flags=frozenset(),
         payload={},
@@ -97,7 +97,7 @@ class TestReopenAfterVerify:
         # verify haengt an einem index-Knoten (nicht implement/fix)
         dag = TaskDag(
             "d2",
-            [_node("n1", "index"), _node("n3", "verify", depends_on=("n1",))],
+            [_node("n1", "index"), _node("n3", "lint_gate", depends_on=("n1",))],
         )
         idx_id, verify_id = q.enqueue(dag, model="x")
         reopened = q.reopen_after_verify(
@@ -156,7 +156,7 @@ class _FakeRepo:
         return len(self.traces)
 
 
-class _FakeVerifyWorker:
+class _FakeLintGateWorker:
     def __init__(self, outcome):
         self._outcome = outcome
 
@@ -164,16 +164,16 @@ class _FakeVerifyWorker:
         return self._outcome
 
 
-def _loop(item, outcome, reopen_result=True, verify_worker=None, auto_apply=None):
+def _loop(item, outcome, reopen_result=True, lint_gate=None, auto_apply=None):
     queue = _FakeQueue(item, reopen_result=reopen_result)
     repo = _FakeRepo()
-    vw = verify_worker if verify_worker is not None else _FakeVerifyWorker(outcome)
+    vw = lint_gate if lint_gate is not None else _FakeLintGateWorker(outcome)
     loop = WorkerLoop(
         queue=queue,
         repo=repo,
         det_worker=DetWorker(ingest_fn=lambda *_: "x"),
         llm_worker=LlmWorker(router=Router(), model_factory=lambda n: None),
-        verify_worker=vw,
+        lint_gate=vw,
         auto_apply=auto_apply,
     )
     return loop, queue
@@ -186,8 +186,8 @@ def _traces(loop):
 class TestVerifyDispatch:
     def test_passed_completes_node(self):
         item = _verify_item(5)
-        loop, queue = _loop(item, VerifyOutcome(True, True, "gruen", ()))
-        assert loop.step("verify") is True
+        loop, queue = _loop(item, LintOutcome(True, True, "gruen", ()))
+        assert loop.step("lint_gate") is True
         assert queue.completed == [5]
         assert queue.reopen_calls == []
         assert _traces(loop)[0]["detail"]["validation_result"] == "pass"
@@ -195,9 +195,9 @@ class TestVerifyDispatch:
     def test_failed_triggers_rueckkante(self):
         item = _verify_item(5)
         loop, queue = _loop(
-            item, VerifyOutcome(False, True, "rot", ()), reopen_result=True
+            item, LintOutcome(False, True, "rot", ()), reopen_result=True
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         assert queue.reopen_calls and queue.reopen_calls[0][0] == 5
         assert queue.completed == [] and queue.failed == []  # weder done noch failed
         assert _traces(loop)[0]["detail"]["trigger"] == "verify_failed_reopen"
@@ -205,13 +205,13 @@ class TestVerifyDispatch:
     def test_failed_capped_fails_node(self):
         item = _verify_item(5)
         loop, queue = _loop(
-            item, VerifyOutcome(False, True, "rot", ()), reopen_result=False
+            item, LintOutcome(False, True, "rot", ()), reopen_result=False
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         assert queue.failed == [5]
         assert _traces(loop)[0]["detail"]["trigger"] == "verify_failed_capped"
 
-    def test_no_verify_worker_fails(self):
+    def test_no_lint_gate_fails(self):
         item = _verify_item(5)
         queue = _FakeQueue(item)
         loop = WorkerLoop(
@@ -219,9 +219,9 @@ class TestVerifyDispatch:
             repo=_FakeRepo(),
             det_worker=DetWorker(ingest_fn=lambda *_: "x"),
             llm_worker=LlmWorker(router=Router(), model_factory=lambda n: None),
-            verify_worker=None,
+            lint_gate=None,
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         assert queue.failed == [5]
 
 
@@ -234,10 +234,10 @@ class TestAutoApply:
         calls: list = []
         loop, queue = _loop(
             item,
-            VerifyOutcome(True, True, "gruen", ()),
+            LintOutcome(True, True, "gruen", ()),
             auto_apply=lambda it, root: calls.append((it.id, root)),
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         assert queue.completed == [5]
         assert calls == [(5, None)]
 
@@ -246,11 +246,11 @@ class TestAutoApply:
         calls: list = []
         loop, queue = _loop(
             item,
-            VerifyOutcome(False, True, "rot", ()),
+            LintOutcome(False, True, "rot", ()),
             reopen_result=True,
             auto_apply=lambda it, root: calls.append(it.id),
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         assert calls == []  # rot -> kein Apply, nur Rueckkante
 
     def test_auto_apply_error_does_not_break_done(self):
@@ -260,9 +260,9 @@ class TestAutoApply:
             raise RuntimeError("apply kaputt")
 
         loop, queue = _loop(
-            item, VerifyOutcome(True, True, "gruen", ()), auto_apply=_boom
+            item, LintOutcome(True, True, "gruen", ()), auto_apply=_boom
         )
-        loop.step("verify")
+        loop.step("lint_gate")
         # verify bleibt trotz Apply-Fehler done (Apply ist Beiwerk).
         assert queue.completed == [5]
         assert _traces(loop)[0]["detail"]["validation_result"] == "pass"

@@ -31,7 +31,7 @@ class TestAutoCapable:
         # det-Typen laufen ueber den DetWorker (kein Modell) -> immer erfuellbar,
         # unabhaengig von installierten Modellen/Cloud.
         cap = _capable(frozenset())
-        for tt in ("index", "dependency_map", "symbol_lookup", "verify"):
+        for tt in ("index", "dependency_map", "symbol_lookup", "lint_gate"):
             assert tt in cap
 
     def test_profile_d_only_general_and_det(self):

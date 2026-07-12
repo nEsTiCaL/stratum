@@ -27,7 +27,7 @@ class ArtifactType(StrEnum):
     docstring = 'docstring'
     plan = 'plan'
     patch = 'patch'
-    verify_report = 'verify_report'
+    lint_report = 'lint_report'
 
 
 class Provenance(BaseModel):

@@ -8,7 +8,7 @@ das Lock macht die Absicht explizit und traegt spaeter weitere Felder).
 
 auto_apply (opt-out, Default True): nach GRUENEM verify wird der Patch ohne
 weiteren Klick auf den Workspace angewandt (Apply-Gate bleibt: confirm + gruener
-verify_report). Aus -> der Mensch wendet im Dashboard bewusst an (Diff-Vorschau).
+lint_report). Aus -> der Mensch wendet im Dashboard bewusst an (Diff-Vorschau).
 """
 
 from __future__ import annotations

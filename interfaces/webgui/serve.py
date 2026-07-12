@@ -29,6 +29,7 @@ import uvicorn
 
 from core.apply_gate import apply_confirmed_patch
 from core.db import apply_migrations
+from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
 from core.node_prep import build_node_prompt, materialize_prob_nodes
 from core.ollama_adapter import OllamaAdapter
@@ -40,7 +41,6 @@ from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL, auto_capable_task_types
 from core.template_registry import DagNode, TaskDag, decompose
-from core.verify_worker import VerifyWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from core.workspace import resolve_base, workspace_root
 from interfaces.webgui.app import create_app
@@ -329,7 +329,7 @@ def _make_worker_loop(
     def _auto_apply(item, root: Path | None) -> None:
         """Auto-Apply nach gruenem verify (Schritt 7, opt-out). Liest den Schalter
         (settings.auto_apply) und wendet den verifizierten Patch ueber das Apply-
-        Gate an (confirm=True + gruener verify_report werden dort geprueft). root =
+        Gate an (confirm=True + gruener lint_report werden dort geprueft). root =
         Workspace des API-Keys (via _resolve_root); None -> kein Schreibziel."""
         if not settings.get_auto_apply() or root is None:
             return
@@ -356,7 +356,7 @@ def _make_worker_loop(
             on_cost=cloud_on_cost,
             guard=cloud_guard,
         ),
-        verify_worker=VerifyWorker(root=root),
+        lint_gate=LintGateWorker(root=root),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
         resolve_root=_resolve_root,
@@ -435,7 +435,7 @@ def main() -> None:
         progress_store=_progress,
         # Schritt 7: Apply schreibt in den Workspace des API-Keys
         # (<base>/<owner>/<capability_id>), nie in Stratums eigenen Baum. Gate =
-        # confirm + gruener verify_report (kein Opt-in-Flag mehr).
+        # confirm + gruener lint_report (kein Opt-in-Flag mehr).
         workspace_base=resolve_base(source_root / ".workspaces"),
         decompose_model=decompose_model,  # I-6.2: None auf Profil D -> 503
         decompose_producer=decompose_producer,

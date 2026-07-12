@@ -165,7 +165,7 @@ class TestPlanArtifact:
 
 
 class TestPatchArtifact:
-    """I-7.1: patch ist prob (LLM/Human-Diff), verify_report ist det."""
+    """I-7.1: patch ist prob (LLM/Human-Diff), lint_report ist det."""
 
     def test_patch_accepted_as_prob(self):
         r = ResultProb(
@@ -189,27 +189,27 @@ class TestPatchArtifact:
                 provenance={**_PROV_DET, "artifact_type": "patch"},
             )
 
-    def test_verify_report_accepted_as_det(self):
+    def test_lint_report_accepted_as_det(self):
         r = ResultDet(
-            artifact_type="verify_report",
+            artifact_type="lint_report",
             scope="file:src/auth.py",
             content={
                 "passed": False,
                 "commands": [{"cmd": "pytest -q", "exit_code": 1}],
                 "summary": "1 test failed",
             },
-            provenance={**_PROV_DET, "artifact_type": "verify_report"},
+            provenance={**_PROV_DET, "artifact_type": "lint_report"},
         )
-        assert r.artifact_type.value == "verify_report"
+        assert r.artifact_type.value == "lint_report"
 
-    def test_verify_report_rejected_as_prob(self):
+    def test_lint_report_rejected_as_prob(self):
         with pytest.raises(ValidationError):
             ResultProb(
-                artifact_type="verify_report",
+                artifact_type="lint_report",
                 scope="file:src/auth.py",
                 content={},
                 confidence=0.9,
-                provenance={**_PROV_PROB, "artifact_type": "verify_report"},
+                provenance={**_PROV_PROB, "artifact_type": "lint_report"},
             )
 
 

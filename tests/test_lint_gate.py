@@ -1,9 +1,9 @@
-"""I-7.3: VerifyWorker (det, git-frei, per-File-Lint).
+"""I-7.3: LintGateWorker (det, git-frei, per-File-Lint).
 
 det-testbar ohne echtes ruff/FS (run_cmd + read_current injiziert):
 - lint_patch: gruen / apply-Fehler / Linter rot / neutral (keine Linter-Sprache)
   / delete neutral / Timeout
-- VerifyWorker: patch vorhanden -> Sandbox + verify_report; kein patch -> Report
+- LintGateWorker: patch vorhanden -> Sandbox + lint_report; kein patch -> Report
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.verify_worker import (
-    VerifyOutcome,
-    VerifyWorker,
+from core.lint_gate import (
+    LintGateWorker,
+    LintOutcome,
     feedback_text,
     lint_patch,
     prompt_with_feedback,
@@ -135,7 +135,7 @@ class TestLintPatch:
         # Rueckkante-Feedback = Summary + Linter-Output der roten Dateien;
         # ein blosses "Linter meldet Fehler" ist fuer den naechsten Versuch
         # (LLM ODER Mensch) nicht behebbar.
-        outcome = VerifyOutcome(
+        outcome = LintOutcome(
             False,
             True,
             "Linter meldet Fehler",
@@ -155,7 +155,7 @@ class TestLintPatch:
         assert "F841" in fb
 
     def test_feedback_text_without_findings_is_summary(self):
-        outcome = VerifyOutcome(False, False, "kein anwendbarer Hunk im Diff", ())
+        outcome = LintOutcome(False, False, "kein anwendbarer Hunk im Diff", ())
         assert feedback_text(outcome) == "kein anwendbarer Hunk im Diff"
 
     def test_prompt_with_feedback(self):
@@ -204,25 +204,25 @@ def _item(scope="file:core/x.py"):
     return SimpleNamespace(scope=scope, dag_id="d1", id=1, depends_on=("n2",))
 
 
-class TestVerifyWorker:
+class TestLintGateWorker:
     def test_patch_verified_and_report_stored(self):
         repo = _FakeRepo({"diff": _DIFF, "target_scope": "file:core/x.py"})
         captured = {}
 
         def fake_sandbox(diff, *, root, linters, timeout_s):
             captured["diff"] = diff
-            return VerifyOutcome(
+            return LintOutcome(
                 True, True, "gruen", ({"file": "x.py", "status": "passed"},)
             )
 
-        worker = VerifyWorker(root=_ROOT, sandbox=fake_sandbox)
+        worker = LintGateWorker(root=_ROOT, sandbox=fake_sandbox)
         out = worker.run(_item(), repo)
 
         assert out.passed
         assert captured["diff"] == _DIFF  # Diff aus dem patch-Artefakt gereicht
         assert len(repo.artifacts) == 1
         report = repo.artifacts[0]
-        assert report.artifact_type.value == "verify_report"
+        assert report.artifact_type.value == "lint_report"
         assert report.content["passed"] is True
         assert report.provenance.producer == "verify-worker"
         assert report.provenance.producer_class.value == "det"
@@ -230,10 +230,10 @@ class TestVerifyWorker:
     def test_missing_patch_reports_failure(self):
         repo = _FakeRepo(None)
         called = []
-        worker = VerifyWorker(
+        worker = LintGateWorker(
             root=_ROOT,
             sandbox=lambda *a, **k: (
-                called.append(1) or VerifyOutcome(True, True, "x", ())
+                called.append(1) or LintOutcome(True, True, "x", ())
             ),
         )
         out = worker.run(_item(), repo)

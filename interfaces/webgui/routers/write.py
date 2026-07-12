@@ -42,10 +42,10 @@ async def list_patches(
     owner: str = Depends(require_owner), deps: AppDeps = Depends(get_deps)
 ) -> dict[str, Any]:
     """Patches zur Bestaetigung (I-7.5): scopes mit aktuellem patch-Artefakt,
-    markiert ob ein gruener verify_report vorliegt (nur gruene sind anwendbar)."""
+    markiert ob ein gruener lint_report vorliegt (nur gruene sind anwendbar)."""
     out = []
     for scope in deps.repo.list_current_scopes("patch"):
-        report = deps.repo.get_current(scope, "verify_report")
+        report = deps.repo.get_current(scope, "lint_report")
         verified = bool(report and report.content.get("passed"))
         out.append({"scope": scope, "verified": verified})
     return {"patches": out}
@@ -58,7 +58,7 @@ async def apply_patch(
     deps: AppDeps = Depends(get_deps),
 ) -> dict[str, Any]:
     """HARTES GATE (I-7.5): wendet einen bestaetigten, verifizierten Patch auf den
-    Workspace des API-Keys an. Ohne confirm ODER ohne gruenen verify_report kein
+    Workspace des API-Keys an. Ohne confirm ODER ohne gruenen lint_report kein
     Schreibzugriff (409)."""
     owner, capability_id = cap
     root = deps.workspace_root_of(owner, capability_id)

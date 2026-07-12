@@ -1,6 +1,6 @@
 """Git-freier Applier fuer Unified-Diffs (Schreibpfad, Schritt 7).
 
-Ersetzt `git apply`/`git worktree` im Verify (core.verify_worker) und im
+Ersetzt `git apply`/`git worktree` im Verify (core.lint_gate) und im
 Apply-Gate (core.apply_gate). Grund: Stratum arbeitet git-agnostisch auf dem
 Working Tree -- committed ODER nicht (Requirement: nicht committete Dateien
 verarbeiten). Ein git-Worktree @HEAD konnte das prinzipiell nicht, und der

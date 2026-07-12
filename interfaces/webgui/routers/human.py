@@ -14,12 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core.diff_extract import extract_diff
 from core.json_extract import extract_json
+from core.lint_gate import prompt_with_feedback
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.review_format import build_content
 from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.validator import Validator
-from core.verify_worker import prompt_with_feedback
 from interfaces.webgui.deps import HUMAN_CONFIDENCE, AppDeps, get_deps, require_owner
 from interfaces.webgui.schemas import SubmitBody
 
@@ -42,7 +42,7 @@ def _result_from_submission(
     artifact_type_str = TASK_TYPE_TO_ARTIFACT_TYPE[task_type]
 
     # patch (implement/fix): GLEICHES content-Layout wie der LLM-Worker
-    # (core.worker) -- VerifyWorker und Apply-Gate lesen content["diff"]. Der
+    # (core.worker) -- LintGateWorker und Apply-Gate lesen content["diff"]. Der
     # Markdown-Split unten wuerde den Diff als content.text ablegen und Verify
     # liefe mit leerem Diff auf "kein anwendbarer Hunk" (Endlos-Rueckkante).
     if artifact_type_str == "patch":

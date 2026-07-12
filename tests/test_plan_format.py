@@ -41,7 +41,7 @@ def test_prompt_offers_implement_and_fix_but_not_verify():
     names = [n for n, _ in PLANNABLE_TASK_TYPES]
     assert "implement" in names
     assert "fix" in names
-    assert "verify" not in names
+    assert "lint_gate" not in names
 
 
 def test_prompt_demands_no_json():

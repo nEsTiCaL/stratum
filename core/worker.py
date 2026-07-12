@@ -19,6 +19,7 @@ from pathlib import Path
 from core.canary import assign_variant
 from core.cloud_adapter import CloudSender, cloud_model_factory
 from core.cloud_egress import prepare_cloud_egress
+from core.lint_gate import feedback_text, prompt_with_feedback
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
@@ -36,7 +37,6 @@ from core.router import (
 )
 from core.secret_scan import EgressPolicy, Sensitivity
 from core.validator import EscalationLoop, EscalationOutcome, Validator
-from core.verify_worker import feedback_text, prompt_with_feedback
 
 
 @dataclass
@@ -282,7 +282,7 @@ class WorkerLoop:
     repo: Repository
     det_worker: DetWorker
     llm_worker: LlmWorker
-    verify_worker: object | None = None  # I-7.3 VerifyWorker; None -> verify n/a
+    lint_gate: object | None = None  # I-7.3 LintGateWorker; None -> verify n/a
     on_item_start: Callable[[QueueItem], None] | None = None
     on_item_fail: Callable[[QueueItem, str], None] | None = None
     canary_fraction: float = 0.0  # I-5.5a: Anteil canary; 0 = alles baseline
@@ -298,7 +298,7 @@ class WorkerLoop:
     # Schritt 7: Auto-Apply nach gruenem verify (opt-out, Default via Schalter in
     # der App). Wird mit (verify-item, root) aufgerufen, sobald ein verify-Knoten
     # gruen abschliesst; die Injektion liest den Schalter und ruft das Apply-Gate
-    # (confirm=True + gruener verify_report). None -> kein Auto-Apply (Mensch
+    # (confirm=True + gruener lint_report). None -> kein Auto-Apply (Mensch
     # wendet manuell an). Best-effort: ein Apply-Fehler kippt das done-verify nicht.
     auto_apply: Callable[[QueueItem, Path | None], None] | None = None
 
@@ -334,19 +334,15 @@ class WorkerLoop:
         )
 
     def _run_verify(self, item: QueueItem, root: Path | None = None) -> None:
-        """verify-Knoten (I-7.3): VerifyWorker laeuft, erzeugt verify_report.
+        """verify-Knoten (I-7.3): LintGateWorker laeuft, erzeugt lint_report.
         passed -> Knoten done. Rot -> Rueckkante zu implement (I-7.4): Vorgaenger
         neu oeffnen (mit Feedback), bis Kappung -> dann verify terminal failed."""
-        if self.verify_worker is None:
-            self._fail(item, "kein VerifyWorker konfiguriert")
-            self._trace_result(
-                item, validation_result="fail", trigger="no_verify_worker"
-            )
+        if self.lint_gate is None:
+            self._fail(item, "kein LintGateWorker konfiguriert")
+            self._trace_result(item, validation_result="fail", trigger="no_lint_gate")
             return
         vw = (
-            replace(self.verify_worker, root=root)
-            if root is not None
-            else (self.verify_worker)
+            replace(self.lint_gate, root=root) if root is not None else (self.lint_gate)
         )
         outcome = vw.run(item, self.repo)
         if outcome.passed:
@@ -369,7 +365,7 @@ class WorkerLoop:
         # Rot: Rueckkante (I-7.4). reopen_after_verify oeffnet Vorgaenger
         # (implement/fix) + diesen verify-Knoten neu, solange die Kappung nicht
         # erreicht ist; sonst faellt verify terminal (Belegkette: Patch + Report).
-        # Feedback = Summary + konkrete Linter-Findings (core.verify_worker).
+        # Feedback = Summary + konkrete Linter-Findings (core.lint_gate).
         reopened = self.queue.reopen_after_verify(
             item, feedback=feedback_text(outcome), max_attempts=self.verify_max_attempts
         )
@@ -421,7 +417,7 @@ class WorkerLoop:
         try:
             root = self.resolve_root(item) if self.resolve_root else None
             task_type = TaskType(item.task_type)
-            if task_type == TaskType.verify:
+            if task_type == TaskType.lint_gate:
                 self._run_verify(item, root)
                 return True
             is_det = TASK_REQUIREMENTS[task_type].deterministic_model is not None

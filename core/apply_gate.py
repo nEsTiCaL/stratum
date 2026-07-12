@@ -2,7 +2,7 @@
 
 Zwei Bedingungen muessen erfuellt sein, sonst KEIN Schreibzugriff:
   1. confirmed=True  -- der Nutzer hat den Patch explizit bestaetigt
-  2. ein GRUENER verify_report fuer den scope  -- nur verifizierte Patches
+  2. ein GRUENER lint_report fuer den scope  -- nur verifizierte Patches
 
 (Entscheidung 2026-07-05: das fruehere Opt-in-Flag STRATUM_UNSAFE_APPLY/ApplyPolicy
 ist raus -- Confirm + gruener Verify sind das Gate. Der Schreibziel-`root` ist pro
@@ -69,10 +69,10 @@ def apply_confirmed_patch(
     if patch is None:
         return ApplyResult(False, "kein patch-Artefakt fuer scope")
 
-    report = repo.get_current(scope, "verify_report")
+    report = repo.get_current(scope, "lint_report")
     if report is None or not report.content.get("passed"):
         return ApplyResult(
-            False, "kein gruener verify_report -- nur verifizierte Patches", scope
+            False, "kein gruener lint_report -- nur verifizierte Patches", scope
         )
 
     diff = patch.content.get("diff", "")

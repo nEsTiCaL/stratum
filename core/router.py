@@ -55,10 +55,10 @@ class TaskType(StrEnum):
     # Gruppe E: Spezialfall (reasoning, Praezision, solo)
     crypto_audit = "crypto_audit"
     # Gruppe F: schreibend (Schritt 7) -- implement/fix erzeugen Patches (prob),
-    # verify prueft sie deterministisch (VerifyWorker, kein Modell).
+    # verify prueft sie deterministisch (LintGateWorker, kein Modell).
     implement = "implement"
     fix = "fix"
-    verify = "verify"
+    lint_gate = "lint_gate"
 
 
 class Axis(StrEnum):
@@ -236,7 +236,7 @@ TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     # model:human (schreibt keinen brauchbaren Code lokal). verify ist det.
     TaskType.implement: TaskRequirement(Axis.code, 55, 100),
     TaskType.fix: TaskRequirement(Axis.code, 55, 100),
-    TaskType.verify: _det("verify"),
+    TaskType.lint_gate: _det("lint_gate"),
 }
 
 
