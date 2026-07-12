@@ -172,6 +172,58 @@ Human-Probe. Regression: A5/A11 (E1-#2b-Inhalt) neu.
   in review_format + Aufruf in plan_format. Kette E0(Nutzer)->E6(det-Plan)->E4
   (fuzzy Apply)->verify/apply greift vollstaendig.
 
+### E7-Rest (2026-07-11, Folge-Session) -- A5/A11-Regression, A7, A13, Human, #5
+
+- **A5/A11-Regression mit #2b-Schema: BEIDE PASS (Tasks 130/131).** A5 test_gen
+  review_format.py -> producer qwen3.6-35b, artifact test_generation, EIN text-Feld
+  (kein Review-Split), echte pytest-Funktionen `from minicore.review_format import
+  ...` mit realen Signaturen (strip_markdown_fence/build_content/split_review_
+  sections; Patch-Ziel `minicore.review_format.source_language` REAL, review_format
+  importiert es Z.159). War Erstlauf systemischer FAIL (Review statt Tests) -> #2b
+  behebt es. A11 document review_context.py -> producer phi4-mini, artifact
+  docstring, per-Symbol Typ/Zweck/Parameter/Rueckgabe/Fehlerfaelle (NICHT die 4
+  Review-Ueberschriften). Schema-Regression PASS; Inhalt weiter phi4-fuzzig
+  ("GitHub-Codegraph" erfunden) = bekannte Modellgrenze, kein Systembefund.
+- **A7 Modul+Test via Intent: VOLL BESTANDEN.** POST /api/intent -> Plan 931
+  (understanding korrekt, goals=implement minicore/wordstats.py + test_gen tests/
+  test_wordstats.py, not_covered leer) -> confirm -> DAG 132-137. BEIDE neuen
+  Dateien im Workspace: wordstats.py (word_counts via re \b\w+\b + .lower(),
+  projektkonform) + test_wordstats.py (import minicore.wordstats, 4 Faelle). Direkt
+  im Container ausgefuehrt: 4/4 Assertions PASS. Erster Greenfield-artiger
+  Datei-NEU-Anlage-Nachweis (implement schreibt neue Datei via patch/create).
+- **A13 Greenfield (frischer Key `greenfield`, cap 2, leerer Workspace):
+  BESTANDEN + 1 Fund.** POST /api/intent -> Plan 959 (3 goals: implement convert.py
+  + implement cli.py + test_gen test_convert.py) -> confirm -> DAG 138-146. Alle 3
+  Dateien gelandet; convert-Tests 6/6 + CLI `PYTHONPATH=. python tempconv/cli.py
+  100 c2f`->212.0 / 32 f2c->0.0 / -40->-40.0 korrekt. FUND: verify-Knoten fuer
+  cli.py FAILED ("create-Patch, aber tempconv/convert.py existiert bereits") --
+  qwens implement-Patch fuer cli.py enthielt zusaetzlich einen create-Block fuer die
+  Abhaengigkeit convert.py; das "create existierende Datei"-Gate lehnte korrekt ab.
+  cli.py selbst landete trotzdem (Apply ist per-Datei, nicht transaktional). ->
+  spurioser Knoten-Fail bei mehrdateiigen Neu-Projekten, keine Korruption. Kandidat:
+  implement-Prompt/Patcher soll nur die Ziel-Datei anlegen, nicht Nachbarn.
+- **Human-Probe: Mechanik BESTANDEN, Routing-Praemisse obsolet.** crypto_audit
+  routet NICHT mehr auf human (siehe Routing-KORREKTUR oben: qwen reasoning=80
+  trifft den Bedarf). Mechanik trotzdem verifiziert via erzwungenem Human-Task:
+  POST /api/task {crypto_audit, secret_scan.py, `"model":"human"`} -> Task 151
+  pending/model=human (kein Auto-Worker). POST /api/claim/151 -> EIN prompt-Feld
+  (4472 Zeichen, review_findings-Schema). POST /api/submit/151 mit 4-Ueberschriften-
+  Markdown -> {"status":"ok"}, Ergebnis producer=manual, content.text (Sek.1/2),
+  findings (Sek.3), recommendations (Sek.4) korrekt gefuellt (Ueberschriften-Split).
+- **#5 create_task Write-Typen -> voller DAG (ENTSCHEIDUNG + ERLEDIGT).** Offene
+  Klassifikationsfrage (A3: direkter /api/task-fix = Sackgassen-Patch) mit Nutzer
+  entschieden: NICHT 400+Hinweis, sondern schreibende task_types (implement/fix,
+  Artefakt "patch") durch build_dag schleusen wie ein bestaetigter Plan (Kriterium
+  Nutzbarkeit + Wiederverwendung). Umsetzung: AppDeps.enqueue_plan (deps.py) kapselt
+  build_dag+enqueue+materialize -- EINE Quelle, geteilt von confirm_plan UND
+  create_task. create_task: Write-Typ -> Ein-Goal-Plan -> enqueue_plan (Antwort
+  {"id","dag_id","task_ids"}); lesend bleibt Ein-Knoten ({"id"}). confirm_plan-
+  Schwanz auf enqueue_plan dedupliziert (build_dag/RepoScopeResolver/CONFIRM_MODEL-
+  Importe dort raus). 986 Tests gruen (3 neu TestDirectWriteTask; 1 bestehender
+  Human-Routing-Test auf implement-Knoten statt Top-Task umgestellt). E2E
+  transitiv gedeckt (identischer enqueue_plan-Pfad wie A7/A13/A3-intent); Live-
+  Container NICHT neu gestartet (nur Code + Unit).
+
 ## Bedingungen / Setup
 
 Voraussetzungen: stratum-server + stratum-db laufen (`ops_docker-server`),
@@ -208,9 +260,22 @@ Die Staging-Kopie ist zugleich die Mess-Referenz (grep-Ground-Truth).
 explain/summarize/document (general 30-75)              -> phi4-mini (lokal, CPU ~1.5 tok/s!)
 review/test_gen/refactor_suggest/implement/fix (code>=55) -> qwen3.6-35b (internal)
 debug/architecture/cross_module (reasoning>=60)         -> qwen3.6-35b (internal)
-crypto_audit (reasoning>=80, qwen=78)                   -> model:human (Dashboard/claim)
+crypto_audit (reasoning>=80)                            -> qwen3.6-35b (internal!)  [KORRIGIERT]
 index/symbol_lookup/dependency_map/verify               -> det (DetWorker, kein LLM)
 ```
+
+**KORREKTUR (2026-07-11): crypto_audit routet auf qwen3.6-35b, NICHT model:human.**
+Die alte Zeile ("qwen=78 -> human") las die Achsen falsch: qwen3.6-35b-Scores
+`75/80/78` sind in Feld-Reihenfolge **code=75, reasoning=80, general=78** (78 ist
+general, nicht reasoning). crypto_audit fordert reasoning>=80 (exclusive) -> qwen
+reasoning=80 trifft die Untergrenze exakt -> qualifiziert. `exclusive=True` reserviert
+NUR exklusive Modelle (q8) fuer exklusive Tasks (router.py:302
+`if m.exclusive and not req.exclusive: continue`), verlangt aber KEIN exklusives
+Modell fuer crypto. Folge: seit I-3.7 (interner qwen, reasoning 80) routet auf
+Profil D+internal NICHTS mehr automatisch auf model:human -- qwen raeumt jede
+Anforderung ab (code 75, reasoning 80, general 78). Human wird nur noch erreicht,
+wenn der interne Endpunkt fehlt ODER man explizit `"model":"human"` an POST
+/api/task uebergibt (claim_model: task_type in auto_capable -> requested bleibt).
 
 ## Testmatrix (Aufgabe -> Erwartungswert; Reihenfolge = Testreihenfolge)
 

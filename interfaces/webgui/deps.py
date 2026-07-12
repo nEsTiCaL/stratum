@@ -32,11 +32,14 @@ from core.plan_artifact import (
     PLAN_SCOPE,
     build_plan_artifact,
 )
-from core.planner import Plan
+from core.planner import Plan, build_dag
 from core.queue import Queue
 from core.repository import Repository
+from core.scope_resolver import RepoScopeResolver
 from core.settings import RuntimeSettings
+from core.task_routing import CONFIRM_MODEL
 from core.task_routing import claim_model as _route_claim_model
+from core.template_registry import TaskDag
 from core.validator import Model
 from core.workspace import workspace_root
 
@@ -132,6 +135,33 @@ class AppDeps:
             auto_capable=self.auto_capable,
             prompt_for=prompt_for,
         )
+
+    def enqueue_plan(
+        self, plan: Plan, *, instruction: str, owner: str, capability_id: int | None
+    ) -> tuple[TaskDag, list[int]]:
+        """Plan -> verketteter Gesamt-DAG in die Queue (build_dag, modellfrei) +
+        Prob-Knoten materialisiert (Claim-Routing + Prompt je Knoten, Auto-Index
+        gegen den Key-Workspace).
+
+        EINE Quelle fuer beide Write-Path-Einstiege: confirm_plan (I-6.3,
+        Intent->confirm) UND create_task fuer schreibende task_types. Beide
+        brauchen denselben index->write->verify-Nachlauf statt eines nackten
+        Ein-Knoten-DAGs -- der Grund, warum ein direkter fix/implement-Task frueher
+        als Sackgassen-Artefakt endete (kein verify/auto-apply)."""
+        dag = build_dag(
+            plan, scope_resolver=RepoScopeResolver(self.repo), cache_query=None
+        )
+        task_ids = self.queue.enqueue(
+            dag, CONFIRM_MODEL, owner=owner, capability_id=capability_id
+        )
+        root = self.prompt_root(owner, capability_id)
+
+        def _prompt_for(node) -> str:
+            self.ensure_indexed(root, node.scope)
+            return self.node_prompt(node.task_type, node.scope, instruction, root=root)
+
+        self.materialize_prob_nodes(dag, task_ids, prompt_for=_prompt_for)
+        return dag, task_ids
 
     def store_plan(self, prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
         artifact = build_plan_artifact(

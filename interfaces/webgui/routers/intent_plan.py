@@ -34,13 +34,10 @@ from core.planner import (
     GoalItem,
     IntentDecomposer,
     Plan,
-    build_dag,
     build_decompose_prompt,
 )
 from core.rename_expand import rename_plan
-from core.router import TaskType
-from core.scope_resolver import RepoScopeResolver
-from core.task_routing import CONFIRM_MODEL
+from core.router import TASK_TYPE_TO_ARTIFACT_TYPE, TaskType
 from core.template_registry import DagNode, TaskDag
 from interfaces.webgui.deps import AppDeps, get_deps, require_capability, require_owner
 from interfaces.webgui.schemas import (
@@ -54,10 +51,14 @@ from interfaces.webgui.schemas import (
 
 router = APIRouter()
 
-# Enqueue-Modell fuer einen bestaetigten Plan/Task = CONFIRM_MODEL; task_types ohne
-# erfuellbaren Kandidaten (auto_capable, aus der Router-Lage) werden in
-# core.node_prep/AppDeps.claim_model auf model:human geroutet.
-_CONFIRM_MODEL = CONFIRM_MODEL
+# Schreibende task_types (Artefakt = "patch"): sie brauchen den vollen
+# index->write->verify-Nachlauf (Auto-Apply hinter dem VerifyWorker). Ein direkter
+# Ein-Knoten-Task liefe sonst als Sackgassen-Patch ins Leere -- daher ueber
+# build_dag/enqueue_plan wie ein bestaetigter Plan (Entscheidung 2026-07-11:
+# Nutzbarkeit + Wiederverwendung, dieselbe Write-Path-Quelle wie confirm_plan).
+_WRITE_TASK_TYPES = frozenset(
+    tt.value for tt, art in TASK_TYPE_TO_ARTIFACT_TYPE.items() if art == "patch"
+)
 
 
 def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
@@ -78,8 +79,13 @@ async def create_task(
     body: TaskCreateBody,
     cap: tuple[str, int] = Depends(require_capability),
     deps: AppDeps = Depends(get_deps),
-) -> dict[str, int]:
-    """Reiht einen neuen Task in die Queue ein."""
+) -> dict[str, Any]:
+    """Reiht einen neuen Task in die Queue ein.
+
+    Lesende task_types -> Ein-Knoten-DAG (Antwort {"id": <task>}). Schreibende
+    (implement/fix, Artefakt "patch") -> voller index->write->verify-DAG wie ein
+    bestaetigter Plan (Antwort {"id","dag_id","task_ids"}) -- sonst endete der
+    Patch ohne verify/auto-apply als Sackgasse."""
     owner, capability_id = cap
     try:
         TaskType(body.task_type)
@@ -89,6 +95,19 @@ async def create_task(
         ) from exc
     if not body.scope:
         raise HTTPException(status_code=422, detail="scope fehlt")
+
+    # Schreibender task_type -> voller index->write->verify-DAG (wie confirm_plan),
+    # damit der Patch verifiziert + auto-appliziert wird statt als Sackgassen-
+    # Artefakt zu enden. Ein-Goal-Plan durch dieselbe Enqueue-Schale.
+    if body.task_type in _WRITE_TASK_TYPES:
+        plan = Plan(
+            goals=(GoalItem(TaskType(body.task_type), body.scope, ()),),
+            large=False,
+        )
+        dag, task_ids = deps.enqueue_plan(
+            plan, instruction=body.prompt, owner=owner, capability_id=capability_id
+        )
+        return {"id": task_ids[0], "dag_id": dag.dag_id, "task_ids": task_ids}
 
     dag_id = f"api-{uuid.uuid4().hex[:8]}"
     dag = TaskDag(
@@ -371,25 +390,17 @@ async def confirm_plan(
                 "oder ein Ziel manuell hinzufügen."
             ),
         )
-    dag = build_dag(plan, scope_resolver=RepoScopeResolver(deps.repo), cache_query=None)
-    task_ids = deps.queue.enqueue(
-        dag, _CONFIRM_MODEL, owner=owner, capability_id=capability_id
-    )
     # Prob-Knoten brauchen einen Prompt im Payload (der Worker liest ihn); die
     # Zerlegung liefert je Goal nur task_type/scope -> die natuerlichsprachige
     # Absicht kommt aus dem Plan-Prompt. det/verify laufen ohne Prompt.
-    # Materialisierung (Claim-Routing + Prompt) via core.node_prep -- EINE Quelle,
-    # geteilt mit serve._spawn_fix.
-    instruction = current.content.get("prompt", "")
-    root = deps.prompt_root(owner, capability_id)
-
-    def _prompt_for(node: DagNode) -> str:
-        # Auto-Index je Knoten-Scope (Workspace des Keys) -> Prompt mit Quellcode +
-        # Symbol-/Aufrufer-Kontext.
-        deps.ensure_indexed(root, node.scope)
-        return deps.node_prompt(node.task_type, node.scope, instruction, root=root)
-
-    deps.materialize_prob_nodes(dag, task_ids, prompt_for=_prompt_for)
+    # build_dag + Enqueue + Materialisierung via deps.enqueue_plan -- EINE Quelle,
+    # geteilt mit dem direkten Write-Task (create_task).
+    dag, task_ids = deps.enqueue_plan(
+        plan,
+        instruction=current.content.get("prompt", ""),
+        owner=owner,
+        capability_id=capability_id,
+    )
     confirmed = build_plan_artifact(
         current.content.get("prompt", ""),
         plan,

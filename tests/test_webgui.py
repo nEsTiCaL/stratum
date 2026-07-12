@@ -115,6 +115,50 @@ def client_with_task(conn):
         yield c, item_id
 
 
+class TestDirectWriteTask:
+    """create_task: schreibende task_types (implement/fix, Artefakt 'patch') bauen
+    den vollen index->write->verify-DAG (wie confirm_plan, via deps.enqueue_plan)
+    statt eines Sackgassen-Ein-Knoten-DAGs. Lesende task_types bleiben Ein-Knoten."""
+
+    def test_fix_task_builds_full_write_dag(self, client, conn):
+        r = client.post(
+            "/api/task",
+            json={
+                "task_type": "fix",
+                "scope": "file:core/queue.py",
+                "prompt": "Behebe den Bug.",
+            },
+            headers=AUTH,
+        )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] == body["task_ids"][0]
+        assert "dag_id" in body
+        rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
+        assert [row[0] for row in rows] == ["index", "fix", "verify"]
+
+    def test_implement_task_builds_full_write_dag(self, client, conn):
+        r = client.post(
+            "/api/task",
+            json={"task_type": "implement", "scope": "file:core/queue.py"},
+            headers=AUTH,
+        )
+        assert r.status_code == 201
+        rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
+        assert [row[0] for row in rows] == ["index", "implement", "verify"]
+
+    def test_read_task_stays_single_node(self, client, conn):
+        r = client.post(
+            "/api/task",
+            json={"task_type": "explain", "scope": "file:core/queue.py"},
+            headers=AUTH,
+        )
+        assert r.status_code == 201
+        # Lesend: Antwort traegt nur die id (kein dag_id/task_ids), ein Knoten.
+        assert set(r.json()) == {"id"}
+        assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 1
+
+
 class TestStatusEndpoint:
     def test_status_ok_without_auth(self, client):
         r = client.get("/api/status")
@@ -1346,7 +1390,10 @@ class TestPlanConfirmDiscard:
         assert model == "phi4-mini"
 
     def test_task_routes_write_task_to_human_without_code_candidate(self, conn):
-        # Gleiche Umleitung auf dem Einzeltask-Pfad (POST /api/task).
+        # Gleiche Umleitung auf dem Einzeltask-Pfad (POST /api/task): ein direkter
+        # implement-Task baut jetzt den vollen index->implement->verify-DAG; ohne
+        # Code-Kandidaten (Profil D) wird der schreibende Knoten auf human geroutet
+        # (die det-Knoten index/verify bleiben CONFIRM_MODEL).
         app = create_app(Queue(conn), Repository(conn), auto_capable=_PROFILE_D)
         with TestClient(app) as c:
             r = c.post(
@@ -1354,9 +1401,9 @@ class TestPlanConfirmDiscard:
                 json={"task_type": "implement", "scope": "file:scripts/cam.gd"},
                 headers=AUTH,
             )
-            item_id = r.json()["id"]
+            assert r.status_code == 201
         model = conn.execute(
-            "SELECT model FROM queue WHERE id=%s", (item_id,)
+            "SELECT model FROM queue WHERE task_type='implement'"
         ).fetchone()[0]
         assert model == "human"
 
