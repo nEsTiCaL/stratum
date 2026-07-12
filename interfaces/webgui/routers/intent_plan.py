@@ -85,13 +85,43 @@ async def create_task(
     Lesende task_types -> Ein-Knoten-DAG (Antwort {"id": <task>}). Schreibende
     (implement/fix, Artefakt "patch") -> voller index->write->verify-DAG wie ein
     bestaetigter Plan (Antwort {"id","dag_id","task_ids"}) -- sonst endete der
-    Patch ohne verify/auto-apply als Sackgasse."""
+    Patch ohne verify/auto-apply als Sackgasse.
+
+    Fehlt der task_type (I-UX.2: Anfaenger tippt einen Satz, waehlt nie einen Typ),
+    leitet ihn der Classifier aus dem Prompt ab (Intent immer im Hauptpfad, kein
+    Extra-Endpoint). Explizit uebergebener task_type ueberspringt die Klassifikation
+    -- der Dev-Harness bleibt unveraendert. Die Antwort traegt dann zusaetzlich das
+    erkannte 'task_type', damit der Client zeigen kann, wie der Satz verstanden wurde.
+    """
     owner, capability_id = cap
+    classified = False
+    task_type = body.task_type
+    if not task_type:
+        if not body.prompt.strip():
+            raise HTTPException(status_code=422, detail="task_type oder prompt noetig")
+        if deps.decompose_model is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "task_type fehlt und keine Klassifikation moeglich "
+                    "(kein Modell) -- task_type explizit angeben."
+                ),
+            )
+        from core.classifier import Classifier
+
+        try:
+            result = Classifier(deps.decompose_model).classify(body.prompt)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Intent nicht klassifizierbar: {exc}"
+            ) from exc
+        task_type = result.task_type.value
+        classified = True
     try:
-        TaskType(body.task_type)
+        TaskType(task_type)
     except ValueError as exc:
         raise HTTPException(
-            status_code=400, detail=f"Unbekannter task_type: {body.task_type}"
+            status_code=400, detail=f"Unbekannter task_type: {task_type}"
         ) from exc
     if not body.scope:
         raise HTTPException(status_code=422, detail="scope fehlt")
@@ -99,15 +129,18 @@ async def create_task(
     # Schreibender task_type -> voller index->write->verify-DAG (wie confirm_plan),
     # damit der Patch verifiziert + auto-appliziert wird statt als Sackgassen-
     # Artefakt zu enden. Ein-Goal-Plan durch dieselbe Enqueue-Schale.
-    if body.task_type in _WRITE_TASK_TYPES:
+    if task_type in _WRITE_TASK_TYPES:
         plan = Plan(
-            goals=(GoalItem(TaskType(body.task_type), body.scope, ()),),
+            goals=(GoalItem(TaskType(task_type), body.scope, ()),),
             large=False,
         )
         dag, task_ids = deps.enqueue_plan(
             plan, instruction=body.prompt, owner=owner, capability_id=capability_id
         )
-        return {"id": task_ids[0], "dag_id": dag.dag_id, "task_ids": task_ids}
+        resp = {"id": task_ids[0], "dag_id": dag.dag_id, "task_ids": task_ids}
+        if classified:
+            resp["task_type"] = task_type
+        return resp
 
     dag_id = f"api-{uuid.uuid4().hex[:8]}"
     dag = TaskDag(
@@ -115,7 +148,7 @@ async def create_task(
         [
             DagNode(
                 id="n1",
-                task_type=body.task_type,
+                task_type=task_type,
                 scope=body.scope,
                 depends_on=(),
                 status="pending",
@@ -131,16 +164,19 @@ async def create_task(
     # Symbol-/Aufrufer-Kontext traegt (statt leer).
     root = deps.prompt_root(owner, capability_id)
     deps.ensure_indexed(root, body.scope)
-    prompt = deps.node_prompt(body.task_type, body.scope, body.prompt, root=root)
+    prompt = deps.node_prompt(task_type, body.scope, body.prompt, root=root)
     ids = deps.queue.enqueue(
         dag,
-        deps.claim_model(body.task_type, body.model),
+        deps.claim_model(task_type, body.model),
         owner=owner,
         capability_id=capability_id,
     )
     item_id = ids[0]
     deps.queue.update_payload(item_id, {"prompt": prompt})
-    return {"id": item_id}
+    resp = {"id": item_id}
+    if classified:
+        resp["task_type"] = task_type
+    return resp
 
 
 @router.post("/api/rename", status_code=201)

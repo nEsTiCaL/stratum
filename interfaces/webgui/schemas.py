@@ -10,7 +10,9 @@ from pydantic import BaseModel
 
 
 class TaskCreateBody(BaseModel):
-    task_type: str
+    # task_type optional (I-UX.2): fehlt er, klassifiziert der Server aus dem
+    # Prompt (Intent immer im Hauptpfad). Explizit gesetzt -> uebersprungen.
+    task_type: str = ""
     scope: str
     model: str = "phi4-mini"
     prompt: str = ""

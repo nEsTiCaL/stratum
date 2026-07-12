@@ -274,10 +274,13 @@ I-UX.1   Workspace-Write (Einzeldatei + Projekt-      det  -         Finding #0:
          Ersatz): PUT /api/workspace/file, POST                     (nur read-only). Traversal-
          /api/workspace/archive (ZIP entpacken)                     Guard wie GET.  fertig 2026-07-12
                                                                     (7 Tests, 145 webgui gruen)
-I-UX.2   Intent-Verdrahtung: Classifier (existiert,   gem  I-UX.1?   core/classifier.py ist gebaut,
-         core/classifier.py) an Endpoint -> Freitext                aber an KEINEN Endpoint
-         -> task_type + scope (Anfaenger waehlt nie                 angeschlossen. Intent-Block #1.
-         einen task_type)
+I-UX.2   Intent-Verdrahtung: Classifier (existiert,   gem  -         Entscheidung: KEIN /api/ask,
+         core/classifier.py) an Endpoint -> Freitext                task_type an POST /api/task
+         -> task_type (Anfaenger waehlt nie einen)                  OPTIONAL (fehlt -> classify;
+                                                                    explizit -> uebersprungen).
+                                                                    fertig 2026-07-12 (4 Tests).
+                                                                    OFFEN: scope-Inferenz aus
+                                                                    Freitext (-> I-UX.4 Architect).
 I-UX.3   Sub-Intent Read: explain/summarize erkennt   gem  I-UX.2    Frage landet heute nur als
          Frage vs. Ueberblick vs. Review; globaler                  "Hinweis" in Review-Vorlage;
          Format-Suffix wird task-bewusst (behebt                    globaler Suffix "ein grosser

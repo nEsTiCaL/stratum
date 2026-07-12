@@ -671,6 +671,69 @@ class TestCreateTaskEndpoint:
         assert r.status_code == 400
 
 
+_CLASSIFY_EXPLAIN = (
+    "task_type: explain\ncomplexity: low\nest_input_len: 80\nsensitivity: none\n"
+)
+
+
+class TestIntentClassification:
+    """I-UX.2: fehlender task_type -> Classifier (Intent immer im Hauptpfad).
+
+    Der Anfaenger tippt einen Satz und waehlt nie einen task_type; fehlt er, leitet
+    ihn der (bestehende) Classifier aus dem Prompt ab. Explizite Aufrufer (Dev-
+    Harness) geben task_type weiter und ueberspringen die Klassifikation."""
+
+    def _app(self, conn, model):
+        return create_app(
+            Queue(conn),
+            Repository(conn),
+            decompose_model=model,
+            decompose_producer="fake-model",
+        )
+
+    def test_missing_task_type_is_classified(self, conn):
+        model = _CountingModel(_CLASSIFY_EXPLAIN)
+        with TestClient(self._app(conn, model)) as c:
+            r = c.post(
+                "/api/task",
+                json={"scope": "file:core/queue.py", "prompt": "Was macht das?"},
+                headers=AUTH,
+            )
+            assert r.status_code == 201
+            assert r.json()["task_type"] == "explain"
+            assert model.calls == 1
+
+    def test_explicit_task_type_skips_classifier(self, conn):
+        model = _CountingModel(_CLASSIFY_EXPLAIN)
+        with TestClient(self._app(conn, model)) as c:
+            r = c.post(
+                "/api/task",
+                json={"task_type": "summarize", "scope": "file:core/queue.py"},
+                headers=AUTH,
+            )
+            assert r.status_code == 201
+            assert model.calls == 0  # explizit -> keine Klassifikation
+
+    def test_missing_task_type_without_model_returns_503(self, conn):
+        with TestClient(create_app(Queue(conn), Repository(conn))) as c:
+            r = c.post(
+                "/api/task",
+                json={"scope": "file:core/queue.py", "prompt": "Was macht das?"},
+                headers=AUTH,
+            )
+            assert r.status_code == 503
+
+    def test_missing_task_type_and_prompt_returns_422(self, conn):
+        model = _CountingModel(_CLASSIFY_EXPLAIN)
+        with TestClient(self._app(conn, model)) as c:
+            r = c.post(
+                "/api/task",
+                json={"scope": "file:core/queue.py"},
+                headers=AUTH,
+            )
+            assert r.status_code == 422
+
+
 class TestIndexRoute:
     def test_root_returns_html_without_auth(self, client):
         r = client.get("/")
