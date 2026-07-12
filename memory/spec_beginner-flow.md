@@ -103,9 +103,17 @@ prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
   TestArchitectInWriteTemplates (DAG-Form), worker test_artifact_type_architect_
   is_design. 4 Bestands-Shape-Tests auf 4 Knoten angepasst (test_patch x2,
   test_webgui x2). 1015 gruen, lint ok.
-- **4c (gem) NAECHSTES:** implement/fix-Prompt konsumiert das aktuelle `design`-Artefakt des
-  Scopes (node_prep.build_node_prompt liest via repo, haengt als Kontext an,
-  analog gather_context/verify_feedback). Test: implement-Prompt traegt Design.
+- **4c (gem) FERTIG 2026-07-12:** implement/fix-Prompt konsumiert das aktuelle
+  `design`-Artefakt des Scopes. `node_prep.read_design(repo, scope)` liest
+  `get_current(scope,"design").content["text"]` (defensiv via getattr fuer Test-
+  Fakes ohne get_current), `build_node_prompt` reicht es NUR bei implement/fix an
+  `build_patch_prompt(design=...)` (neuer Param) durch. Der Entwurf wird nach
+  context/vor feedback als Section "Entwurf des Architekten (setze ihn um): ..."
+  eingebettet -- so kommt er beim Coder an (analog gather_context/feedback). Kein
+  design -> keine Section, kein Fehler. Review-Pfad ignoriert design. Tests:
+  TestBuildNodePrompt (implement/fix tragen Design, ohne Design keine Section,
+  review ignoriert) + TestReadDesign (3) in test_node_prep.py, test_design_included
+  in test_patch.py. 1023 gruen, lint+format ok.
 - **4d (gem, danach):** groessen-gegateter Plan-Ebenen-architect (plan.large) --
   ersetzt dort den pro-Goal-architect (kein Doppel). Heuristik dort festlegen.
 

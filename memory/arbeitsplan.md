@@ -293,12 +293,14 @@ I-UX.4   Architect-Schritt (Variante b, GEFALLEN):    gem  I-UX.2    E6 "Planer 
          eigener prob-"architect"-Knoten + Design-                  abhaengig (Nutzer): kleine/Einzel-
          Artefakt. Groessen-gegatet: klein->pro Goal,               Goals -> pro-Goal-architect; grosse
          gross->Plan-Ebene. Schnitt 4a-4d s.u.                      Plaene -> Plan-Ebenen-architect.
-                                                                    4a+4b fertig 2026-07-12 (4a: Artefakt
+                                                                    4a+4b+4c fertig 2026-07-12 (4a: Artefakt
                                                                     design; 4b: task_type architect,
                                                                     Router reasoning 60-100, Registry
                                                                     index->architect->impl->lint, Design-
-                                                                    Schema, FakeModel->design. 1015 gruen).
-                                                                    OFFEN: 4c (impl konsumiert design), 4d.
+                                                                    Schema; 4c: build_node_prompt liest
+                                                                    read_design -> build_patch_prompt(
+                                                                    design=) haengt Entwurf an impl/fix an.
+                                                                    1023 gruen). OFFEN: 4d.
 I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene
@@ -342,11 +344,11 @@ Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 
 Aktueller Fokus (2026-07-12): Beginner-Flow-Familie I-UX. UX.1 (Upload), UX.2
 (Intent im Hauptpfad), UX.5 (Rename lint_gate) fertig+committed+gepusht. UX.3
-(explain/summarize frage-zentriertes Schema + task-bewusster Human-Suffix) fertig,
-Commit ausstehend. NAECHSTER SCHRITT: I-UX.4 (Architect) -- Entscheidung GEFALLEN:
-Variante (b) eigener prob-"architect"-Knoten (nicht (a)). Voller Wiedereinstieg +
-exakte Stellen: `spec_beginner-flow`. OFFEN/DEPLOY: laufender Container auf altem
-Code -> Rebuild + `-m core.db migrate` (Migration 0011), damit UX.1/2/5 live sind.
++ UX.4a/b/c committed (Architect-Knoten + Design-Artefakt + impl/fix konsumiert
+design). NAECHSTER SCHRITT: I-UX.4d (groessen-gegateter Plan-Ebenen-architect via
+plan.large -- Heuristik dort festlegen). Voller Wiedereinstieg + exakte Stellen:
+`spec_beginner-flow`. OFFEN/DEPLOY: laufender Container auf altem Code -> Rebuild +
+`-m core.db migrate` (Migration 0011), damit UX.1/2/5 live sind.
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

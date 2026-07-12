@@ -40,6 +40,22 @@ def read_scope_source(scope: str, root: Path | None) -> str:
     return ""
 
 
+def read_design(repo: Repository, scope: str) -> str:
+    """Text des aktuellen `design`-Artefakts des Scopes (Entwurf des architect-
+    Knotens), oder "" wenn keiner vorliegt. Der architect laeuft im implement/fix-
+    Sub-DAG VOR dem Patch (index->architect->implement/fix->lint_gate); sein
+    Entwurf soll beim Coder ankommen. content ist ein freies dict {text: <md>}
+    (review_split=False). get_current kann bei Test-Fakes fehlen -> defensiv via
+    getattr (kein Regressionsrisiko fuer bestehende Fakes ohne Artefakt-Store)."""
+    getter = getattr(repo, "get_current", None)
+    if getter is None:
+        return ""
+    art = getter(scope, "design")
+    if art is None:
+        return ""
+    return (getattr(art, "content", None) or {}).get("text", "") or ""
+
+
 def ensure_indexed(repo: Repository, root: Path | None, scope: str) -> None:
     """Auto-Index: file:-Scope aus `root` in den Graph ziehen, damit der Prompt
     Symbol-Umriss (symbol_index) UND Aufrufer (impact) traegt. missing_ok ->
@@ -69,7 +85,10 @@ def build_node_prompt(
     anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope in `root`
     existiert) + Graph-Kontext (I-5.6). instruction = natuerlichsprachige Absicht
     (Plan-Prompt bzw. /api/task-Hinweis); ein Goal traegt sie nicht, daher
-    explizit durchgereicht. feedback = Verify-Rueckkante (I-7.4)."""
+    explizit durchgereicht. feedback = Verify-Rueckkante (I-7.4). Das aktuelle
+    `design`-Artefakt des Scopes (Entwurf des architect-Knotens, I-UX.4c) wird
+    fuer implement/fix als Kontext angehaengt -- so kommt der Entwurf beim Coder
+    an (analog gather_context/feedback)."""
     source_code = read_scope_source(scope, root)
     context = gather_context(repo, scope, source_root=root)
     if task_type in ("implement", "fix"):
@@ -80,6 +99,7 @@ def build_node_prompt(
             instruction=instruction,
             context=context,
             feedback=feedback,
+            design=read_design(repo, scope),
         )
     return build_review_prompt(task_type, scope, source_code, instruction, context)
 

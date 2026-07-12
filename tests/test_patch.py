@@ -139,6 +139,14 @@ class TestBuildPatchPrompt:
         )
         assert "pytest rot: test_a" in p
 
+    def test_design_included(self):
+        # I-UX.4c: der Architekten-Entwurf wird als Kontext eingebettet.
+        p = build_patch_prompt(
+            "implement", "file:a.py", "", design="Nutze helper_fn statt neu."
+        )
+        assert "Architekten" in p
+        assert "Nutze helper_fn statt neu." in p
+
     def test_example_diff_survives_extract(self):
         # Der im Prompt gezeigte Beispiel-Diff muss dem Vertrag von extract_diff
         # genuegen (gleiche Wahrheitsquelle) -> kleine Modelle bekommen ein

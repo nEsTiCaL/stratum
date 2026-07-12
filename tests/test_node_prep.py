@@ -7,9 +7,12 @@ der prob-Knoten (Claim-Key-Routing + Prompt; det/verify ohne Prompt).
 
 from __future__ import annotations
 
+from core.models.provenance_schema import Provenance
+from core.models.result_prob_schema import ResultProb
 from core.node_prep import (
     build_node_prompt,
     materialize_prob_nodes,
+    read_design,
     read_scope_source,
 )
 from core.queue import Queue
@@ -17,6 +20,28 @@ from core.repository import Repository
 from core.router import Router
 from core.task_routing import auto_capable_task_types
 from core.template_registry import DagNode, TaskDag
+
+
+def _design(scope: str, text: str) -> ResultProb:
+    """design-Artefakt (Entwurf des architect-Knotens) fuer einen Scope."""
+    return ResultProb(
+        artifact_type="design",
+        scope=scope,
+        content={"text": text},
+        confidence=0.7,
+        provenance=Provenance(
+            schema_version="1",
+            source_hash="commit-abc",
+            input_hash="in-arch",
+            producer="qwen3",
+            producer_version="35b",
+            producer_class="prob",
+            timestamp="2026-07-12T12:00:00+00:00",
+            artifact_type="design",
+            scope=scope,
+        ),
+    )
+
 
 # Profil D (nur phi4-mini, keine Cloud): review/fix liegen ueber dem Band -> human.
 _PROFILE_D = auto_capable_task_types(Router(), installed=frozenset({"phi4-mini"}))
@@ -67,6 +92,47 @@ class TestBuildNodePrompt:
             Repository(conn), "review", "file:a.py", root=tmp_path
         )
         assert "marker_fn" in prompt
+
+    def test_implement_prompt_carries_design(self, conn):
+        # I-UX.4c: liegt ein design-Artefakt des Scopes vor (Entwurf des
+        # architect-Knotens), traegt der implement-Prompt es als Kontext.
+        repo = Repository(conn)
+        repo.put_artifact(_design("file:a.py", "Nutze bestehende helper_fn."))
+        prompt = build_node_prompt(repo, "implement", "file:a.py", "baue_XYZ")
+        assert "Architekten" in prompt
+        assert "Nutze bestehende helper_fn." in prompt
+
+    def test_fix_prompt_carries_design(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_design("file:a.py", "Fix in Rand-Zweig."))
+        prompt = build_node_prompt(repo, "fix", "file:a.py", "beh_XYZ")
+        assert "Fix in Rand-Zweig." in prompt
+
+    def test_implement_prompt_without_design(self, conn):
+        # Kein design-Artefakt -> keine Architekten-Section, kein Fehler.
+        prompt = build_node_prompt(Repository(conn), "implement", "file:a.py", "b_XYZ")
+        assert "Architekten" not in prompt
+
+    def test_review_prompt_ignores_design(self, conn):
+        # design fliesst NUR in den Patch-Prompt (implement/fix), nicht in Review.
+        repo = Repository(conn)
+        repo.put_artifact(_design("file:a.py", "Architekten-Entwurf-Text."))
+        prompt = build_node_prompt(repo, "review", "file:a.py", "pruef_XYZ")
+        assert "Architekten-Entwurf-Text." not in prompt
+
+
+class TestReadDesign:
+    def test_returns_design_text(self, conn):
+        repo = Repository(conn)
+        repo.put_artifact(_design("file:a.py", "Entwurf hier."))
+        assert read_design(repo, "file:a.py") == "Entwurf hier."
+
+    def test_missing_design_is_empty(self, conn):
+        assert read_design(Repository(conn), "file:a.py") == ""
+
+    def test_no_get_current_is_empty(self):
+        # Test-Fakes ohne Artefakt-Store -> defensiv leer, kein AttributeError.
+        assert read_design(object(), "file:a.py") == ""
 
 
 class TestMaterializeProbNodes:
