@@ -7,16 +7,21 @@ der prob-Knoten (Claim-Key-Routing + Prompt; det/verify ohne Prompt).
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from core.ingest import ingest_file
 from core.models.provenance_schema import Provenance
 from core.models.result_prob_schema import ResultProb
 from core.node_prep import (
     build_node_prompt,
+    ensure_fresh,
     materialize_prob_nodes,
     read_design,
     read_scope_source,
 )
 from core.queue import Queue
 from core.repository import Repository
+from core.review_context import gather_context
 from core.router import Router
 from core.task_routing import auto_capable_task_types
 from core.template_registry import DagNode, TaskDag
@@ -133,6 +138,76 @@ class TestReadDesign:
     def test_no_get_current_is_empty(self):
         # Test-Fakes ohne Artefakt-Store -> defensiv leer, kein AttributeError.
         assert read_design(object(), "file:a.py") == ""
+
+
+class TestEnsureFresh:
+    """I-REK.2 Frische-Invariante: der Index darf nie aelter sein als der
+    Workspace. Delta-Check (Content-Hash vs. symbol_index.input_hash) ->
+    Re-Ingest+Invalidierung nur bei Aenderung, sonst nichts."""
+
+    def test_changed_file_reingested_briefing_reflects_new_state(self, conn, tmp_path):
+        repo = Repository(conn)
+        (tmp_path / "a.py").write_text("def old_fn():\n    pass\n", encoding="utf-8")
+        ingest_file(repo, tmp_path, "a.py")
+        # Datei nach Enqueue geaendert:
+        (tmp_path / "a.py").write_text("def new_fn():\n    pass\n", encoding="utf-8")
+        h = ensure_fresh(repo, tmp_path, "file:a.py")
+        assert h is not None
+        # Index aktualisiert (Treffer auf den neuen Hash) ...
+        assert repo.staleness_lookup("file:a.py", "symbol_index", h) is True
+        # ... und das Briefing traegt den neuen Stand, nicht den alten.
+        ctx = gather_context(repo, "file:a.py", source_root=tmp_path)
+        assert "new_fn" in ctx
+        assert "old_fn" not in ctx
+
+    def test_unchanged_workspace_no_reingest(self, conn, tmp_path):
+        repo = Repository(conn)
+        (tmp_path / "a.py").write_text("def keep_fn():\n    pass\n", encoding="utf-8")
+        ingest_file(repo, tmp_path, "a.py")
+        calls: list = []
+        h = ensure_fresh(
+            repo, tmp_path, "file:a.py", ingest_fn=lambda *a, **k: calls.append((a, k))
+        )
+        assert h is not None  # Frische-Stempel trotzdem gesetzt
+        assert calls == []  # unveraendert -> kein Re-Ingest (kein Perf-Regress)
+
+    def test_reingest_uses_invalidate(self, conn, tmp_path):
+        repo = Repository(conn)
+        (tmp_path / "a.py").write_text("def old_fn():\n    pass\n", encoding="utf-8")
+        ingest_file(repo, tmp_path, "a.py")
+        (tmp_path / "a.py").write_text("def new_fn():\n    pass\n", encoding="utf-8")
+        calls: list = []
+        ensure_fresh(
+            repo,
+            tmp_path,
+            "file:a.py",
+            ingest_fn=lambda r, root, rel, **k: calls.append((rel, k)),
+        )
+        assert calls == [("a.py", {"invalidate": True})]  # I-4.4
+
+    def test_never_indexed_triggers_reingest(self, conn, tmp_path):
+        repo = Repository(conn)
+        (tmp_path / "a.py").write_text("def x():\n    pass\n", encoding="utf-8")
+        calls: list = []
+        ensure_fresh(
+            repo, tmp_path, "file:a.py", ingest_fn=lambda *a, **k: calls.append(k)
+        )
+        assert calls == [{"invalidate": True}]
+
+    def test_no_root_returns_none(self, conn):
+        assert ensure_fresh(Repository(conn), None, "file:a.py") is None
+
+    def test_non_file_scope_returns_none(self, conn):
+        assert ensure_fresh(Repository(conn), Path("."), "module:net") is None
+
+    def test_missing_file_returns_none(self, conn, tmp_path):
+        # Greenfield: Ziel existiert noch nicht -> kein Umriss, kein Re-Ingest.
+        assert ensure_fresh(Repository(conn), tmp_path, "file:fehlt.py") is None
+
+    def test_no_staleness_lookup_returns_none(self, tmp_path):
+        # Test-Fake ohne staleness_lookup -> defensiv, Verhalten wie vor I-REK.2.
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        assert ensure_fresh(object(), tmp_path, "file:a.py") is None
 
 
 class TestMaterializeProbNodes:

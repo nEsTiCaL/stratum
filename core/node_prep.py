@@ -14,6 +14,7 @@ separat via build_patch_prompt). Hier zentralisiert und damit unit-testbar:
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -68,6 +69,55 @@ def ensure_indexed(repo: Repository, root: Path | None, scope: str) -> None:
         ingest_file(repo, root, scope.removeprefix(_FILE_PREFIX), missing_ok=True)
     except Exception:  # noqa: BLE001 - Index ist Beiwerk, nicht die Task-Anlage
         pass
+
+
+def ensure_fresh(
+    repo: Repository,
+    root: Path | None,
+    scope: str,
+    *,
+    ingest_fn: Callable = ingest_file,
+) -> str | None:
+    """Frische-Invariante (I-REK.2): der Index eines file:-Scopes darf nie aelter
+    sein als der Workspace, BEVOR gather_context (in build_node_prompt) das
+    Briefing daraus baut. Beim Claim, vor dem Prompt-Bau aufzurufen.
+
+    Delta-Check: Content-Hash der Datei auf Platte gegen den input_hash des
+    aktuellen symbol_index (repo.staleness_lookup -- input_hash ist im det-Pfad
+    genau sha256 des Quelltexts). Treffer -> Index aktuell, KEIN Re-Ingest;
+    ein unveraenderter Workspace kostet nur read_bytes + sha256 + einen EXISTS-
+    Lookup (kein Performance-Regress). Kein Treffer (Datei seit Enqueue geaendert
+    ODER nie indexiert) -> ingest_fn(invalidate=True): Re-Ingest + differenzierte
+    Invalidierung (I-4.4), damit abhaengige Artefakte stale werden und der Graph
+    konsistent bleibt. So briefet ein spaeterer Knoten nie aus einem veralteten
+    Graph (Mehr-Goal-Plan mit Auto-Apply: Goal 1 patcht -> Goal 2 sieht den
+    neuen Stand).
+
+    Rueckgabe = Content-Hash (Frische-Stempel des Briefings zur Claim-Zeit,
+    fuer Trace/Provenance) oder None, wenn nichts zu pruefen ist: kein file:-Scope,
+    kein root, Datei fehlt (Greenfield -> kein Umriss, kein Re-Ingest) oder das
+    repo kennt keinen staleness_lookup (Test-Fake -> Verhalten wie vor I-REK.2).
+    Best-effort wie ensure_indexed: ein Index-Fehler kippt den Claim nicht."""
+    if root is None or not scope.startswith(_FILE_PREFIX):
+        return None
+    lookup = getattr(repo, "staleness_lookup", None)
+    if lookup is None:
+        return None
+    rel = scope.removeprefix(_FILE_PREFIX)
+    src = root / rel
+    if not src.exists():
+        return None
+    try:
+        content_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+    except OSError:
+        return None
+    if lookup(scope, "symbol_index", content_hash):
+        return content_hash  # Index aktuell -> kein Re-Ingest
+    try:
+        ingest_fn(repo, root, rel, invalidate=True)
+    except Exception:  # noqa: BLE001 - Index ist Beiwerk, nicht der Claim
+        pass
+    return content_hash
 
 
 def build_node_prompt(

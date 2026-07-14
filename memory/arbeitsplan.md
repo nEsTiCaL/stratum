@@ -330,7 +330,7 @@ I-UX.4d (=REK.8). Drei Straenge: V=Verlaesslichkeit, S=Struktur, W=Weiche.
 ID        Haeppchen                          Kl   dep            Detail
 --------  ---------------------------------  ---  -------------  ----------------
 I-REK.1   Lazy Prompt-Bau (4c-Rework)+Trace  gem  - FERTIG        `spec_rekursion`, `spec_beginner-flow`
-I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1          `spec_rekursion`
+I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1 FERTIG   `spec_rekursion`
 I-REK.3   test_gate Runner+Artefakt (G2/1)   det  -              `spec_rekursion`, `spec_schritt-7`
 I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3        `spec_rekursion`
 I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1          `spec_rekursion`
@@ -393,8 +393,13 @@ Arbeitspakete: Tabelle "Rekursiver Kern" oben (I-REK.1..12, `spec_rekursion`).
 I-REK.1 FERTIG (2026-07-14): Prompt wird zur Claim-Zeit gebaut, Design des
 architect-Knotens kommt beim Coder an (live an qwendemo DAG 173-176 verifiziert),
 prompt_with_feedback entfaellt, gesendeter Prompt pro Versuch im Lauf-Trace.
-NAECHSTER SCHRITT: I-REK.2 (Frische: Re-Ingest vor Briefing), danach Strang V
-komplett (REK.3-4) vor jeder Strukturausweitung.
+I-REK.2 FERTIG (2026-07-14): Frische-Invariante am Claim-Pfad. node_prep.ensure_fresh
+prueft VOR build_node_prompt den Content-Hash gegen symbol_index.input_hash
+(staleness_lookup) -> nur bei Aenderung ingest_file(invalidate=True); worker.run
+stempelt briefing_source_hash in den node_prompt-Trace. Damit briefet ein
+spaeterer Goal-Knoten nie aus veraltetem Graph (Auto-Apply Goal 1->2).
+NAECHSTER SCHRITT: I-REK.3 (test_gate Runner+Artefakt, G2/1), dann REK.4 -> Strang
+V komplett vor jeder Strukturausweitung.
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

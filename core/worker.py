@@ -118,9 +118,17 @@ class LlmWorker:
         # 4c-Timing-Bug ist damit weg. Ein explizit vorgebauter payload.prompt
         # (Seed/Eval/Bench) bleibt als Roh-Override moeglich.
         prompt = item.payload.get("prompt")
+        briefing_hash = None
         if prompt is None:
-            from core.node_prep import build_node_prompt
+            from core.node_prep import build_node_prompt, ensure_fresh
 
+            # I-REK.2 Frische-Invariante: das det-Briefing darf nie aelter sein
+            # als der Workspace. VOR dem (lazy) Prompt-Bau den Scope gegen die
+            # Platte pruefen; seit Enqueue geaendert -> Re-Ingest + Invalidierung
+            # (I-4.4), sonst kein Re-Ingest. So briefet ein spaeterer Goal-Knoten
+            # nie aus einem veralteten Graph (Auto-Apply: Goal 1 patcht ->
+            # Goal 2 sieht den neuen Stand). briefing_hash = Frische-Stempel.
+            briefing_hash = ensure_fresh(repo, self.root, item.scope)
             prompt = build_node_prompt(
                 repo,
                 item.task_type,
@@ -131,6 +139,7 @@ class LlmWorker:
             )
         # Audit: der exakt gesendete Prompt pro VERSUCH in den Lauf-Trace (nicht
         # ins Voraus-Payload) -- so bleibt nachvollziehbar, was das Modell sah.
+        # briefing_source_hash stempelt die Frische des Graph-Briefings (I-REK.2).
         repo.write_trace(
             item.dag_id,
             "node_prompt",
@@ -139,6 +148,7 @@ class LlmWorker:
                 "scope": item.scope,
                 "attempt": item.attempts,
                 "prompt": prompt,
+                "briefing_source_hash": briefing_hash,
             },
         )
 

@@ -64,6 +64,22 @@ Akzeptanz: Test: Datei nach Enqueue geaendert -> Briefing/Prompt enthaelt neuen
 Klasse  : det   dep: I-REK.1
 ```
 
+**FERTIG 2026-07-14.** `core/node_prep.ensure_fresh(repo, root, scope)` ist der
+Delta-Check: Content-Hash der Datei auf Platte (sha256 der Bytes) gegen den
+`input_hash` des aktuellen `symbol_index` via `repo.staleness_lookup` (der det-Pfad
+setzt input_hash = genau sha256 des Quelltexts). Treffer -> Index aktuell, KEIN
+Re-Ingest (unveraenderter Workspace kostet nur read_bytes+sha256+EXISTS -- kein
+Perf-Regress). Kein Treffer (Datei seit Enqueue geaendert ODER nie indexiert) ->
+`ingest_file(invalidate=True)` = Re-Ingest + differenzierte Invalidierung (I-4.4).
+Einhaengepunkt: `worker.py LlmWorker.run`, VOR `build_node_prompt` (nur wenn kein
+Roh-Prompt-Override im Payload); der Rueckgabewert (Content-Hash = Frische-Stempel)
+geht als `briefing_source_hash` in den `node_prompt`-Trace. Defensiv (getattr auf
+staleness_lookup, best-effort ingest) -> Test-Fakes ohne Store verhalten sich wie
+vor REK.2. Tests: TestEnsureFresh (8) in test_node_prep.py -- geaendert->Re-Ingest+
+Briefing traegt neuen Stand (gather_context), unveraendert->kein Re-Ingest,
+invalidate=True durchgereicht, nie-indexiert->Re-Ingest, Rand (kein root/nicht-file/
+fehlende Datei/kein staleness_lookup)->None. 1030 gruen, ruff check/format gruen.
+
 ## I-REK.3  test_gate Runner + Artefakt (G2, Teil 1)   [Strang V]
 
 ```
