@@ -353,6 +353,14 @@ Prinzip "DAG-Materialisierung so spaet wie noetig". Verifizierte Ist-Architektur
 exakte Stellen: `spec_beginner-flow`. DEPLOY erledigt (Migration 0011 drin, Image
 mit 4c-Code, verifiziert 2026-07-14) -> UX.1/2/3/5 live.
 
+NEUAUSRICHTUNG (Nutzer, 2026-07-14) -> `arch_pfadwahl`: Pfadwahl nach Intent
+explizit det- vs. architect-getrieben ("kennt der Graph die Antwort?"; Baum
+L1-L4, Struktur det / Inhalt prob; det speist JEDEN prob-Prompt). Rahmt I-UX.4
+(Architect) + kuenftige Struktur-Expansion. NEUES STRUKTUR-STUECK (nach 4c/4d):
+Classifier liefert "Aenderungsart" (Graph-Operation vs. offene Aenderung) ->
+automatische L1-L4-Wahl; det-Expansion ueber Rename hinaus generalisieren
+(Signaturaenderung = L2).
+
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
 ```

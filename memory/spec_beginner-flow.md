@@ -132,6 +132,8 @@ prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
   ersetzt dort den pro-Goal-architect (kein Doppel). Heuristik dort festlegen.
 
 ## Prinzip: DAG-Materialisierung so spaet wie noetig (verifiziert 2026-07-14)
+Uebergeordnete Pfadwahl (det- vs. architect-getrieben, "det speist jeden prob-
+Prompt"): `arch_pfadwahl`. Der 4c-Rework ist die Inhalts-Stufe (Stufe A) davon.
 Der 4c-Befund ist Instanz eines allgemeineren Prinzips (Nutzer): **es ist immer nur
 die deterministisch sichere Ebene sichtbar; tiefere Ebenen erscheinen, wenn der
 prob-Knoten davor fertig ist. Deterministisch feststehende Tasks duerfen vorab

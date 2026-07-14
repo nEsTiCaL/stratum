@@ -44,6 +44,9 @@ datei                    | beschreibung                                         
 meta_overview.md         | Kernuebersicht: Leitprinzipien, Aufbau, Status                      | schichtagent, artifact-first, det-vor-prob
 arch_core.md             | globale Architektur: Sprache-Split, Schema-Vertrag, scope,          | provenance, result_det/prob, json-schema,
                          |   Indexer, Cloud-Eskalation, Modul-Strategie, Repo-Struktur         |   go-cli, jsonb, artifact_type
+arch_pfadwahl.md         | Pfadwahl nach Intent (Neuausrichtung 2026-07-14): det- vs.          | det-vor-prob, rename_expand, architect,
+                         |   architect-getrieben; Kriterium "kennt der Graph die Antwort?";     |   entscheidungsbaum, struktur-vs-inhalt,
+                         |   Baum L1-L4 (Struktur det/Inhalt prob); det speist JEDEN prob-Prompt | vollstaendigkeit, aenderungsart, classifier
 env_core.md              | globale Constraints: Laufzeit-Voraussetzungen, kumulative           | gpu, vram, ollama, docker, postgres,
                          |   Voraussetzungs-Schichten S1-S5, Preflight, Sicherheit             |   gates, preflight
 env_portabilitaet.md     | Windows-Dev -> Linux: Dev-Modell, 11 Anforderungen, Ollama-         | wsl2, debian, inotify, cuda, vulkan,

@@ -9,7 +9,10 @@ Zwischenergebnis ist ein nachpruefbares Artefakt mit Provenance.
 
 - artifact-first: der Code ist die Wahrheit, Artefakte sind ein Cache mit
   Herkunftsnachweis
-- deterministisch vor probabilistisch: Parser und Graphen vor Sprachmodellen
+- deterministisch vor probabilistisch: Parser und Graphen vor Sprachmodellen.
+  Praezisiert zur EXPLIZITEN Pfadwahl nach Intent (`arch_pfadwahl`): "kennt der
+  Graph die Antwort?" -> det; sonst Architect, den die det-Schicht briefed
+  (det speist JEDEN prob-Prompt)
 - Gate vor Faehigkeit: erst pruefen ob eine Aufgabe die Maschine verlassen darf,
   dann das kleinste faehige Modell
 - austauschbar: Speicher, Queue, Graph, Modelle und Frontends hinter schmalen
