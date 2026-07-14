@@ -131,6 +131,10 @@ prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
 - **4d (gem, danach):** groessen-gegateter Plan-Ebenen-architect (plan.large) --
   ersetzt dort den pro-Goal-architect (kein Doppel). Heuristik dort festlegen.
 
+> UEBERFUEHRT (2026-07-14): 4c-Rework = I-REK.1, 4d = I-REK.8 der neuen
+> Familie "Rekursiver Kern" -> `spec_rekursion` / `arch_rekursion`. Die
+> Ist-Architektur-Notizen oben bleiben als Befund-Grundlage gueltig.
+
 ## Prinzip: DAG-Materialisierung so spaet wie noetig (verifiziert 2026-07-14)
 Uebergeordnete Pfadwahl (det- vs. architect-getrieben, "det speist jeden prob-
 Prompt"): `arch_pfadwahl`. Der 4c-Rework ist die Inhalts-Stufe (Stufe A) davon.

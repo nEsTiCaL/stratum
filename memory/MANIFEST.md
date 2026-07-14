@@ -44,9 +44,12 @@ datei                    | beschreibung                                         
 meta_overview.md         | Kernuebersicht: Leitprinzipien, Aufbau, Status                      | schichtagent, artifact-first, det-vor-prob
 arch_core.md             | globale Architektur: Sprache-Split, Schema-Vertrag, scope,          | provenance, result_det/prob, json-schema,
                          |   Indexer, Cloud-Eskalation, Modul-Strategie, Repo-Struktur         |   go-cli, jsonb, artifact_type
-arch_pfadwahl.md         | Pfadwahl nach Intent (Neuausrichtung 2026-07-14): det- vs.          | det-vor-prob, rename_expand, architect,
-                         |   architect-getrieben; Kriterium "kennt der Graph die Antwort?";     |   entscheidungsbaum, struktur-vs-inhalt,
-                         |   Baum L1-L4 (Struktur det/Inhalt prob); det speist JEDEN prob-Prompt | vollstaendigkeit, aenderungsart, classifier
+arch_pfadwahl.md         | Pfadwahl nach Intent (2026-07-14): Leitfrage "kennt der Graph die   | det-vor-prob, rename_expand, architect,
+                         |   Antwort?", Achsen Struktur/Inhalt, det speist JEDEN prob-Prompt;   |   entscheidungsbaum, struktur-vs-inhalt,
+                         |   Baum L1-L4 ABGELOEST durch arch_rekursion (L1-L4 nur noch Muster)  |   vollstaendigkeit, aenderungsart, classifier
+arch_rekursion.md        | Rekursiver Kern (2026-07-14): eine Zelle je Knoten (brief->act->    | rekursion, expand, completion-hook,
+                         |   gate->eskalieren), Kinder via Completion-Hook, Verifikations- +    |   verifikationsleiter, eskalationsleiter,
+                         |   Eskalationsleiter, 5 Invarianten, Element-Mapping, Pre-mortem      |   invarianten, test_gate, supersede
 env_core.md              | globale Constraints: Laufzeit-Voraussetzungen, kumulative           | gpu, vram, ollama, docker, postgres,
                          |   Voraussetzungs-Schichten S1-S5, Preflight, Sicherheit             |   gates, preflight
 env_portabilitaet.md     | Windows-Dev -> Linux: Dev-Modell, 11 Anforderungen, Ollama-         | wsl2, debian, inotify, cuda, vulkan,
@@ -109,6 +112,9 @@ spec_refactor-webschicht.md | Web-Schicht-Refactor (Findings + Plan, 2026-07-10)
                          |   (dedup app/serve), Tier2 (I-RW.2) APIRouter-Split; core/ gesund    |   dedup, hotspot, di-ansatz
 spec_beginner-flow.md    | Beginner-Flow I-UX.* (2026-07-12): Upload/Intent/lint_gate fertig,  | beginner, upload, intent, classifier,
                          |   I-UX.3 (explain-Schema) + I-UX.4 (Architect) offen; Handoff-Chunk    |   lint_gate, architect, handoff, ux
+spec_rekursion.md        | Inkremente Rekursiver Kern I-REK.1..12 (2026-07-14): 3 Straenge     | rekursion, lazy-prompt, test_gate,
+                         |   V/S/W, je Paket Ein-Kontext-Schnitt + Handoff; absorbiert          |   expand-seam, completion-hook, impact-
+                         |   I-UX.4c-Rework (=REK.1) und 4d (=REK.8)                            |   skelett, eskalation, gate-policy
 spec_schalen.md          | Inkremente Schalen I-D.x (Desktop) / I-S.x (Server)                 | vscode, web-gui, ssh-gateway, auth
 spec_rest-api.md         | REST-API-Schnittstelle: Endpoints (POST /api/task, GET /api/tasks     | polling, task-create, result-abruf, ssh-pipe,
                          |   Polling, GET /api/result/{id}; SSE entfernt I-REST.2),              |   session-cache, scope, curl-beispiele,

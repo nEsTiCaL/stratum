@@ -5,6 +5,8 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Abgeschlossene Architektur-Schritte 1-5: memory-archiv/log-archiv-schritt-N.md
 (ausserhalb memory/, nur bei explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-14] decision | Rekursiver Kern: L1-L4-Baum abgeloest, Leitfrage rekursiv je Knoten (Zelle brief->act->gate->eskalieren, Kinder via Completion-Hook, 2 Leitern, 5 Invarianten) -> `arch_rekursion`; Pakete I-REK.1..12, Strang V zuerst; absorbiert 4c=REK.1, 4d=REK.8 -> `spec_rekursion`, arbeitsplan
+
 ## [2026-07-12] decision+finding | Beginner-UC-Lauf (5 reale Anfaenger-Saetze): Write-Path 5/5 sauber, Token-oekonomie exzellent, det korrekt gezogen. Funde: kein REST-Upload (Finding #0), explain/summarize reviewen statt Fragen zu beantworten, lint-Gate statisch ("gruen"!="geloest"). 4 Entscheidungen -> Familie I-UX -> `spec_beginner-flow`, `ops_abdeckungstests`
 ## [2026-07-12] decision | I-UX.1 fertig: Workspace-Write PUT /api/workspace/file + POST /api/workspace/archive (Projekt-Ersatz aus ZIP, Traversal erst validiert dann schreiben). Nutzer bringt Projekt selbst ein, getrennt vom Apply-Gate. Behebt Finding #0. 7 Tests -> `spec_beginner-flow`
 ## [2026-07-12] decision | I-UX.2 fertig: task_type an POST /api/task OPTIONAL -> Classifier aus Prompt (Intent immer im Hauptpfad, KEIN /api/ask); explizit -> uebersprungen. 4 Tests -> `spec_beginner-flow`

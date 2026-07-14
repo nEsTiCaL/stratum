@@ -1,5 +1,12 @@
 # Pfadwahl nach Intent: DET-getrieben vs. Architect-getrieben (arch)
 
+> WEITERENTWICKELT (2026-07-14, noch am selben Tag): der Entscheidungsbaum
+> L1-L4 unten ist als EINMAL-Klassifikation abgeloest -> `arch_rekursion`
+> (Leitfrage rekursiv an jedem Knoten; L1-L4 ueberleben als Muster).
+> WEITER GUELTIG aus diesem Chunk: die Leitfrage selbst, die zwei Achsen
+> Struktur/Inhalt, "det speist jeden prob-Prompt", die zwei festen Regeln.
+> Umsetzung: `spec_rekursion` (I-REK.1..12).
+
 Neuausrichtung (Nutzer, 2026-07-14): schaerft das Leitprinzip "det vor prob"
 (`meta_overview`) zu einer EXPLIZITEN Pfadwahl. Nach dem Intent wird nicht mehr
 implizit alles ueber den prob-`decompose` gefuehrt, sondern die Umsetzung

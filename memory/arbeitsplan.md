@@ -301,7 +301,8 @@ I-UX.4   Architect-Schritt (Variante b, GEFALLEN):    gem  I-UX.2    E6 "Planer 
                                                                     (Claim-Zeit), 1 Funktion, prompt_with_
                                                                     feedback faellt weg. Prinzip "DAG-Mat.
                                                                     so spaet wie noetig" -> spec_beginner-
-                                                                    flow. OFFEN: 4c-Rework, dann 4d.
+                                                                    flow. GEHT AUF IN: I-REK.1 (4c-Rework)
+                                                                    + I-REK.8 (4d) -> spec_rekursion.
 I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene
@@ -317,6 +318,34 @@ I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate
                                                                     api_key (Auth) BLEIBT. Prosa-"verify"
                                                                     in Docstrings tw. gelassen. 997 gruen.
 ```
+
+## Rekursiver Kern  (Spec: `spec_rekursion`, Architektur: `arch_rekursion`)
+
+Neuausrichtung 2026-07-14 (Nutzer + Diskussion): eine Zelle rekursiv (brief ->
+act -> gate -> eskalieren), Kinder via Completion-Hook, zwei Leitern. Ersetzt
+den L1-L4-Baum aus `arch_pfadwahl`; absorbiert I-UX.4c-Rework (=REK.1) und
+I-UX.4d (=REK.8). Drei Straenge: V=Verlaesslichkeit, S=Struktur, W=Weiche.
+
+```
+ID        Haeppchen                          Kl   dep            Detail
+--------  ---------------------------------  ---  -------------  ----------------
+I-REK.1   Lazy Prompt-Bau (4c-Rework)+Trace  gem  -              `spec_rekursion`, `spec_beginner-flow`
+I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1          `spec_rekursion`
+I-REK.3   test_gate Runner+Artefakt (G2/1)   det  -              `spec_rekursion`, `spec_schritt-7`
+I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3        `spec_rekursion`
+I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1          `spec_rekursion`
+I-REK.6   Architect konditional + Metrik     gem  REK.4,5        `spec_rekursion`
+I-REK.7   Completion-Hook + Supersede        det  REK.5          `spec_rekursion`
+I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7          `spec_rekursion`, `spec_beginner-flow`
+I-REK.9   Aenderungsart + det-Validierung    gem  REK.5          `spec_rekursion`, `arch_pfadwahl`
+I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9        `spec_rekursion`
+I-REK.11  Eskalation re-design/re-expand     det  REK.4,7        `spec_rekursion`
+I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10       `spec_rekursion`
+```
+
+Reihenfolge: Strang V zuerst KOMPLETT (REK.1-4, "messen vor optimieren" --
+test_gate ist das Messinstrument fuer alles Weitere), dann REK.5-6, dann 7-8
+parallel zu 9-10, zuletzt 11-12.
 
 ## Status
 
@@ -355,11 +384,14 @@ mit 4c-Code, verifiziert 2026-07-14) -> UX.1/2/3/5 live.
 
 NEUAUSRICHTUNG (Nutzer, 2026-07-14) -> `arch_pfadwahl`: Pfadwahl nach Intent
 explizit det- vs. architect-getrieben ("kennt der Graph die Antwort?"; Baum
-L1-L4, Struktur det / Inhalt prob; det speist JEDEN prob-Prompt). Rahmt I-UX.4
-(Architect) + kuenftige Struktur-Expansion. NEUES STRUKTUR-STUECK (nach 4c/4d):
-Classifier liefert "Aenderungsart" (Graph-Operation vs. offene Aenderung) ->
-automatische L1-L4-Wahl; det-Expansion ueber Rename hinaus generalisieren
-(Signaturaenderung = L2).
+L1-L4, Struktur det / Inhalt prob; det speist JEDEN prob-Prompt).
+WEITERENTWICKELT (gleicher Tag, Diskussion) -> `arch_rekursion`: der L1-L4-Baum
+als Einmal-Klassifikation ist abgeloest; die Leitfrage wird REKURSIV an jedem
+Knoten gestellt (eine Zelle: brief->act->gate->eskalieren; Kinder via
+Completion-Hook; Verifikations- + Eskalationsleiter; 5 Invarianten).
+Arbeitspakete: Tabelle "Rekursiver Kern" oben (I-REK.1..12, `spec_rekursion`).
+NAECHSTER SCHRITT: I-REK.1 (Lazy Prompt-Bau, ehem. 4c-Rework), danach Strang V
+komplett (REK.2-4) vor jeder Strukturausweitung.
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
