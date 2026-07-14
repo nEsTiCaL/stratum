@@ -293,14 +293,15 @@ I-UX.4   Architect-Schritt (Variante b, GEFALLEN):    gem  I-UX.2    E6 "Planer 
          eigener prob-"architect"-Knoten + Design-                  abhaengig (Nutzer): kleine/Einzel-
          Artefakt. Groessen-gegatet: klein->pro Goal,               Goals -> pro-Goal-architect; grosse
          gross->Plan-Ebene. Schnitt 4a-4d s.u.                      Plaene -> Plan-Ebenen-architect.
-                                                                    4a+4b+4c fertig 2026-07-12 (4a: Artefakt
-                                                                    design; 4b: task_type architect,
-                                                                    Router reasoning 60-100, Registry
-                                                                    index->architect->impl->lint, Design-
-                                                                    Schema; 4c: build_node_prompt liest
-                                                                    read_design -> build_patch_prompt(
-                                                                    design=) haengt Entwurf an impl/fix an.
-                                                                    1023 gruen). OFFEN: 4d.
+                                                                    4a+4b fertig 2026-07-12. 4c committed
+                                                                    (26541f1) ABER live unwirksam (Prompt
+                                                                    zur Enqueue-Zeit gebaut, vor architect
+                                                                    -> Design fehlt im impl-Prompt; Befund
+                                                                    2026-07-14). REWORK: Prompt fauler bauen
+                                                                    (Claim-Zeit), 1 Funktion, prompt_with_
+                                                                    feedback faellt weg. Prinzip "DAG-Mat.
+                                                                    so spaet wie noetig" -> spec_beginner-
+                                                                    flow. OFFEN: 4c-Rework, dann 4d.
 I-UX.5   Rename verify -> lint_gate (VerifyWorker =    det  -         apply_gate.py bleibt (Schreib-
          apply-dry+ruff = Lint-Gate, KEINE Verifik.);               Gate); "verify"(Tests)/"review"
          verify/review als spaetere inhaltliche                     (LLM-Diff-Urteil) sind eigene
@@ -344,11 +345,13 @@ Schalen: I-D.0/D.2/D.3 + I-REST.1/2 fertig -> Web-Dashboard und REST-API
 
 Aktueller Fokus (2026-07-12): Beginner-Flow-Familie I-UX. UX.1 (Upload), UX.2
 (Intent im Hauptpfad), UX.5 (Rename lint_gate) fertig+committed+gepusht. UX.3
-+ UX.4a/b/c committed (Architect-Knoten + Design-Artefakt + impl/fix konsumiert
-design). NAECHSTER SCHRITT: I-UX.4d (groessen-gegateter Plan-Ebenen-architect via
-plan.large -- Heuristik dort festlegen). Voller Wiedereinstieg + exakte Stellen:
-`spec_beginner-flow`. OFFEN/DEPLOY: laufender Container auf altem Code -> Rebuild +
-`-m core.db migrate` (Migration 0011), damit UX.1/2/5 live sind.
++ UX.4a/b committed. UX.4c committed (26541f1), aber LIVE UNWIRKSAM (Befund
+2026-07-14: impl-Prompt zur Enqueue-Zeit gebaut, vor dem architect -> Design fehlt).
+NAECHSTER SCHRITT: I-UX.4c-REWORK -- Prompt fauler bauen (Claim-Zeit statt Enqueue),
+eine Funktion, prompt_with_feedback faellt weg; danach 4d konsistent mit dem
+Prinzip "DAG-Materialisierung so spaet wie noetig". Verifizierte Ist-Architektur +
+exakte Stellen: `spec_beginner-flow`. DEPLOY erledigt (Migration 0011 drin, Image
+mit 4c-Code, verifiziert 2026-07-14) -> UX.1/2/3/5 live.
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
