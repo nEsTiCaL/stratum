@@ -1345,20 +1345,25 @@ class TestPlanConfirmDiscard:
             r = c.post(f"/api/plan/{pid}/discard", headers=AUTH)
         assert r.json()["discarded_tasks"] == 0
 
-    def test_confirm_sets_prob_node_prompts(self, conn):
-        # Prob-Knoten brauchen einen Prompt im Payload (Worker liest ihn); det
-        # (index) nicht. Frueher: KeyError 'prompt' beim Worker.
+    def test_confirm_sets_prob_node_instructions(self, conn):
+        # I-REK.1: Prob-Knoten bekommen die INSTRUKTION ins Payload (den Prompt
+        # baut der Worker/Human-Pfad zur Claim-Zeit daraus); det (index) nicht.
         with _plan_client(conn) as c:
             pid = _create_plan(c)
             c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
         rows = conn.execute(
-            "SELECT task_type, payload->>'prompt' FROM queue ORDER BY id"
+            "SELECT task_type, payload->>'instruction' FROM queue ORDER BY id"
         ).fetchall()
-        by_type = {tt: prompt for tt, prompt in rows}
-        assert by_type["review"]  # prob -> Prompt gesetzt
-        assert by_type["index"] is None  # det -> kein Prompt
+        by_type = {tt: instruction for tt, instruction in rows}
+        assert by_type["review"]  # prob -> Instruktion gesetzt
+        assert by_type["index"] is None  # det -> kein Payload
 
     def test_confirm_implement_uses_patch_prompt(self, conn):
+        # I-REK.1: der Patch-Prompt entsteht zur Claim-Zeit aus der gespeicherten
+        # Instruktion (nicht mehr vorab im Payload). claim_by_id ignoriert
+        # depends_on -> der implement-Knoten laesst sich direkt claimen, ohne dass
+        # index/architect gelaufen sein muessen (Design fehlt dann noch, der
+        # Prompt ist aber bereits ein Patch-Prompt).
         instruction = "Kamerazoom um Faktor 5 vergroessern"
         with TestClient(create_app(Queue(conn), Repository(conn))) as c:
             r = c.post(
@@ -1377,9 +1382,10 @@ class TestPlanConfirmDiscard:
             )
             pid = r.json()["id"]
             c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
-        prompt = conn.execute(
-            "SELECT payload->>'prompt' FROM queue WHERE task_type='implement'"
-        ).fetchone()[0]
+            impl_id = conn.execute(
+                "SELECT id FROM queue WHERE task_type='implement'"
+            ).fetchone()[0]
+            prompt = c.post(f"/api/claim/{impl_id}", headers=AUTH).json()["prompt"]
         assert "Unified-Diff" in prompt  # Patch-Prompt, nicht Review
         assert instruction in prompt  # Plan-Absicht durchgereicht
         assert "existiert noch nicht" in prompt  # Greenfield erkannt
@@ -1637,9 +1643,10 @@ class TestPatchSubmit:
 
 
 class TestClaimShowsVerifyFeedback:
-    """Rueckkante I-7.4 im Human-Pfad: claim/prompt haengen verify_feedback an
-    den Prompt (EINE Quelle mit dem LLM-Worker: prompt_with_feedback). Vorher
-    claimte der Mensch den wiedereroeffneten Task ohne den Verify-Fehler."""
+    """Rueckkante I-7.4 im Human-Pfad: claim/prompt bauen den Prompt zur Claim-Zeit
+    aus instruction + verify_feedback (I-REK.1, build_node_prompt = EINE Quelle mit
+    dem LLM-Worker). Vorher claimte der Mensch den wiedereroeffneten Task ohne den
+    Verify-Fehler zu kennen."""
 
     def _seed(self, conn):
         queue = Queue(conn)
@@ -1652,7 +1659,7 @@ class TestClaimShowsVerifyFeedback:
             (
                 json.dumps(
                     {
-                        "prompt": "Basis-Prompt",
+                        "instruction": "Basis-Aufgabe",
                         "verify_feedback": "x.py:140:5 F841 unused variable",
                     }
                 ),
@@ -1665,7 +1672,7 @@ class TestClaimShowsVerifyFeedback:
         queue, repo, item_id = self._seed(conn)
         with TestClient(create_app(queue, repo)) as c:
             p = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
-        assert p.startswith("Basis-Prompt")
+        assert "Basis-Aufgabe" in p  # Instruktion im Claim-Zeit-Prompt
         assert "Vorheriger Verify-Fehler" in p
         assert "F841" in p
 
@@ -1673,6 +1680,7 @@ class TestClaimShowsVerifyFeedback:
         queue, repo, item_id = self._seed(conn)
         with TestClient(create_app(queue, repo)) as c:
             p = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
+        assert "Basis-Aufgabe" in p
         assert "Vorheriger Verify-Fehler" in p
         assert "F841" in p
 

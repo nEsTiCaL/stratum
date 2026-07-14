@@ -17,7 +17,6 @@ from core.lint_gate import (
     LintOutcome,
     feedback_text,
     lint_patch,
-    prompt_with_feedback,
 )
 
 _DIFF = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b\n"
@@ -157,13 +156,6 @@ class TestLintPatch:
     def test_feedback_text_without_findings_is_summary(self):
         outcome = LintOutcome(False, False, "kein anwendbarer Hunk im Diff", ())
         assert feedback_text(outcome) == "kein anwendbarer Hunk im Diff"
-
-    def test_prompt_with_feedback(self):
-        assert prompt_with_feedback("P", None) == "P"
-        assert prompt_with_feedback("P", "") == "P"
-        combined = prompt_with_feedback("P", "F841 unused")
-        assert combined.startswith("P\n\nVorheriger Verify-Fehler")
-        assert combined.endswith("F841 unused")
 
     def test_missing_linter_binary_is_neutral(self):
         # Regression: ruff nicht installiert (FileNotFoundError aus subprocess)

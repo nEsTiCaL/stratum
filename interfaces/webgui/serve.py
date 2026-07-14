@@ -31,7 +31,7 @@ from core.apply_gate import apply_confirmed_patch
 from core.db import apply_migrations
 from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
-from core.node_prep import build_node_prompt, materialize_prob_nodes
+from core.node_prep import materialize_prob_nodes
 from core.ollama_adapter import OllamaAdapter
 from core.queue import Queue
 from core.repository import Repository
@@ -296,16 +296,13 @@ def _make_worker_loop(
         """Review-Findings -> fix-Folge-Task (Schritt 7, automatisch). Zerlegt wie
         ein regulaerer fix (decompose: index -> fix -> verify), damit die Findings
         durch die volle patch->verify-Loop laufen (inkl. I-7.4-Rueckkante), statt
-        als Sackgassen-Artefakt zu enden. Der fix-Prob-Knoten bekommt den
-        Patch-Prompt (Quellcode + Graph-Kontext des Workspace + Findings) und das
-        Claim-Routing eines Schreib-Tasks (human, falls kein code-faehiger
-        Kandidat). Kein Auto-Index noetig: der Scope wurde fuers Review indexiert."""
-        root = _resolve_root(item)
+        als Sackgassen-Artefakt zu enden. Der fix-Prob-Knoten bekommt die
+        Instruktion (Findings); den Patch-Prompt baut der Worker/Human-Pfad zur
+        Claim-Zeit ueber build_node_prompt (I-REK.1) samt Claim-Routing eines
+        Schreib-Tasks (human, falls kein code-faehiger Kandidat). Kein Auto-Index
+        noetig: der Scope wurde fuers Review indexiert."""
         scope = item.scope
         instruction = "Behebe die im Review gefundenen Probleme:\n" + findings
-        # Patch-Prompt via core.node_prep -- dieselbe Quelle wie der Confirm-/
-        # Human-Pfad (Quellcode + Graph-Kontext), frueher hier separat gebaut.
-        prompt = build_node_prompt(worker_repo, "fix", scope, instruction, root=root)
         dag = decompose(
             "fix",
             scope,
@@ -316,14 +313,14 @@ def _make_worker_loop(
             dag, CONFIRM_MODEL, owner=item.owner, capability_id=item.capability_id
         )
         # Materialisierung wie im Confirm-Pfad: der einzige prob-Knoten (fix)
-        # bekommt Claim-Routing + den vorab gebauten Prompt; index/verify bleiben
-        # det ohne Prompt. Kein Auto-Index (Scope schon fuers Review indexiert).
+        # bekommt Claim-Routing + die Instruktion; index/verify bleiben det ohne
+        # Payload. Kein Auto-Index (Scope schon fuers Review indexiert).
         materialize_prob_nodes(
             fix_queue,
             dag,
             ids,
             auto_capable=auto_capable,
-            prompt_for=lambda _node: prompt,
+            instruction_for=lambda _node: instruction,
         )
 
     def _auto_apply(item, root: Path | None) -> None:

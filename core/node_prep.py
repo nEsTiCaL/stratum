@@ -79,7 +79,8 @@ def build_node_prompt(
     *,
     root: Path | None = None,
 ) -> str:
-    """Prob-Prompt je task_type -- eine Quelle fuer Worker- UND Human-Pfad.
+    """Prob-Prompt je task_type -- die EINE Bau-Funktion fuer Worker- UND
+    Human-Pfad (I-REK.1): Quellcode + Graph-Kontext + Design + Feedback in einem.
 
     implement/fix -> Patch-Prompt (Unified-Diff, Greenfield = neue Datei); alle
     anderen -> Review/Analyse-Prompt. Quellcode (falls file:-Scope in `root`
@@ -88,7 +89,15 @@ def build_node_prompt(
     explizit durchgereicht. feedback = Verify-Rueckkante (I-7.4). Das aktuelle
     `design`-Artefakt des Scopes (Entwurf des architect-Knotens, I-UX.4c) wird
     fuer implement/fix als Kontext angehaengt -- so kommt der Entwurf beim Coder
-    an (analog gather_context/feedback)."""
+    an (analog gather_context/feedback).
+
+    Seit I-REK.1 wird der Prompt zur CLAIM-Zeit gebaut (nicht mehr vorab beim
+    Enqueue). Dann liegt der architect-Knoten schon `done` vor (die Queue gibt
+    einen Knoten erst frei, wenn alle depends_on `done` sind), also findet
+    read_design das Design tatsaechlich -- der 4c-Timing-Bug ist damit weg. Weil
+    feedback jetzt Parameter dieser Funktion ist, entfaellt das separate
+    prompt_with_feedback: der Verify-Fehler wird hier eingebettet (Patch-Pfad in
+    build_patch_prompt, Analyse-Pfad unten mit derselben Formulierung)."""
     source_code = read_scope_source(scope, root)
     context = gather_context(repo, scope, source_root=root)
     if task_type in ("implement", "fix"):
@@ -101,7 +110,10 @@ def build_node_prompt(
             feedback=feedback,
             design=read_design(repo, scope),
         )
-    return build_review_prompt(task_type, scope, source_code, instruction, context)
+    prompt = build_review_prompt(task_type, scope, source_code, instruction, context)
+    if feedback:
+        prompt = f"{prompt}\n\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}"
+    return prompt
 
 
 def materialize_prob_nodes(
@@ -110,26 +122,30 @@ def materialize_prob_nodes(
     task_ids: list[int],
     *,
     auto_capable: frozenset[str] | None,
-    prompt_for: Callable[[DagNode], str],
+    instruction_for: Callable[[DagNode], str],
     base_model: str = CONFIRM_MODEL,
 ) -> None:
     """Fuer jeden eingereihten prob-Knoten (nicht det, nicht verify): Claim-Key
-    ueber claim_model umrouten (set_model bei Abweichung) und Prompt setzen.
-    det (DetWorker) + verify (LintGateWorker) bleiben ohne Prompt auf base_model.
+    ueber claim_model umrouten (set_model bei Abweichung) und die INSTRUKTION ins
+    Payload legen. det (DetWorker) + verify (LintGateWorker) bleiben ohne Payload
+    auf base_model.
 
-    auto_capable None -> kein Umrouten (Tests/Standalone ohne Profil-Wissen; wie
-    der fruehere _claim_model-Kurzschluss). prompt_for(node) liefert den Prompt je
-    Knoten -- so kann der Confirm-Pfad ihn je Knoten neu bauen und der Fix-Spawn
-    einen vorab gebauten reichen. task_ids stammen aus queue.enqueue (nur
-    pending-Knoten, gleiche Reihenfolge wie die non-done-Knoten des DAG)."""
+    Seit I-REK.1 wird NICHT mehr der fertige Prompt vorab abgelegt, sondern nur
+    die natuerlichsprachige instruction; den Prompt baut der Worker- bzw.
+    Human-Pfad zur Claim-Zeit ueber build_node_prompt (dann liegt das Design des
+    architect-Knotens vor). auto_capable None -> kein Umrouten (Tests/Standalone
+    ohne Profil-Wissen). instruction_for(node) liefert die Instruktion je Knoten;
+    im Regelfall (ein Plan/ein Fix) fuer alle prob-Knoten dieselbe. task_ids
+    stammen aus queue.enqueue (nur pending-Knoten, gleiche Reihenfolge wie die
+    non-done-Knoten des DAG)."""
     enqueued = [n for n in dag.nodes if n.status != "done"]
     for node, tid in zip(enqueued, task_ids, strict=True):
         if node.task_type == TaskType.lint_gate.value:
             continue
         if TASK_REQUIREMENTS[TaskType(node.task_type)].deterministic_model:
-            continue  # det -> DetWorker, kein Prompt, Claim-Key bleibt
+            continue  # det -> DetWorker, kein Payload, Claim-Key bleibt
         if auto_capable is not None:
             claim = claim_model(node.task_type, base_model, auto_capable=auto_capable)
             if claim != base_model:
                 queue.set_model(tid, claim)
-        queue.update_payload(tid, {"prompt": prompt_for(node)})
+        queue.update_payload(tid, {"instruction": instruction_for(node)})

@@ -19,7 +19,7 @@ from pathlib import Path
 from core.canary import assign_variant
 from core.cloud_adapter import CloudSender, cloud_model_factory
 from core.cloud_egress import prepare_cloud_egress
-from core.lint_gate import feedback_text, prompt_with_feedback
+from core.lint_gate import feedback_text
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.queue import Queue, QueueItem
@@ -110,20 +110,37 @@ class LlmWorker:
         local = [c for c in candidates if not c.is_cloud]
         cloud = [c for c in candidates if c.is_cloud]
 
-        # Rueckkante (I-7.4): reopen_after_verify legt verify_feedback ins Payload;
-        # es an den Prompt zu haengen ist der Punkt, an dem der naechste Versuch
-        # den vorherigen Verify-Fehler tatsaechlich sieht (geteilt mit dem
-        # Human-Pfad: webgui claim/prompt nutzen dieselbe Funktion).
-        stored = item.payload.get("prompt")
-        if stored is None:
-            # Enqueue->update_payload-Fenster (create_task/materialize_prob_
-            # nodes): der Loop kann den Knoten claimen, BEVOR der Prompt in der
-            # payload steht. Dann selbst bauen -- dieselbe Quelle wie der
-            # Human-Claim-Fallback (interfaces/webgui/routers/human.py).
+        # I-REK.1: Prompt zur CLAIM-Zeit bauen (nicht mehr vorab beim Enqueue).
+        # payload traegt nur die instruction; build_node_prompt ist die EINE
+        # Bau-Funktion (Quellcode + Graph-Kontext + Design des architect-Knotens +
+        # Verify-Feedback der Rueckkante). Da die Queue den Knoten erst freigibt,
+        # wenn alle depends_on done sind, liegt das Design beim Claim vor -- der
+        # 4c-Timing-Bug ist damit weg. Ein explizit vorgebauter payload.prompt
+        # (Seed/Eval/Bench) bleibt als Roh-Override moeglich.
+        prompt = item.payload.get("prompt")
+        if prompt is None:
             from core.node_prep import build_node_prompt
 
-            stored = build_node_prompt(repo, item.task_type, item.scope, root=self.root)
-        prompt = prompt_with_feedback(stored, item.payload.get("verify_feedback"))
+            prompt = build_node_prompt(
+                repo,
+                item.task_type,
+                item.scope,
+                instruction=item.payload.get("instruction", ""),
+                feedback=item.payload.get("verify_feedback", "") or "",
+                root=self.root,
+            )
+        # Audit: der exakt gesendete Prompt pro VERSUCH in den Lauf-Trace (nicht
+        # ins Voraus-Payload) -- so bleibt nachvollziehbar, was das Modell sah.
+        repo.write_trace(
+            item.dag_id,
+            "node_prompt",
+            detail={
+                "task_type": item.task_type,
+                "scope": item.scope,
+                "attempt": item.attempts,
+                "prompt": prompt,
+            },
+        )
 
         outcome = self._local_phase(task_type, prompt, local)
         if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:

@@ -315,13 +315,16 @@ class Queue:
         return row[0] if row else None
 
     def get_task_info(self, item_id: int) -> dict[str, Any] | None:
-        """Gibt id, task_type, scope, status und owner eines beliebigen Tasks.
+        """Gibt id, task_type, scope, status, owner, model, payload und
+        capability_id eines beliebigen Tasks.
 
-        Im Gegensatz zu list_tasks() auch fuer done-Tasks abfragbar.
+        Im Gegensatz zu list_tasks() auch fuer done-Tasks abfragbar. capability_id
+        speist den Workspace-root, den der Human-Pfad zur Claim-Zeit fuer den
+        Lazy-Prompt-Bau braucht (I-REK.1).
         """
         row = self._conn.execute(
-            "SELECT id, task_type, scope, status, owner, model, payload "
-            "FROM queue WHERE id = %s",
+            "SELECT id, task_type, scope, status, owner, model, payload, "
+            "capability_id FROM queue WHERE id = %s",
             (item_id,),
         ).fetchone()
         if row is None:
@@ -334,6 +337,7 @@ class Queue:
             "owner": row[4],
             "model": row[5],
             "payload": row[6] or {},
+            "capability_id": row[7],
         }
 
     def list_tasks(

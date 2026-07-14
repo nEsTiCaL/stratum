@@ -307,9 +307,22 @@ class TestLlmWorker:
         assert "Bug" in content.get("findings", "")
         assert "validieren" in content.get("recommendations", "")
 
-    def test_verify_feedback_appended_to_prompt(self):
-        # Rueckkante I-7.4: reopen legt verify_feedback ins Payload -> der naechste
-        # Versuch muss den vorherigen Verify-Fehler im Prompt sehen.
+    def test_verify_feedback_reaches_builder(self, monkeypatch):
+        # Rueckkante I-7.4: reopen legt verify_feedback ins Payload -> der Worker
+        # reicht es (I-REK.1) als feedback an build_node_prompt, das es einbettet
+        # (das eigentliche Einbetten deckt test_patch.test_feedback_included ab).
+        import core.node_prep as node_prep
+
+        captured: dict[str, str] = {}
+
+        def fake_build(
+            repo, task_type, scope, instruction="", feedback="", *, root=None
+        ):
+            captured["instruction"] = instruction
+            captured["feedback"] = feedback
+            return f"P[{instruction}]F[{feedback}]"
+
+        monkeypatch.setattr(node_prep, "build_node_prompt", fake_build)
         seen: dict[str, str] = {}
 
         class _Rec:
@@ -319,13 +332,29 @@ class TestLlmWorker:
 
         worker = LlmWorker(router=Router(), model_factory=lambda name: _Rec())
         item = _item(
-            payload={"prompt": "Basis-Prompt", "verify_feedback": "pytest rot: test_x"}
+            task_type="fix",
+            payload={
+                "instruction": "Basis-Aufgabe",
+                "verify_feedback": "pytest rot: test_x",
+            },
         )
         worker.run(item, _FakeRepo())
-        assert "Basis-Prompt" in seen["p"]
+        assert captured["instruction"] == "Basis-Aufgabe"
+        assert captured["feedback"] == "pytest rot: test_x"
         assert "pytest rot: test_x" in seen["p"]
 
-    def test_no_feedback_leaves_prompt_clean(self):
+    def test_no_feedback_passes_empty_string(self, monkeypatch):
+        import core.node_prep as node_prep
+
+        captured: dict[str, str] = {}
+
+        def fake_build(
+            repo, task_type, scope, instruction="", feedback="", *, root=None
+        ):
+            captured["feedback"] = feedback
+            return "Nur Basis"
+
+        monkeypatch.setattr(node_prep, "build_node_prompt", fake_build)
         seen: dict[str, str] = {}
 
         class _Rec:
@@ -334,8 +363,10 @@ class TestLlmWorker:
                 return _prob_response()
 
         worker = LlmWorker(router=Router(), model_factory=lambda name: _Rec())
-        worker.run(_item(payload={"prompt": "Nur Basis"}), _FakeRepo())
-        assert "Nur Basis" in seen["p"]
+        worker.run(
+            _item(task_type="explain", payload={"instruction": "Basis"}), _FakeRepo()
+        )
+        assert captured["feedback"] == ""
         assert "Verify-Fehler" not in seen["p"]
 
     def test_unstructured_response_all_in_text(self):
@@ -734,10 +765,10 @@ class TestCloudPhase:
         assert records[0].cost_usd > 0  # haiku-Preis * Tokens
 
     def test_missing_prompt_falls_back_to_node_prep(self, monkeypatch):
-        # Enqueue->update_payload-Fenster: der Loop kann einen Knoten claimen,
-        # BEVOR create_task/materialize_prob_nodes den Prompt in die payload
-        # geschrieben hat. Dann baut der Worker ihn selbst (core.node_prep,
-        # dieselbe Quelle wie der Human-Claim) statt KeyError 'prompt'.
+        # I-REK.1: ohne vorgebauten payload.prompt baut der Worker den Prompt zur
+        # Claim-Zeit selbst via build_node_prompt (core.node_prep) -- der
+        # Normalpfad seit dem Lazy-Bau (Design des architect-Knotens liegt dann
+        # vor), nicht mehr nur ein Enqueue-Fenster-Fallback.
         import core.node_prep as node_prep
 
         built: list = []

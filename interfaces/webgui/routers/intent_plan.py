@@ -156,15 +156,12 @@ async def create_task(
             )
         ],
     )
-    # Prompt VOR dem Enqueue bauen: sobald der Task in der Queue liegt, kann der
-    # Worker-Loop ihn claimen -- der Prompt muss dann schon fertig sein (das
-    # fruehere Enqueue-zuerst liess den Loop im Index-/Prompt-Bau-Fenster einen
-    # payload-losen Task ziehen -> KeyError 'prompt'). Schritt 7: gegen den
-    # Workspace des Keys aufloesen + indexieren, damit der Prompt Quellcode +
-    # Symbol-/Aufrufer-Kontext traegt (statt leer).
+    # I-REK.1: nur die Instruktion ablegen; den Prompt baut der Worker/Human-Pfad
+    # zur Claim-Zeit ueber build_node_prompt. Dieser Ein-Knoten-Pfad hat KEINEN
+    # det-index-Knoten davor, darum hier gegen den Workspace des Keys indexieren,
+    # damit gather_context zur Claim-Zeit Symbol-/Aufrufer-Kontext findet.
     root = deps.prompt_root(owner, capability_id)
     deps.ensure_indexed(root, body.scope)
-    prompt = deps.node_prompt(task_type, body.scope, body.prompt, root=root)
     ids = deps.queue.enqueue(
         dag,
         deps.claim_model(task_type, body.model),
@@ -172,7 +169,7 @@ async def create_task(
         capability_id=capability_id,
     )
     item_id = ids[0]
-    deps.queue.update_payload(item_id, {"prompt": prompt})
+    deps.queue.update_payload(item_id, {"instruction": body.prompt})
     resp = {"id": item_id}
     if classified:
         resp["task_type"] = task_type

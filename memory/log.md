@@ -5,6 +5,7 @@ Format: rules P2 -- Schlagzeile + Verweis, max 140 Zeichen nach dem "|".
 Abgeschlossene Architektur-Schritte 1-5: memory-archiv/log-archiv-schritt-N.md
 (ausserhalb memory/, nur bei explizitem Historie-Bedarf lesen, siehe P3/P4).
 
+## [2026-07-14] decision | I-REK.1 fertig (4c-Rework): Prompt zur Claim-Zeit via build_node_prompt (eine Quelle: Code+Kontext+Design+Feedback), Enqueue legt nur instruction ab, prompt_with_feedback weg, Trace-Stage node_prompt pro Versuch. LIVE qwendemo DAG 173-176: implement-Prompt traegt architect-Design (4c-Befund architect_pos=0 geheilt). 1022 gruen -> `spec_rekursion`
 ## [2026-07-14] decision | Rekursiver Kern: L1-L4-Baum abgeloest, Leitfrage rekursiv je Knoten (Zelle brief->act->gate->eskalieren, Kinder via Completion-Hook, 2 Leitern, 5 Invarianten) -> `arch_rekursion`; Pakete I-REK.1..12, Strang V zuerst; absorbiert 4c=REK.1, 4d=REK.8 -> `spec_rekursion`, arbeitsplan
 
 ## [2026-07-12] decision+finding | Beginner-UC-Lauf (5 reale Anfaenger-Saetze): Write-Path 5/5 sauber, Token-oekonomie exzellent, det korrekt gezogen. Funde: kein REST-Upload (Finding #0), explain/summarize reviewen statt Fragen zu beantworten, lint-Gate statisch ("gruen"!="geloest"). 4 Entscheidungen -> Familie I-UX -> `spec_beginner-flow`, `ops_abdeckungstests`

@@ -134,6 +134,12 @@ prob-Typ `design`. Implement behaelt seinen datei-lokalen Kontext unveraendert.
 > UEBERFUEHRT (2026-07-14): 4c-Rework = I-REK.1, 4d = I-REK.8 der neuen
 > Familie "Rekursiver Kern" -> `spec_rekursion` / `arch_rekursion`. Die
 > Ist-Architektur-Notizen oben bleiben als Befund-Grundlage gueltig.
+> 4c-REWORK ERLEDIGT als I-REK.1 (2026-07-14, Befunde in `spec_rekursion`): Prompt
+> zur Claim-Zeit, prompt_with_feedback weg, Prompt-Trace pro Versuch. Live an
+> qwendemo (DAG 173-176) gegengeprueft -- implement-Prompt traegt jetzt das
+> architect-Design (der 4c-Befund architect_pos=0 ist geheilt). Beide PRUEFEN-
+> Punkte erfuellt: (a) /api/prompt baut on-demand (vor architect kein Design),
+> (b) exakter Prompt pro Versuch im Trace-Stage `node_prompt`.
 
 ## Prinzip: DAG-Materialisierung so spaet wie noetig (verifiziert 2026-07-14)
 Uebergeordnete Pfadwahl (det- vs. architect-getrieben, "det speist jeden prob-

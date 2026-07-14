@@ -30,6 +30,24 @@ Akzeptanz: Live qwendemo (DAG-Muster 169-172): implement-Prompt traegt Design
 Klasse  : gem   dep: -   Detail: `spec_beginner-flow` (4c-Befund + Ist-Architektur)
 ```
 
+**FERTIG 2026-07-14.** build_node_prompt ist die EINE Bau-Funktion (Quellcode +
+Graph-Kontext + Design + Feedback); Prompt entsteht zur CLAIM-Zeit. Enqueue-Pfade
+legen nur noch die `instruction` ab: deps.enqueue_plan (_instruction_for),
+intent_plan.create_task (Ein-Knoten), serve._spawn_fix; materialize_prob_nodes
+Param prompt_for->instruction_for, speichert `{"instruction": ...}`. worker.py +
+human.py bauen bei fehlendem payload.prompt via build_node_prompt(instruction,
+feedback, root); ein vorgebauter payload.prompt bleibt Roh-Override (Seed/Eval).
+prompt_with_feedback (lint_gate.py) ENTFERNT -- feedback ist Parameter der Funktion
+(Patch-Pfad in build_patch_prompt, Analyse-Pfad in build_node_prompt eingebettet).
+get_task_info um capability_id erweitert (Human-Prompt braucht den Workspace-root).
+Audit: worker schreibt Trace-Stage `node_prompt` mit exakt gesendetem Prompt PRO
+Versuch. LIVE (qwendemo, DAG 173-176): architect-Design (result 174) steht als
+"Entwurf des Architekten (setze ihn um):" im implement-Prompt (Trace-Beleg:
+implement-Versuche 0/1/2 tragen das Design ab Position 1745; architect selbst
+traegt keins -- er erzeugt es). Gegenprobe zum 4c-Befund (architect_pos=0) bestanden.
+Feedback-Rueckkante laeuft ueber denselben Bau (3 implement-Versuche, jeder mit
+Design). 1022 Tests gruen, ruff check/format gruen.
+
 ## I-REK.2  Frische-Invariante: Re-Ingest-Delta vor Briefing   [Strang V]
 
 ```

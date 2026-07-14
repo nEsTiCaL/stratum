@@ -194,17 +194,6 @@ def feedback_text(outcome: LintOutcome) -> str:
     return "\n".join(parts)
 
 
-def prompt_with_feedback(prompt: str, feedback: str | None) -> str:
-    """Haengt verify_feedback (aus queue.reopen_after_verify) an einen Prompt.
-
-    EINE Quelle fuer LLM-Worker (core.worker) UND Human-Pfad (webgui claim/
-    prompt) -- vorher sah nur der LLM-Pfad das Feedback, der Mensch claimte
-    den wiedereroeffneten Task ohne den Verify-Fehler zu kennen."""
-    if not feedback:
-        return prompt
-    return f"{prompt}\n\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}"
-
-
 @dataclass
 class LintGateWorker:
     """Laedt das patch-Artefakt eines scope, prueft es git-frei und schreibt ein

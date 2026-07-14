@@ -153,31 +153,32 @@ class TestMaterializeProbNodes:
 
     def _row(self, conn, node_id):
         return conn.execute(
-            "SELECT model, payload->>'prompt' FROM queue WHERE node_id=%s",
+            "SELECT model, payload->>'instruction' FROM queue WHERE node_id=%s",
             (node_id,),
         ).fetchone()
 
-    def test_prob_node_gets_prompt_and_reroute(self, conn):
+    def test_prob_node_gets_instruction_and_reroute(self, conn):
         q, dag, ids = self._enqueue_review_dag(conn)
         materialize_prob_nodes(
-            q, dag, ids, auto_capable=_PROFILE_D, prompt_for=lambda n: f"P:{n.id}"
+            q, dag, ids, auto_capable=_PROFILE_D, instruction_for=lambda n: f"P:{n.id}"
         )
-        # review (prob, nicht in Profil D) -> human + Prompt
+        # review (prob, nicht in Profil D) -> human + Instruktion (I-REK.1: der
+        # Prompt selbst entsteht erst zur Claim-Zeit aus dieser Instruktion).
         assert self._row(conn, "n2") == ("human", "P:n2")
 
     def test_det_and_verify_untouched(self, conn):
         q, dag, ids = self._enqueue_review_dag(conn)
         materialize_prob_nodes(
-            q, dag, ids, auto_capable=_PROFILE_D, prompt_for=lambda n: f"P:{n.id}"
+            q, dag, ids, auto_capable=_PROFILE_D, instruction_for=lambda n: f"P:{n.id}"
         )
-        # index (det) + verify: Claim-Key bleibt, kein Prompt gesetzt.
+        # index (det) + verify: Claim-Key bleibt, kein Payload gesetzt.
         assert self._row(conn, "n1") == ("phi4-mini", None)
         assert self._row(conn, "n3") == ("phi4-mini", None)
 
     def test_auto_capable_none_keeps_model(self, conn):
         q, dag, ids = self._enqueue_review_dag(conn)
         materialize_prob_nodes(
-            q, dag, ids, auto_capable=None, prompt_for=lambda n: f"P:{n.id}"
+            q, dag, ids, auto_capable=None, instruction_for=lambda n: f"P:{n.id}"
         )
-        # kein Profil-Wissen -> kein Umrouten, aber Prompt wird gesetzt.
+        # kein Profil-Wissen -> kein Umrouten, aber Instruktion wird gesetzt.
         assert self._row(conn, "n2") == ("phi4-mini", "P:n2")

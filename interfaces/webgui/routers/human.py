@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core.diff_extract import extract_diff
 from core.json_extract import extract_json
-from core.lint_gate import prompt_with_feedback
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
 from core.review_format import build_content
@@ -127,11 +126,31 @@ def _output_hint(task_type: str) -> str:
     return _HUMAN_OUTPUT_HINT_TEXT
 
 
-def _human_prompt(base: str, feedback: str | None, task_type: str) -> str:
-    """Menschlicher Prompt = Basis (+ Verify-Feedback der Rueckkante,
-    prompt_with_feedback als EINE Quelle mit dem LLM-Worker) + task-bewusste
-    Ausgabe-Anweisung am Ende. Geteilt von claim + prompt."""
-    return f"{prompt_with_feedback(base, feedback)}\n\n{_output_hint(task_type)}"
+def _human_prompt(
+    deps: AppDeps,
+    *,
+    task_type: str,
+    scope: str,
+    payload: dict[str, Any],
+    root: Path | None,
+) -> str:
+    """Menschlicher Prompt zur Claim-Zeit gebaut (I-REK.1): build_node_prompt ist
+    dieselbe EINE Bau-Funktion wie im LLM-Worker (Quellcode + Graph-Kontext +
+    Design des architect-Knotens + Verify-Feedback der Rueckkante), gefolgt von
+    der task-bewussten Ausgabe-Anweisung. Ein explizit vorgebauter payload.prompt
+    (Seed/Eval) bleibt als Roh-Override moeglich. Geteilt von claim + prompt."""
+    stored = payload.get("prompt")
+    if stored is not None:
+        base = stored
+    else:
+        base = deps.node_prompt(
+            task_type,
+            scope,
+            payload.get("instruction", ""),
+            payload.get("verify_feedback", "") or "",
+            root=root,
+        )
+    return f"{base}\n\n{_output_hint(task_type)}"
 
 
 @router.post("/api/claim/{task_id}")
@@ -149,19 +168,20 @@ async def claim_task(
             detail="Task nicht verfuegbar (nicht pending oder nicht gefunden)",
         )
 
-    # Gespeicherter Payload-Prompt ist autoritativ (traegt die Plan-Instruktion);
-    # verify_feedback der Rueckkante wird angehaengt (EINE Quelle mit dem LLM-Worker)
-    # -- sonst claimt der Mensch einen wieder-eroeffneten Task, ohne den Verify-
-    # Fehler zu kennen.
-    stored = item.payload.get("prompt")
+    # I-REK.1: Prompt zur Claim-Zeit bauen -- gegen den Workspace des Keys, damit
+    # der Prompt Quellcode/Graph-Kontext + das (jetzt vorliegende) Design traegt;
+    # verify_feedback der Rueckkante wird von build_node_prompt eingebettet.
+    root = deps.prompt_root(item.owner, item.capability_id)
     return {
         "id": item.id,
         "task_type": item.task_type,
         "scope": item.scope,
         "prompt": _human_prompt(
-            stored or deps.node_prompt(item.task_type, item.scope),
-            item.payload.get("verify_feedback"),
-            item.task_type,
+            deps,
+            task_type=item.task_type,
+            scope=item.scope,
+            payload=item.payload,
+            root=root,
         ),
     }
 
@@ -176,15 +196,19 @@ async def get_task_prompt(
     info = deps.check_task_owner(task_id, owner)
     scope = info["scope"]
     task_type = info["task_type"]
-    stored = info["payload"].get("prompt")
+    # I-REK.1: Prompt-Vorschau ohne Status-Aenderung -- on-demand gebaut. VOR der
+    # architect-Runde traegt sie ehrlich noch kein Design (es existiert ja nicht).
+    root = deps.prompt_root(info["owner"], info["capability_id"])
     return {
         "id": task_id,
         "task_type": task_type,
         "scope": scope,
         "prompt": _human_prompt(
-            stored or deps.node_prompt(task_type, scope),
-            info["payload"].get("verify_feedback"),
-            task_type,
+            deps,
+            task_type=task_type,
+            scope=scope,
+            payload=info["payload"],
+            root=root,
         ),
     }
 

@@ -126,14 +126,14 @@ class AppDeps:
             return requested
         return _route_claim_model(task_type, requested, auto_capable=self.auto_capable)
 
-    def materialize_prob_nodes(self, dag, task_ids, prompt_for) -> None:
+    def materialize_prob_nodes(self, dag, task_ids, instruction_for) -> None:
         """core.node_prep.materialize_prob_nodes an queue + auto_capable gebunden."""
         materialize_prob_nodes(
             self.queue,
             dag,
             task_ids,
             auto_capable=self.auto_capable,
-            prompt_for=prompt_for,
+            instruction_for=instruction_for,
         )
 
     def enqueue_plan(
@@ -156,11 +156,17 @@ class AppDeps:
         )
         root = self.prompt_root(owner, capability_id)
 
-        def _prompt_for(node) -> str:
+        # I-REK.1: NICHT den fertigen Prompt vorab bauen, sondern nur die
+        # Instruktion ablegen -- den Prompt baut der Worker/Human-Pfad zur
+        # Claim-Zeit (dann liegt das Design des architect-Knotens vor). Der
+        # Auto-Index bleibt hier (der det-index-Knoten laeuft zwar ohnehin vor
+        # dem Coder, aber ein frueher Index schadet nicht und deckt Nicht-DAG-
+        # Pfade mit ab); die Frische-Invariante kommt mit I-REK.2.
+        def _instruction_for(node) -> str:
             self.ensure_indexed(root, node.scope)
-            return self.node_prompt(node.task_type, node.scope, instruction, root=root)
+            return instruction
 
-        self.materialize_prob_nodes(dag, task_ids, prompt_for=_prompt_for)
+        self.materialize_prob_nodes(dag, task_ids, instruction_for=_instruction_for)
         return dag, task_ids
 
     def store_plan(self, prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
