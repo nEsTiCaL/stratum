@@ -337,7 +337,7 @@ I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1 FERTIG   `spec_rekursion
 I-REK.6   Architect konditional + Metrik     gem  REK.4,5 FERTIG `spec_rekursion`
 I-REK.7   Completion-Hook + Supersede        det  REK.5 FERTIG   `spec_rekursion`
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7 FERTIG   `spec_rekursion`, `spec_beginner-flow`
-I-REK.9   Aenderungsart + det-Validierung    gem  REK.5          `spec_rekursion`, `arch_pfadwahl`
+I-REK.9   Aenderungsart + det-Validierung    gem  REK.5 FERTIG   `spec_rekursion`, `arch_pfadwahl`
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9        `spec_rekursion`
 I-REK.11  Eskalation re-design/re-expand     det  REK.4,7        `spec_rekursion`
 I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10       `spec_rekursion`
@@ -456,6 +456,23 @@ Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppe
 1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
 Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
 enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
+I-REK.9 FERTIG (2026-07-15): Aenderungsart-Klassifikation (Weiche Q1 aus arch_pfadwahl)
++ det-Validierung. Neu core/change_classify.py, KEIN Endpunkt/Schema-Change (nur Signal;
+Konsument = REK.10). Drei eigenstaendige Stuecke: (1) Vorstufe det-Analyse-Briefing --
+extract_symbol_candidates (rein: backtick/quote zuerst, dann code-artige nackte Tokens;
+Pfade+Prosa raus) -> analyze_prompt_symbols schlaegt Kandidaten via find_symbol nach,
+eingegrenzt auf allowed_scopes (wie rename_expand); SymbolBriefing.render() reichert den
+prob-Prompt an. (2) Signal prob -- ChangeOp StrEnum (rename/move/signature/delete/open),
+classify_change(model,prompt,briefing) -> ChangeSignal, tolerantes Zeilenparsen wie
+core/classifier, unbekannt/fehlend -> open. Name ChangeOp (nicht symdiff.ChangeKind=api/
+impl, anderes Konzept). (3) det-Gate -- validate_change -> ValidatedChange: jedes Ziel
+muss in allowed_scopes existieren (halbes Set -> Fallback), signature zusaetzlich callable;
+sonst ChangeOp.open (arch_rekursion Risiko 2: Klassifikation prob, Validierung det ->
+falsche Weiche = nur verlorener Shortcut). classify_and_validate verkettet. Akzeptanz
+test_change_classify.py (22): benenne existentes X -> (rename,validiert); nicht-existent
+-> open; vager Prompt -> open. 1189 gruen (+22), ruff clean. NAECHSTER SCHRITT: REK.10
+(impact-Skelett, erster Konsument der Weiche: validierte Graph-Op -> impact() -> Design-
+vor-Fan-out via REK.7-Hook -> je Datei ein Kind) ODER REK.12 (Gate-Policy).
 I-REK.6 FERTIG (2026-07-15): Architect konditional + Metrik. Der architect-Knoten
 ist NICHT mehr fest im Template -- REGISTRY implement/fix sind minimal (index->
 impl->lint_gate); _template_for setzt architect (with_architect) + test_gate

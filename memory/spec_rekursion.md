@@ -472,6 +472,41 @@ Akzeptanz: "benenne X um" mit existentem X -> (rename, X, validiert); mit
 Klasse  : gem   dep: I-REK.5 (sinnvoll), unabhaengig von V-Strang
 ```
 
+**FERTIG 2026-07-15.** `core/change_classify.py` -- die Weiche Q1 (`arch_pfadwahl`)
+als Signal + det-Gate, drei eigenstaendig testbare Stuecke in der Spec-Reihenfolge,
+KEIN Endpunkt/Schema-Change (nur das Signal; der Konsument ist REK.10):
+1. Vorstufe (det-Analyse-Briefing): `extract_symbol_candidates` (rein: backtick-/
+   quote-Tokens zuerst, dann code-artige nackte Tokens snake_case/CamelCase --
+   Pfade `auth/login.py` + Prosa fallen raus) -> `analyze_prompt_symbols` schlaegt
+   jeden Kandidaten via `find_symbol` nach, eingegrenzt auf `allowed_scopes` (wie
+   `rename_expand`: gleichnamiges Symbol im Fremdbaum zaehlt nicht). `SymbolBriefing`
+   mit `.exists()`/`.render()` -- reichert den prob-Prompt an ("det speist jeden
+   prob-Prompt").
+2. Signal (prob): `ChangeOp` StrEnum (rename/move/signature/delete/**open**);
+   `classify_change(model, prompt, briefing)` -> `ChangeSignal(op, targets)`,
+   Zeilenformat + tolerantes Parsen wie `core/classifier` (Bullets/**fett**),
+   unbekannte/fehlende op -> open. NAME bewusst `ChangeOp`, NICHT das schon
+   vergebene `symdiff.ChangeKind` (=api/impl, post-hoc API-Drift, anderes Konzept).
+3. det-Gate: `validate_change` -> `ValidatedChange(op, targets, validated, reason)`.
+   Graph-Op verlangt, dass JEDES Ziel via find_symbol in `allowed_scopes` existiert
+   (halb existentes Set = nicht wohldefiniert -> Fallback, kein halb-validierter
+   det-Pfad); `signature` zusaetzlich callable (kind in {function,method}). Alles
+   nicht Validierbare -> `ChangeOp.open`. Kernregel `arch_rekursion` Risiko 2
+   ("Klassifikation prob, Validierung det"): falsche Weiche kostet nur den
+   Optimierungs-Shortcut, nie Korrektheit. `classify_and_validate` verkettet die drei.
+Akzeptanz `test_change_classify.py` (22): Extraktion (backtick/bare/Pfade/dedupe),
+Briefing (exists/allowed_scopes/render), classify (op+targets/bullets/unknown->open),
+validate (rename existent->validiert / fehlend->open / signature callable-Check /
+delete partial->open / allowed_scopes=None), Orchestrator-Akzeptanz (rename existent
+-> validiert; nicht-existent -> open; vager Prompt -> open). 1189 gruen (+22), ruff clean.
+Befunde/offen: (a) NOCH nicht verdrahtet -- kein Endpunkt/Worker ruft die Weiche;
+Konsument ist REK.10 (validierte Graph-Op -> impact()-Skelett-Expansion). (b) `root`-
+Param in validate_change/classify_and_validate reserviert (Datei-Ops move/delete auf
+Pfad-Ebene folgen mit REK.10). (c) bare-Extraktion faengt einzelne Grossschreib-
+Woerter (`Widget` ohne Hump) bewusst NICHT (Prosa-Kollision) -- solche Ziele
+brauchen Backticks; ausreichend, weil das prob-Signal die Ziele ohnehin liefert und
+das det-Gate sie prueft.
+
 ## I-REK.10  det-Expansion generalisieren: impact-Skelett   [Strang W]
 
 ```
