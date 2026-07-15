@@ -58,6 +58,16 @@ class TestExpandShape:
         )
         assert [n.task_type for n in nodes][-2:] == ["lint_gate", "test_gate"]
 
+    def test_with_architect_default_true(self):
+        nodes = expand("implement", "file:new.py", scope_resolver=_STUB)
+        assert "architect" in [n.task_type for n in nodes]
+
+    def test_without_architect_omits_node(self):
+        nodes = expand(
+            "implement", "file:new.py", scope_resolver=_STUB, with_architect=False
+        )
+        assert [n.task_type for n in nodes] == ["index", "implement", "lint_gate"]
+
     def test_cache_hit_marks_done(self):
         nodes = expand(
             "review",

@@ -289,6 +289,57 @@ class TestArchitectInWriteTemplates:
         assert by_type["lint_gate"].depends_on == (by_type["implement"].id,)
 
 
+class TestArchitectConditional:
+    """I-REK.6: der architect-Knoten ist konditional (with_architect), nicht mehr
+    fest im Template. Default True -> bisherige 4-Knoten-Form; False -> Trivial-
+    Kette index->impl->lint_gate (3 Knoten)."""
+
+    def test_default_keeps_architect(self):
+        dag = decompose("implement", "file:new.py", scope_resolver=_STUB)
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "architect",
+            "implement",
+            "lint_gate",
+        ]
+
+    def test_without_architect_three_node_chain(self):
+        dag = decompose(
+            "implement", "file:new.py", scope_resolver=_STUB, with_architect=False
+        )
+        assert [n.task_type for n in dag.nodes] == ["index", "implement", "lint_gate"]
+        by_type = {n.task_type: n for n in dag.nodes}
+        # implement haengt direkt am index (kein architect dazwischen).
+        assert by_type["implement"].depends_on == (by_type["index"].id,)
+        assert by_type["lint_gate"].depends_on == (by_type["implement"].id,)
+
+    def test_without_architect_but_with_test_gate(self):
+        dag = decompose(
+            "fix",
+            "file:a.py",
+            scope_resolver=_STUB,
+            with_architect=False,
+            with_test_gate=True,
+        )
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "fix",
+            "lint_gate",
+            "test_gate",
+        ]
+
+    def test_registry_write_templates_have_no_architect(self):
+        # REGISTRY-Kern ist minimal (Invariante 5: Architect kommt von der Expansion).
+        for tt in ("implement", "fix"):
+            assert "architect" not in [n.task_type for n in REGISTRY[tt]]
+
+    def test_read_template_ignores_with_architect_false(self):
+        dag = decompose(
+            "review", "module:auth", scope_resolver=_STUB, with_architect=False
+        )
+        assert "architect" not in [n.task_type for n in dag.nodes]
+
+
 class TestTestGateOptIn:
     """I-REK.4: with_test_gate haengt implement/fix hinter dem lint_gate einen
     test_gate-Knoten an. Default (False) laesst die 4-Knoten-Kette unveraendert."""

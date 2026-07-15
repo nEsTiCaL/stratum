@@ -120,8 +120,9 @@ class LlmWorker:
         # (Seed/Eval/Bench) bleibt als Roh-Override moeglich.
         prompt = item.payload.get("prompt")
         briefing_hash = None
+        with_design = None
         if prompt is None:
-            from core.node_prep import build_node_prompt, ensure_fresh
+            from core.node_prep import build_node_prompt, ensure_fresh, read_design
 
             # I-REK.2 Frische-Invariante: das det-Briefing darf nie aelter sein
             # als der Workspace. VOR dem (lazy) Prompt-Bau den Scope gegen die
@@ -130,6 +131,12 @@ class LlmWorker:
             # nie aus einem veralteten Graph (Auto-Apply: Goal 1 patcht ->
             # Goal 2 sieht den neuen Stand). briefing_hash = Frische-Stempel.
             briefing_hash = ensure_fresh(repo, self.root, item.scope)
+            # I-REK.6-Metrik: erfassen, ob der Coder ein architect-Design sah
+            # (with_architect-Heuristik -> architect-Knoten -> design-Artefakt).
+            # Kennzeichen im Trace erlaubt den G2-Pass-Raten-Vergleich mit/ohne
+            # Design (der Architect-Nutzen ist Hypothese, arch_rekursion Risiko 5).
+            if item.task_type in ("implement", "fix"):
+                with_design = bool(read_design(repo, item.scope))
             prompt = build_node_prompt(
                 repo,
                 item.task_type,
@@ -150,6 +157,7 @@ class LlmWorker:
                 "attempt": item.attempts,
                 "prompt": prompt,
                 "briefing_source_hash": briefing_hash,
+                "with_design": with_design,
             },
         )
 

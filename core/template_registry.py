@@ -140,49 +140,70 @@ REGISTRY: dict[str, tuple[NodeTemplate, ...]] = {
         _n("n1", "index"),
         _n("n2", "crypto_audit", ("n1",), flags=_EXCLUSIVE),
     ),
-    # Gruppe F: schreibend (Schritt 7). Kontext (index) -> Entwurf (architect,
-    # prob, I-UX.4: Design-Artefakt, was wiederverwenden) -> Patch (implement/fix,
-    # prob) -> Verify (det, LintGateWorker). Die Rueckkante verify->implement
-    # (I-7.4) lebt in der Queue, nicht im Template.
+    # Gruppe F: schreibend (Schritt 7). Kern-Kette MINIMAL: Kontext (index) ->
+    # Patch (implement/fix, prob) -> Gate (lint_gate, det, LintGateWorker). Der
+    # architect-Knoten (Entwurf, prob, I-UX.4) ist NICHT mehr fest im Template:
+    # seit I-REK.6 fuegt _template_for ihn KONDITIONAL ein (with_architect,
+    # Heuristik im Aufrufer) -- Invariante 5 "der Architect wird von der Expansion
+    # eingefuegt, nicht vom Template erzwungen". Genauso wird test_gate (G2)
+    # konditional angehaengt (with_test_gate, I-REK.4). Die Rueckkante
+    # verify->implement (I-7.4) lebt in der Queue, nicht im Template.
     "implement": (
         _n("n1", "index"),
-        _n("n2", "architect", ("n1",)),
-        _n("n3", "implement", ("n2",)),
-        _n("n4", "lint_gate", ("n3",)),
+        _n("n2", "implement", ("n1",)),
+        _n("n3", "lint_gate", ("n2",)),
     ),
     "fix": (
         _n("n1", "index"),
-        _n("n2", "architect", ("n1",)),
-        _n("n3", "fix", ("n2",)),
-        _n("n4", "lint_gate", ("n3",)),
+        _n("n2", "fix", ("n1",)),
+        _n("n3", "lint_gate", ("n2",)),
     ),
 }
 
 
-_WRITE_TEMPLATES: frozenset[str] = frozenset({"implement", "fix"})
+WRITE_TASK_TYPES: frozenset[str] = frozenset({"implement", "fix"})
 
 
-def _template_for(task_type: str, *, with_test_gate: bool) -> tuple[NodeTemplate, ...]:
-    """Template eines task_type, optional um einen test_gate-Knoten erweitert
-    (I-REK.4). Der test_gate haengt HINTER dem lint_gate (letzter Knoten der
-    Schreib-Templates): implement/fix laufen erst durch die statische Pruefung
-    (G1, billiger), dann durch die Sandbox-Tests (G2). So ist test_gate das
-    LETZTE Gate der Kette -- der Frische-/Auto-Apply-Nachlauf haengt daran, und
-    ein spaeteres Goal wartet ueber die Blatt-Kante bis die Tests gruen sind.
+def _template_for(
+    task_type: str, *, with_architect: bool = True, with_test_gate: bool = False
+) -> tuple[NodeTemplate, ...]:
+    """Template eines task_type. Fuer die Schreib-Templates (implement/fix) wird
+    die Kette KONDITIONAL zusammengesetzt (I-REK.5/6); alle anderen Templates
+    kommen unveraendert aus REGISTRY.
 
-    Nur fuer implement/fix und nur wenn der Aufrufer with_test_gate=True setzt
-    (Opt-in-Entscheidung Settings + Workspace-Erkennung, siehe deps.enqueue_plan);
-    alle anderen Templates bleiben unveraendert."""
-    template = REGISTRY[task_type]  # KeyError bei unbekanntem task_type
-    if not (with_test_gate and task_type in _WRITE_TEMPLATES):
-        return template
-    lint = template[-1]  # letzter Knoten = lint_gate
-    test_node = NodeTemplate(
-        node_id=f"n{len(template) + 1}",
-        task_type="test_gate",
-        depends_on=(lint.node_id,),
-    )
-    return template + (test_node,)
+    Schreib-Kette: index -> [architect] -> implement/fix -> lint_gate -> [test_gate].
+    Die Kern-Knotentypen (index, implement/fix, lint_gate) stammen aus REGISTRY
+    (die Wahrheit fuer die Typen); die STRUKTUR (welche Gates/Zwischenknoten) ist
+    Sache dieser Funktion (die Wahrheit fuer die Form):
+
+    - with_architect (I-REK.6, Default True): fuegt den Entwurfs-Knoten zwischen
+      Kontext (index) und Patch ein. Invariante 5 -- die Expansion fuegt ihn ein,
+      nicht das Template. Der Aufrufer setzt ihn per Heuristik (core.architect_policy),
+      im Trivialfall (kurze Instruktion + neue/kleine Datei) auf False -> 3-Knoten-
+      Kette ohne Design-Overhead ("Tod durch Umgehung" vermieden).
+    - with_test_gate (I-REK.4): haengt das Sandbox-Test-Gate (G2) HINTER das
+      lint_gate (G1 zuerst, billiger). So ist test_gate das LETZTE Gate + das Blatt;
+      ein spaeteres Goal wartet ueber die Blatt-Kante bis die Tests gruen sind.
+
+    Die Knoten werden linear neu nummeriert (n1..nk, jeder haengt am direkten
+    Vorgaenger) -- bei den Defaults reproduziert das die bisherige 4-Knoten-Form
+    exakt (index=n1, architect=n2, impl=n3, lint_gate=n4)."""
+    core = REGISTRY[task_type]  # KeyError bei unbekanntem task_type
+    if task_type not in WRITE_TASK_TYPES:
+        return core
+
+    # core = (index, implement/fix, lint_gate). Typen daraus ziehen, Struktur hier.
+    seq_types = [n.task_type for n in core]  # ["index", <write>, "lint_gate"]
+    if with_architect:
+        seq_types.insert(1, "architect")  # zwischen index und Patch
+    if with_test_gate:
+        seq_types.append("test_gate")  # hinter das lint_gate (Blatt)
+
+    nodes: list[NodeTemplate] = []
+    for i, tt in enumerate(seq_types, start=1):
+        depends_on = (f"n{i - 1}",) if i > 1 else ()
+        nodes.append(_n(f"n{i}", tt, depends_on))
+    return tuple(nodes)
 
 
 # --------- Materialisierter DAG ---------
@@ -216,6 +237,7 @@ def decompose(
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
     dag_id: str | None = None,
+    with_architect: bool = True,
     with_test_gate: bool = False,
     budget: ExpansionBudget | None = None,
 ) -> TaskDag:
@@ -229,6 +251,8 @@ def decompose(
     scope_resolver : liefert files_in(scope) fuer Fan-out-Knoten
     cache_query    : (scope, artifact_type) -> bool; True -> node.status="done"
     dag_id         : optional; sonst UUID
+    with_architect : implement/fix bekommen zwischen index und Patch einen
+                     architect-Knoten (I-REK.6; Default True = bisherige Form).
     with_test_gate : implement/fix bekommen hinter dem lint_gate einen
                      test_gate-Knoten (I-REK.4-Opt-in); sonst unveraendert.
     budget         : Breiten-/Tiefen-Kappung je Wurzel (Default: DEFAULT_BUDGET
@@ -242,6 +266,7 @@ def decompose(
         scope,
         scope_resolver=scope_resolver,
         cache_query=cache_query,
+        with_architect=with_architect,
         with_test_gate=with_test_gate,
         budget=budget,
     )

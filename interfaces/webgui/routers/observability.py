@@ -124,6 +124,8 @@ def _settings_state(deps: AppDeps) -> dict[str, Any]:
     return {
         "auto_apply": deps.settings.get_auto_apply(),
         "test_gate": deps.settings.get_test_gate(),
+        "architect": deps.settings.get_architect(),
+        "architect_min_chars": deps.settings.get_architect_min_chars(),
     }
 
 
@@ -150,6 +152,10 @@ async def set_settings(
         deps.settings.set_auto_apply(body.auto_apply)
     if body.test_gate is not None:
         deps.settings.set_test_gate(body.test_gate)
+    if body.architect is not None:
+        deps.settings.set_architect(body.architect)
+    if body.architect_min_chars is not None:
+        deps.settings.set_architect_min_chars(body.architect_min_chars)
     return _settings_state(deps)
 
 

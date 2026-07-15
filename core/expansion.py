@@ -60,6 +60,7 @@ def expand(
     *,
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
+    with_architect: bool = True,
     with_test_gate: bool = False,
     budget: ExpansionBudget | None = None,
     depth: int = 0,
@@ -70,6 +71,8 @@ def expand(
     scope          : Top-Level-Scope der Anfrage, z.B. "module:auth"
     scope_resolver : liefert files_in(scope) fuer Fan-out-Knoten
     cache_query    : (scope, artifact_type) -> bool; True -> node.status="done"
+    with_architect : implement/fix bekommen zwischen index und Patch einen
+                     architect-Knoten (I-REK.6; Default True = bisherige Form).
     with_test_gate : implement/fix bekommen hinter dem lint_gate einen
                      test_gate-Knoten (I-REK.4-Opt-in); sonst unveraendert.
     budget         : Breiten-/Tiefen-Kappung je Wurzel (Default: DEFAULT_BUDGET).
@@ -93,7 +96,9 @@ def expand(
         )
         return []
 
-    template = _template_for(task_type, with_test_gate=with_test_gate)
+    template = _template_for(
+        task_type, with_architect=with_architect, with_test_gate=with_test_gate
+    )
 
     # Breiten-Kappung: der Fan-out darf so viele Knoten erzeugen, dass die
     # Gesamtzahl (inkl. der Fix-/Nicht-Fan-out-Knoten) max_nodes nicht ueber-

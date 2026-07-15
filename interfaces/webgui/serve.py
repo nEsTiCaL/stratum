@@ -28,6 +28,7 @@ import psycopg
 import uvicorn
 
 from core.apply_gate import apply_confirmed_patch
+from core.architect_policy import needs_architect
 from core.db import apply_migrations
 from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
@@ -309,11 +310,22 @@ def _make_worker_loop(
         # durch dieselbe G1->G2-Kette wie ein bestaetigter Plan.
         fix_root = _resolve_root(item)
         with_test_gate = settings.get_test_gate() and workspace_has_tests(fix_root)
+        # I-REK.6: architect-Knoten konditional -- derselbe Heuristik-Pfad wie im
+        # Confirm-Pfad. Review-Findings sind i.d.R. umfangreich (lange Instruktion)
+        # -> meist mit Design; ein knapper Ein-Zeiler auf eine kleine Datei laeuft
+        # ohne (Trivialfall).
+        with_architect = settings.get_architect() and needs_architect(
+            scope,
+            instruction,
+            root=fix_root,
+            min_chars=settings.get_architect_min_chars(),
+        )
         dag = decompose(
             "fix",
             scope,
             scope_resolver=RepoScopeResolver(worker_repo),
             dag_id=f"fix-{uuid.uuid4().hex[:8]}",
+            with_architect=with_architect,
             with_test_gate=with_test_gate,
         )
         ids = fix_queue.enqueue(

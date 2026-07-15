@@ -30,6 +30,8 @@ from core.worker import DetWorker, LlmWorker, WorkerLoop
 # Hilfsfunktionen / Fixtures
 # ---------------------------------------------------------------------------
 
+_UNSET = object()  # Sentinel: "read_design nicht monkeypatchen" (echten Pfad nutzen)
+
 
 def _prob_response(content: str = "Erklaerung des Codes.") -> str:
     """Historisches Label-Prefix-Layout -- heute schlicht nicht-leerer
@@ -368,6 +370,51 @@ class TestLlmWorker:
         )
         assert captured["feedback"] == ""
         assert "Verify-Fehler" not in seen["p"]
+
+    def _node_prompt_trace(self, repo) -> dict:
+        return next(t for t in repo.traces if t["stage"] == "node_prompt")["detail"]
+
+    def _run_and_trace(self, monkeypatch, *, task_type, design=_UNSET):
+        # build_node_prompt monkeypatchen (wie test_verify_feedback_reaches_builder)
+        # -- der _FakeRepo traegt keinen Index fuer gather_context; die with_design-
+        # Metrik setzt der Worker VOR dem Prompt-Bau via read_design (eigener Aufruf).
+        # Modell mit unbegrenztem Nachschub (kein FakeModel-Iterator): ein fix-Patch
+        # scheitert an der Validierung -> Retries; wir pruefen nur den Trace, der VOR
+        # dem local_phase geschrieben wird -> run() soll normal zurueckkehren.
+        import core.node_prep as node_prep
+
+        monkeypatch.setattr(
+            node_prep,
+            "build_node_prompt",
+            lambda repo, tt, scope, instruction="", feedback="", *, root=None: "P",
+        )
+        if design is not _UNSET:
+            monkeypatch.setattr(node_prep, "read_design", lambda repo, scope: design)
+
+        class _Always:
+            def complete(self, prompt: str) -> str:
+                return _prob_response()
+
+        worker = LlmWorker(router=Router(), model_factory=lambda name: _Always())
+        repo = _FakeRepo()
+        worker.run(_item(task_type=task_type, payload={"instruction": "x"}), repo)
+        return self._node_prompt_trace(repo)
+
+    def test_node_prompt_trace_marks_with_design_true(self, monkeypatch):
+        # I-REK.6-Metrik: implement/fix-Knoten mit vorliegendem Design -> with_design
+        # True im node_prompt-Trace (Basis fuer den G2-Pass-Raten-Vergleich).
+        detail = self._run_and_trace(monkeypatch, task_type="fix", design="ENTWURF")
+        assert detail["with_design"] is True
+
+    def test_node_prompt_trace_with_design_false_without_design(self, monkeypatch):
+        # Kein Design-Artefakt (get_current None) -> with_design False.
+        detail = self._run_and_trace(monkeypatch, task_type="fix")
+        assert detail["with_design"] is False
+
+    def test_node_prompt_trace_with_design_none_for_read_task(self, monkeypatch):
+        # Lesender Task hat keinen Design-Begriff -> with_design None (Feld belegt).
+        detail = self._run_and_trace(monkeypatch, task_type="explain")
+        assert detail["with_design"] is None
 
     def test_unstructured_response_all_in_text(self):
         """Antwort ohne die festen Ueberschriften -> alles in content.text."""

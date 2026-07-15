@@ -118,9 +118,11 @@ def client_with_task(conn):
 class TestDirectWriteTask:
     """create_task: schreibende task_types (implement/fix, Artefakt 'patch') bauen
     den vollen index->write->verify-DAG (wie confirm_plan, via deps.enqueue_plan)
-    statt eines Sackgassen-Ein-Knoten-DAGs. Lesende task_types bleiben Ein-Knoten."""
+    statt eines Sackgassen-Ein-Knoten-DAGs. Lesende task_types bleiben Ein-Knoten.
+    I-REK.6: der architect-Knoten ist konditional -- kurze Instruktion + keine
+    (grosse) Zieldatei = Trivialfall ohne architect (hier: source_root None)."""
 
-    def test_fix_task_builds_full_write_dag(self, client, conn):
+    def test_fix_task_builds_full_write_dag_trivial_no_architect(self, client, conn):
         r = client.post(
             "/api/task",
             json={
@@ -135,12 +137,30 @@ class TestDirectWriteTask:
         assert body["id"] == body["task_ids"][0]
         assert "dag_id" in body
         rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
-        assert [row[0] for row in rows] == ["index", "architect", "fix", "lint_gate"]
+        # Trivialfall (kurze Instruktion): kein architect, aber voller Write-DAG.
+        assert [row[0] for row in rows] == ["index", "fix", "lint_gate"]
 
-    def test_implement_task_builds_full_write_dag(self, client, conn):
+    def test_implement_task_builds_full_write_dag_trivial_no_architect(
+        self, client, conn
+    ):
         r = client.post(
             "/api/task",
             json={"task_type": "implement", "scope": "file:core/queue.py"},
+            headers=AUTH,
+        )
+        assert r.status_code == 201
+        rows = conn.execute("SELECT task_type FROM queue ORDER BY id").fetchall()
+        assert [row[0] for row in rows] == ["index", "implement", "lint_gate"]
+
+    def test_long_instruction_gets_architect(self, client, conn):
+        # I-REK.6: umfangreiche Instruktion (> Schwellwert) -> architect-Knoten.
+        r = client.post(
+            "/api/task",
+            json={
+                "task_type": "implement",
+                "scope": "file:core/queue.py",
+                "prompt": "Baue " + "eine ausfuehrlich beschriebene Funktion " * 8,
+            },
             headers=AUTH,
         )
         assert r.status_code == 201
@@ -194,7 +214,9 @@ class TestTestGateOptInWiring:
 
     def test_added_when_tests_present_and_switch_on(self, conn, tmp_path):
         types = self._enqueue_fix(conn, tmp_path, has_tests=True, test_gate_on=True)
-        assert types == ["index", "architect", "fix", "lint_gate", "test_gate"]
+        # I-REK.6: kurze Instruktion + kleine Datei -> kein architect (Trivialfall);
+        # test_gate haengt trotzdem als Blatt hinter das lint_gate.
+        assert types == ["index", "fix", "lint_gate", "test_gate"]
 
     def test_not_added_when_no_tests(self, conn, tmp_path):
         types = self._enqueue_fix(conn, tmp_path, has_tests=False, test_gate_on=True)
@@ -472,10 +494,17 @@ class TestTasksEndpoint:
 
 
 class TestSettingsEndpoint:
+    _DEFAULTS = {
+        "auto_apply": True,
+        "test_gate": True,
+        "architect": True,
+        "architect_min_chars": 240,
+    }
+
     def test_defaults_true(self, client):
         r = client.get("/api/settings", headers=AUTH)
         assert r.status_code == 200
-        assert r.json() == {"auto_apply": True, "test_gate": True}
+        assert r.json() == self._DEFAULTS
 
     def test_requires_auth(self, client):
         assert client.get("/api/settings").status_code == 401
@@ -490,11 +519,11 @@ class TestSettingsEndpoint:
         with TestClient(app) as c:
             r = c.post("/api/settings", headers=AUTH, json={"auto_apply": False})
             assert r.status_code == 200
-            assert r.json() == {"auto_apply": False, "test_gate": True}
+            assert r.json() == {**self._DEFAULTS, "auto_apply": False}
             # Folge-GET spiegelt den neuen Wert; auch das injizierte Objekt (Worker).
             assert c.get("/api/settings", headers=AUTH).json() == {
+                **self._DEFAULTS,
                 "auto_apply": False,
-                "test_gate": True,
             }
         assert settings.get_auto_apply() is False
 
@@ -507,9 +536,30 @@ class TestSettingsEndpoint:
         with TestClient(app) as c:
             r = c.post("/api/settings", headers=AUTH, json={"test_gate": False})
             assert r.status_code == 200
-            assert r.json() == {"auto_apply": True, "test_gate": False}
+            assert r.json() == {**self._DEFAULTS, "test_gate": False}
         assert settings.get_test_gate() is False
         assert settings.get_auto_apply() is True
+
+    def test_toggle_architect_and_threshold(self, conn):
+        """I-REK.6: architect-Master + Schwellwert per Settings, PATCH-Semantik."""
+        from core.settings import RuntimeSettings
+
+        settings = RuntimeSettings()
+        app = create_app(Queue(conn), Repository(conn), settings=settings)
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/settings",
+                headers=AUTH,
+                json={"architect": False, "architect_min_chars": 50},
+            )
+            assert r.status_code == 200
+            assert r.json() == {
+                **self._DEFAULTS,
+                "architect": False,
+                "architect_min_chars": 50,
+            }
+        assert settings.get_architect() is False
+        assert settings.get_architect_min_chars() == 50
 
 
 class TestClaimEndpoint:

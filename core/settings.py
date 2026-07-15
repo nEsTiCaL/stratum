@@ -17,12 +17,25 @@ Der Schalter ist der Master-Opt-out: aus -> nie ein test_gate-Knoten; an
 (Default) -> Knoten genau dann, wenn Tests erkannt werden. So zahlt ein Projekt
 ohne Tests keinen leeren Neutral-Knoten, und ein Nutzer kann die Sandbox-Laeufe
 bewusst abschalten.
+
+architect (opt-out, Default True, I-REK.6) + architect_min_chars (Schwellwert,
+Default 240): der Schreib-Sub-DAG bekommt zwischen index und Patch einen
+architect-Entwurfsknoten -- ABER konditional (Heuristik core.architect_policy:
+kurze Instruktion + neue/kleine Zieldatei -> Trivialfall, kein Design-Overhead).
+architect ist der Master-Opt-out (aus -> nie ein architect-Knoten); der
+Schwellwert steuert, ab welcher Instruktionslaenge ein Design lohnt (per Settings
+verstellbar -> der Architect-Nutzen ist Hypothese, arch_rekursion Risiko 5, und
+wird ueber die G2-Pass-Rate gemessen).
 """
 
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+
+# Default-Schwellwert (Zeichen) fuer die architect-Heuristik: kuerzere
+# Instruktionen zaehlen als "kurz" -> Trivialfall-Kandidat (ohne architect).
+DEFAULT_ARCHITECT_MIN_CHARS = 240
 
 
 @dataclass
@@ -31,6 +44,8 @@ class RuntimeSettings:
 
     auto_apply: bool = True
     test_gate: bool = True
+    architect: bool = True
+    architect_min_chars: int = DEFAULT_ARCHITECT_MIN_CHARS
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def get_auto_apply(self) -> bool:
@@ -48,3 +63,19 @@ class RuntimeSettings:
     def set_test_gate(self, value: bool) -> None:
         with self._lock:
             self.test_gate = bool(value)
+
+    def get_architect(self) -> bool:
+        with self._lock:
+            return self.architect
+
+    def set_architect(self, value: bool) -> None:
+        with self._lock:
+            self.architect = bool(value)
+
+    def get_architect_min_chars(self) -> int:
+        with self._lock:
+            return self.architect_min_chars
+
+    def set_architect_min_chars(self, value: int) -> None:
+        with self._lock:
+            self.architect_min_chars = max(0, int(value))

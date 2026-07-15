@@ -334,7 +334,7 @@ I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1 FERTIG   `spec_rekursion
 I-REK.3   test_gate Runner+Artefakt (G2/1)   det  - FERTIG       `spec_rekursion`, `spec_schritt-7`
 I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3 FERTIG `spec_rekursion`
 I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1 FERTIG   `spec_rekursion`
-I-REK.6   Architect konditional + Metrik     gem  REK.4,5        `spec_rekursion`
+I-REK.6   Architect konditional + Metrik     gem  REK.4,5 FERTIG `spec_rekursion`
 I-REK.7   Completion-Hook + Supersede        det  REK.5          `spec_rekursion`
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7          `spec_rekursion`, `spec_beginner-flow`
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5          `spec_rekursion`, `arch_pfadwahl`
@@ -426,9 +426,22 @@ Breite, max_depth=Tiefe), Default (512/8) grosszuegig -> verhaltensgleich (alle
 Shape-Tests ohne Anpassung gruen); knappes Budget kappt den Fan-out (Fixknoten
 bleiben), depth>max stoppt die Expansion (Rekursions-Stop, ab REK.7 wirksam). 11
 neue Tests (test_expansion.py), 1088 gruen, ruff clean.
-NAECHSTER SCHRITT: I-REK.6 (Architect konditional + Metrik, nutzt die G2-Pass-Rate;
-expand() fuegt den architect-Knoten heuristisch EIN statt Template-Zwang -- der Ort
-existiert jetzt).
+I-REK.6 FERTIG (2026-07-15): Architect konditional + Metrik. Der architect-Knoten
+ist NICHT mehr fest im Template -- REGISTRY implement/fix sind minimal (index->
+impl->lint_gate); _template_for setzt architect (with_architect) + test_gate
+konditional ein (linear neu nummeriert, Default with_architect=True -> bisherige
+4-Knoten-Form). Heuristik core/architect_policy.needs_architect (kurze Instruktion
++ neue/kleine Zieldatei -> Trivialfall ohne architect; lange Instruktion ODER
+bestehende grosse Datei -> mit). Verdrahtet in deps.enqueue_plan (plan-weit, die
+instruction ist eine fuer alle Goals) + serve._spawn_fix. Settings: architect
+(Master-Opt-out) + architect_min_chars (Schwellwert), POST /api/settings +
+_settings_state. Metrik: worker node_prompt-Trace traegt with_design (implement/fix:
+lag ein architect-Design vor?) -> G2-Pass-Rate mit/ohne vergleichbar (Architect-
+Nutzen ist Hypothese, arch_rekursion Risiko 5). Bestands-Shape-Tests (direktes
+decompose) via Default True gruen; 3 webgui-Tests bewusst geflippt (Trivialfall ohne
+architect) + Gegenprobe (lange Instruktion -> mit). NAECHSTER SCHRITT: I-REK.7
+(Completion-Hook + Teilbaum-Supersede -- Kinder entstehen NACH dem Erzeuger; nutzt
+expand()/depth aus REK.5) parallel zu I-REK.9 (Aenderungsart-Klassifikation).
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

@@ -97,6 +97,7 @@ def build_dag(
     *,
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
+    with_architect: bool = True,
     with_test_gate: bool = False,
 ) -> TaskDag:
     """Bestaetigte Goals -> verketteter Gesamt-DAG (det, modellfrei).
@@ -106,10 +107,13 @@ def build_dag(
     (kein Modell noetig) -- so kann die Confirm-Schale (I-6.3) sie aufrufen, ohne
     einen IntentDecomposer/Model zu halten.
 
-    with_test_gate (I-REK.4): reicht das test_gate-Opt-in an jede Goal-Zerlegung
-    durch (greift nur bei implement/fix). Weil test_gate dann das Blatt des
-    Schreib-Sub-DAGs ist, warten abhaengige Goals ueber die Blatt-Kante bis die
-    Tests gruen sind (Frische-Invariante im Mehr-Goal-Plan, I-REK.2).
+    with_architect (I-REK.6) + with_test_gate (I-REK.4): plan-weite Opt-ins, an
+    jede Goal-Zerlegung durchgereicht (greifen nur bei implement/fix). Die
+    architect-Heuristik ist heute plan-weit (die Instruktion ist eine fuer alle
+    Goals, GoalItem traegt keine eigene); der Aufrufer (deps.enqueue_plan)
+    entscheidet einmal fuer den Plan. Weil test_gate das Blatt des Schreib-Sub-
+    DAGs ist, warten abhaengige Goals ueber die Blatt-Kante bis die Tests gruen
+    sind (Frische-Invariante im Mehr-Goal-Plan, I-REK.2).
     """
     if not plan.goals:
         return TaskDag(dag_id=str(uuid.uuid4()), nodes=[])
@@ -124,6 +128,7 @@ def build_dag(
             goal.scope,
             scope_resolver=scope_resolver,
             cache_query=cache_query,
+            with_architect=with_architect,
             with_test_gate=with_test_gate,
         )
         prefixed = _prefix_dag(sub, prefix)
@@ -179,6 +184,7 @@ class IntentDecomposer:
         *,
         scope_resolver: ScopeResolver,
         cache_query: Callable[[str, str], bool] | None = None,
+        with_architect: bool = True,
         with_test_gate: bool = False,
     ) -> TaskDag:
         """Bestaetigte Goals -> verketteter Gesamt-DAG. Delegiert an die
@@ -187,5 +193,6 @@ class IntentDecomposer:
             plan,
             scope_resolver=scope_resolver,
             cache_query=cache_query,
+            with_architect=with_architect,
             with_test_gate=with_test_gate,
         )

@@ -244,6 +244,55 @@ Akzeptanz: Trivialfall erzeugt 3-Knoten-DAG (ohne architect), grosser Fall 4;
 Klasse  : gem   dep: I-REK.4 (Metrik), I-REK.5 (Ort)
 ```
 
+**FERTIG 2026-07-15.** Der architect-Knoten wird von der Expansion KONDITIONAL
+eingefuegt (Invariante 5), nicht mehr vom Template erzwungen.
+
+- **Template**: `REGISTRY["implement"]/["fix"]` sind auf die minimale Kern-Kette
+  reduziert (index -> implement/fix -> lint_gate). `_template_for(task_type, *,
+  with_architect=True, with_test_gate=False)` setzt fuer die Schreib-Templates die
+  Kette aus den REGISTRY-Kern-TYPEN dynamisch zusammen: index -> [architect] ->
+  Patch -> lint_gate -> [test_gate], linear neu nummeriert (n1..nk). Bei den
+  Defaults (with_architect=True) reproduziert das die bisherige 4-Knoten-Form exakt
+  (index=n1, architect=n2, impl=n3, lint_gate=n4) -> alle direkten decompose-Shape-
+  Tests (test_patch, test_template_registry) BLEIBEN gruen ohne Anpassung.
+  `with_architect` laeuft durch expand -> decompose -> build_dag/IntentDecomposer
+  (Default True). `_WRITE_TEMPLATES` -> public `WRITE_TASK_TYPES` (Wiederverwendung
+  in der Heuristik-Verdrahtung).
+- **Heuristik** (`core/architect_policy.needs_architect`): lange Instruktion
+  (>= min_chars) ODER bestehende grosse Zieldatei (>= min_loc Zeilen, ueber
+  node_prep.read_scope_source) -> Design lohnt (True). Sonst (kurz + neu/klein) ->
+  Trivialfall (False, 3-Knoten-Kette, kein Design-Overhead -> kein "Tod durch
+  Umgehung"). Verdrahtet in `deps.enqueue_plan` (PLAN-WEIT: die instruction ist eine
+  fuer alle Goals, GoalItem traegt keine eigene -> `any(needs_architect(...) for
+  write-goal)`) und `serve._spawn_fix`. Master-Schalter `RuntimeSettings.architect`
+  (Default an, aus -> nie architect); Ein-Goal-Schreibpfade (create_task write,
+  _spawn_fix) sind exakt, Mehr-Goal-Plaene konservativ (ein Goal gross -> alle mit).
+- **Settings**: `RuntimeSettings.architect` (bool) + `architect_min_chars` (int,
+  Default DEFAULT_ARCHITECT_MIN_CHARS=240) mit get/set; `SettingsBody` + POST
+  /api/settings (PATCH-Semantik) + `_settings_state`. Schwellwert damit zur Laufzeit
+  verstellbar (der Architect-Nutzen ist HYPOTHESE, arch_rekursion Risiko 5 -- Tunable
+  statt Glaube).
+- **Metrik**: `worker.run` stempelt fuer implement/fix `with_design` (bool, via
+  read_design zur Claim-Zeit) in den `node_prompt`-Trace; lesende Tasks -> None
+  (Feld belegt, aber kein Design-Begriff). Damit ist die G2-Pass-Rate (test_gate,
+  I-REK.4) mit/ohne Design vergleichbar -- die Datengrundlage, den Architect-Nutzen
+  zu MESSEN, bevor 4d-artige Struktur (I-REK.8) darauf gebaut wird.
+- **Akzeptanz belegt**: TestArchitectConditional (with_architect=False -> 3 Knoten;
+  Default -> 4), TestArchitectPolicy (Schwelle greift, per min_chars konfigurierbar),
+  webgui Trivialfall -> ohne architect + Gegenprobe lange Instruktion -> mit,
+  Settings-Toggle + Schwellwert (PATCH), worker with_design True/False/None. Bewusste
+  Verhaltensaenderung: 3 webgui-Tests geflippt (Trivialfall traegt jetzt keinen
+  architect mehr). 1107 gruen (+19), ruff check/format gruen.
+
+Befunde/offen: with_architect ist heute PLAN-WEIT (nicht pro Goal) -- fuer Ein-Goal-
+Schreibtasks exakt, fuer gemischte Mehr-Goal-Plaene konservativ (irgendein Goal
+gross -> alle Goals mit architect). Pro-Goal-Granularitaet braeuchte die Instruktion/
+Zielinfo je Goal im modellfreien build_dag; verschoben, bis ein realer gemischter
+Plan das verlangt. min_loc ist Konstante (nur min_chars per Settings) -- genuegt fuer
+"Schwellwert aenderbar". with_design nur im Trace (nicht in model_metrics) -- fuer den
+Pass-Raten-Vergleich reicht Trace + test_report; eine model_metrics-Spalte waere
+spaetere Haertung, falls die Auswertung sie braucht.
+
 ## I-REK.7  Completion-Hook + Teilbaum-Supersede (Queue)   [Strang S]
 
 ```

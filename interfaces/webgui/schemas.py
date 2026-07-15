@@ -35,10 +35,14 @@ class WorkspaceFileBody(BaseModel):
 
 
 class SettingsBody(BaseModel):
-    # Beide optional -> ein Toggle laesst den anderen Schalter unberuehrt (PATCH-
+    # Alle optional -> ein Toggle laesst die anderen Schalter unberuehrt (PATCH-
     # Semantik). I-REK.4: test_gate schaltet den Sandbox-Test-Knoten master-weit.
+    # I-REK.6: architect = Master-Opt-out des Entwurfsknotens; architect_min_chars
+    # = Trivial-Schwellwert (Instruktionslaenge) der Heuristik.
     auto_apply: bool | None = None
     test_gate: bool | None = None
+    architect: bool | None = None
+    architect_min_chars: int | None = None
 
 
 class PlanGoalBody(BaseModel):

@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from core.architect_policy import needs_architect
 from core.capacity import ResolvedCapacity
 from core.models.result_prob_schema import ResultProb
 from core.node_prep import build_node_prompt, ensure_indexed, materialize_prob_nodes
@@ -39,7 +40,7 @@ from core.scope_resolver import RepoScopeResolver
 from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL
 from core.task_routing import claim_model as _route_claim_model
-from core.template_registry import TaskDag
+from core.template_registry import WRITE_TASK_TYPES, TaskDag
 from core.test_gate import workspace_has_tests
 from core.validator import Model
 from core.workspace import workspace_root
@@ -154,10 +155,25 @@ class AppDeps:
         # wenn der Schalter an ist (Default) UND der Workspace ueberhaupt Tests
         # traegt -- sonst kein leerer Neutral-Knoten. root = Workspace des Keys.
         with_test_gate = self.settings.get_test_gate() and workspace_has_tests(root)
+        # I-REK.6: architect-Knoten konditional. Plan-weit (die instruction ist
+        # eine fuer alle Goals): Master-Schalter an UND mindestens ein Schreib-Goal
+        # ueberschreitet die Trivial-Schwelle (lange Instruktion oder bestehende
+        # grosse Zieldatei). Trivialfall -> ohne architect (3-Knoten-Kette).
+        with_architect = self.settings.get_architect() and any(
+            needs_architect(
+                g.scope,
+                instruction,
+                root=root,
+                min_chars=self.settings.get_architect_min_chars(),
+            )
+            for g in plan.goals
+            if g.task_type.value in WRITE_TASK_TYPES
+        )
         dag = build_dag(
             plan,
             scope_resolver=RepoScopeResolver(self.repo),
             cache_query=None,
+            with_architect=with_architect,
             with_test_gate=with_test_gate,
         )
         task_ids = self.queue.enqueue(
