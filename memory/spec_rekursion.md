@@ -524,6 +524,49 @@ Akzeptanz: Signaturaenderung ueber n Aufrufer: alle aus impact() als Kinder,
 Klasse  : gem   dep: I-REK.7, I-REK.9
 ```
 
+**FERTIG 2026-07-15.** `core/impact_expand.py` generalisiert die `rename_expand`-
+Praezedenz von L1 (mechanischer Rename) auf L2 (validierte Graph-Op + EIN geteiltes
+Design), ERSTER Nutzer von `enqueue_children` aus REK.7. KEIN Endpunkt/Migration/
+Schema-Change; serve.py NOCH nicht verdrahtet (wie REK.7/9 an den Konsumenten
+deferiert). Zwei Schichten:
+1. Reine det-Enumeration: `impact_expand(repo, op, symbol, allowed_scopes, kind)` ->
+   `ImpactExpansion`. defs via `find_symbol`, users via `impact()` je Definition,
+   beide auf `allowed_scopes` eingegrenzt (Fremdbaum-Schutz, None=keine Grenze) --
+   dieselben zwei Store-Aufrufe wie rename_plan. `touched = sorted(defs|users)`,
+   je Datei ein Kind. Ehrlichkeit (arch_rekursion Risiko 2): `UncertainCaller` = ein
+   Aufrufer, der eine Definition nur ueber eine Call-Kante mit confidence < 1.0
+   erreicht (`get_edges(user)`, dst in defs, edge_type call). WICHTIG: Import-/
+   contains-Kanten tragen confidence None (statisch sicher, NIE unsicher); nur
+   Call-Kanten tragen numerische confidence (`core/graph.py`). `build_impact_children`
+   -> je Datei ein `fix`-DagNode (depends_on=(); prepare_children haengt sie unter
+   den Erzeuger). `render_shared_design` -> det Design-Seed: Symbol/defs/Aufrufer +
+   IMMER der Caveat "statisch sichtbare Menge, dynamisch/reflektiv nicht erfasst,
+   Vollstaendigkeit NICHT garantiert" + die unsicheren Kanten einzeln benannt.
+   Op-spezifische per-Datei-`instruction` (signature/delete/move/rename).
+2. Completion-Hook `make_impact_hook(queue)`: feuert NUR bei `payload["impact"] =
+   {op, symbol, kind?}` (sonst No-Op -> mit anderen expand_hooks komponierbar).
+   allowed_scopes aus root wie /api/rename (`source_files`+`file_scope`). impact_expand
+   -> leer -> No-Op. prepare_children (namespacen unter Erzeuger, Design zuerst) ->
+   `enqueue_children(base_payload={depth+1, instruction, plan_design})`. Das geteilte
+   Design = Architekten-design-Artefakt des Erzeugers falls vorhanden, sonst der
+   det-Seed. Verifizierte Faedelung: `payload["plan_design"]` -> worker Claim-Zeit ->
+   `build_node_prompt` -> `build_patch_prompt` (jedes fix-Kind traegt das Design).
+   Design zuerst (Erzeuger), DANN Fan-out = Verifikation vor Multiplikation (Inv. 3);
+   Kinder nach dem Erzeuger (Inv. 4). Kein prob -- die Dateien sind det bekannt.
+Akzeptanz `test_impact_expand.py` (13): defs+users-Enumeration, allowed_scopes-Grenze,
+unsichere Call-Kante geflaggt (Import-Kante nicht), fehlendes Symbol -> leer, je Datei
+ein fix-Kind, Design-Seed nennt Symbol/Aufrufer/Ehrlichkeit, op-spezifische Instruktion;
+Hook: No-Op ohne impact-Payload, alle betroffenen Dateien als Kinder (namespaced unter
+Erzeuger), Design+Instruktion+depth+1 im base_payload, vorhandenes Architekten-Design
+bevorzugt, No-Op wenn nichts betroffen. 1202 gruen (+13), ruff clean.
+Befunde/offen: (a) NOCH nicht live -- kein Endpunkt/serve.py-Hook erzeugt den Erzeuger-
+Knoten mit impact-Metadaten; Konsument (Weiche REK.9 -> validierte Op -> impact-Erzeuger
+einreihen + Hook komponieren mit plan_architect-Hook) folgt. (b) uncertain-Erkennung
+nur ueber DIREKTE Call-Kanten (get_edges ist ausgehend/direkt; impact() ist transitiv
+ohne confidence) -- transitive Aufrufer werden vom generellen Caveat abgedeckt, nicht
+einzeln. (c) Gate-Haerte ~ N (REK.12) sitzt noch nicht drauf; der Design-Erzeuger
+laeuft heute ohne N-skaliertes Gate.
+
 ## I-REK.11  Eskalationsleiter Sprossen 2-3 (re-design, re-expand)   [Strang W/S]
 
 ```

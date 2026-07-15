@@ -338,7 +338,7 @@ I-REK.6   Architect konditional + Metrik     gem  REK.4,5 FERTIG `spec_rekursion
 I-REK.7   Completion-Hook + Supersede        det  REK.5 FERTIG   `spec_rekursion`
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7 FERTIG   `spec_rekursion`, `spec_beginner-flow`
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5 FERTIG   `spec_rekursion`, `arch_pfadwahl`
-I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9        `spec_rekursion`
+I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9 FERTIG `spec_rekursion`
 I-REK.11  Eskalation re-design/re-expand     det  REK.4,7        `spec_rekursion`
 I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10       `spec_rekursion`
 ```
@@ -456,6 +456,25 @@ Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppe
 1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
 Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
 enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
+I-REK.10 FERTIG (2026-07-15): impact-Skelett (L2-Muster), ERSTER Nutzer von
+enqueue_children aus REK.7. Neu core/impact_expand.py, generalisiert rename_expand von
+L1 (mechanisch) auf L2 (validierte Graph-Op signature/delete/move + EIN geteiltes
+Design). KEIN Endpunkt/Schema-Change; serve.py noch nicht verdrahtet (Konsument folgt).
+(1) det-Enumeration impact_expand: defs via find_symbol, users via impact() je Def,
+beide auf allowed_scopes eingegrenzt (wie rename_plan) -> touched=defs|users, je Datei
+ein fix-Kind. Ehrlichkeit: UncertainCaller = Aufrufer nur ueber Call-Kante confidence<1.0
+(get_edges; Import/contains=None=sicher). render_shared_design = det Design-Seed mit
+IMMER-Caveat (statisch sichtbare Menge, Vollstaendigkeit nicht garantiert) + unsichere
+Kanten benannt. (2) Completion-Hook make_impact_hook: feuert nur bei payload["impact"]=
+{op,symbol}, allowed_scopes aus root (wie /api/rename), prepare_children (namespacen
+unter Erzeuger = Design zuerst), enqueue_children(base_payload={depth+1,instruction,
+plan_design}). Geteiltes Design = Architekten-Artefakt falls vorhanden sonst det-Seed;
+Kette plan_design->build_node_prompt->build_patch_prompt verifiziert (jedes Kind traegt
+Design). Design zuerst DANN Fan-out (Inv.3), Kinder nach Erzeuger (Inv.4), kein prob.
+Akzeptanz test_impact_expand.py (13). 1202 gruen (+13), ruff clean. NAECHSTER SCHRITT:
+REK.12 (Gate-Policy Haerte~Wirkradius, erster grosser Fan-out-Konsument = impact/plan_
+architect) ODER REK.11 (Eskalation re-design/re-expand) ODER Live-Verdrahtung REK.10
+(Weiche REK.9 -> impact-Erzeuger einreihen, Hook mit plan_architect-Hook komponieren).
 I-REK.9 FERTIG (2026-07-15): Aenderungsart-Klassifikation (Weiche Q1 aus arch_pfadwahl)
 + det-Validierung. Neu core/change_classify.py, KEIN Endpunkt/Schema-Change (nur Signal;
 Konsument = REK.10). Drei eigenstaendige Stuecke: (1) Vorstufe det-Analyse-Briefing --
