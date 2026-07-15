@@ -5,8 +5,9 @@ det-testbar ohne echtes pytest/FS (run_cmd + copy_tree + read_current injiziert)
   Timeout / pytest fehlt / Kopie danach weg
 - TestGateWorker: patch vorhanden -> Sandbox + test_report; kein patch -> Report
 - WorkerLoop-Dispatch des test_gate-Knotens (Fake-Queue/-TestGateWorker):
-  gruen -> complete; rot -> terminal fail (Teil 1: keine Rueckkante); Patch passt
-  nicht -> fail; kein TestGateWorker -> fail
+  gruen -> complete; rot -> Rueckkante (reopen, I-REK.4); Patch passt nicht ->
+  fail; kein TestGateWorker -> fail. Die volle Rueckkanten-/Kappungs-/Auto-Apply-
+  Matrix liegt in test_verify_loop.py (gemeinsam mit dem lint_gate).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from core.test_gate import (
     TestOutcome,
     feedback_text,
     run_tests,
+    workspace_has_tests,
 )
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 
@@ -266,11 +268,44 @@ class TestTestGateWorker:
 # --------------------------------------------------------------------------
 
 
+class TestWorkspaceHasTests:
+    """I-REK.4-Opt-in-Erkennung: traegt der Workspace ueberhaupt Tests?"""
+
+    def test_none_root_is_false(self):
+        assert workspace_has_tests(None) is False
+
+    def test_missing_root_is_false(self, tmp_path):
+        assert workspace_has_tests(tmp_path / "nope") is False
+
+    def test_no_test_files_is_false(self, tmp_path):
+        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+        assert workspace_has_tests(tmp_path) is False
+
+    def test_test_prefix_detected(self, tmp_path):
+        (tmp_path / "test_app.py").write_text("def test_x(): ...\n", encoding="utf-8")
+        assert workspace_has_tests(tmp_path) is True
+
+    def test_test_suffix_detected(self, tmp_path):
+        sub = tmp_path / "pkg"
+        sub.mkdir()
+        (sub / "app_test.py").write_text("def test_x(): ...\n", encoding="utf-8")
+        assert workspace_has_tests(tmp_path) is True
+
+    def test_test_file_in_prune_dir_ignored(self, tmp_path):
+        # Testdatei nur in einem Rausch-Verzeichnis -> zaehlt nicht (wie _has_tests).
+        venv = tmp_path / ".venv"
+        venv.mkdir()
+        (venv / "test_dep.py").write_text("def test_x(): ...\n", encoding="utf-8")
+        assert workspace_has_tests(tmp_path) is False
+
+
 class _FakeQueue:
-    def __init__(self, item):
+    def __init__(self, item, reopen_result=True):
         self._item = item
+        self._reopen_result = reopen_result
         self.completed: list[int] = []
         self.failed: list[int] = []
+        self.reopen_calls: list = []
 
     def claim(self, model):
         return self._item
@@ -280,6 +315,13 @@ class _FakeQueue:
 
     def fail(self, item_id):
         self.failed.append(item_id)
+
+    def reopen_after_verify(self, item, *, feedback, max_attempts):
+        self.reopen_calls.append((item.id, feedback, max_attempts))
+        return self._reopen_result
+
+    def is_terminal_gate(self, item):
+        return True
 
 
 class _TraceRepo:
@@ -315,8 +357,8 @@ def _test_gate_item(item_id=5):
     )
 
 
-def _loop(item, *, outcome=None, test_gate_missing=False):
-    queue = _FakeQueue(item)
+def _loop(item, *, outcome=None, test_gate_missing=False, reopen_result=True):
+    queue = _FakeQueue(item, reopen_result=reopen_result)
     loop = WorkerLoop(
         queue=queue,
         repo=_TraceRepo(),
@@ -348,14 +390,26 @@ class TestTestGateDispatch:
         loop.step("test_gate")
         assert queue.completed == [5]
 
-    def test_red_fails_node_terminal(self):
-        # Teil 1: KEINE Rueckkante -> rot ist terminal (Report bleibt Beleg).
+    def test_red_triggers_rueckkante(self):
+        # I-REK.4: rot -> Rueckkante zu implement (reopen), nicht terminal.
         loop, queue = _loop(
             _test_gate_item(), outcome=TestOutcome(False, True, "rot", ())
         )
         loop.step("test_gate")
+        assert queue.reopen_calls and queue.reopen_calls[0][0] == 5
+        assert queue.completed == [] and queue.failed == []
+        assert _traces(loop)[0]["detail"]["trigger"] == "test_failed_reopen"
+
+    def test_red_capped_fails_node(self):
+        # Kappung erreicht (reopen liefert False) -> terminal fail (Report bleibt).
+        loop, queue = _loop(
+            _test_gate_item(),
+            outcome=TestOutcome(False, True, "rot", ()),
+            reopen_result=False,
+        )
+        loop.step("test_gate")
         assert queue.failed == [5] and queue.completed == []
-        assert _traces(loop)[0]["detail"]["trigger"] == "test_failed"
+        assert _traces(loop)[0]["detail"]["trigger"] == "test_failed_capped"
 
     def test_apply_failure_fails_node(self):
         loop, queue = _loop(

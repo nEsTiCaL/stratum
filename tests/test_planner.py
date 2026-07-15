@@ -172,6 +172,29 @@ def test_build_dag_two_goals_chained():
     assert "g0_n2" in g1_root.depends_on
 
 
+def test_build_dag_with_test_gate_makes_test_gate_the_leaf():
+    """I-REK.4: with_test_gate haengt test_gate ans Ende des Schreib-Sub-DAGs ->
+    es ist das Blatt. Ein abhaengiges Goal wartet damit ueber die Cross-DAG-Kante
+    bis die Tests gruen sind (nicht schon nach dem lint_gate)."""
+    resp = _goals_resp(
+        _goal("implement", "file:a.py"),
+        _goal("fix", "file:b.py", depends_on=[0]),
+    )
+    planner = IntentDecomposer(FakeModel(responses=[resp]))
+    plan = planner.decompose("baue A, dann fixe B")
+
+    dag = planner.build_dag(
+        plan, scope_resolver=_FakeScopeResolver(), with_test_gate=True
+    )
+    g0_nodes = [n for n in dag.nodes if n.id.startswith("g0_")]
+    g0_test = next(n for n in g0_nodes if n.task_type == "test_gate")
+    # test_gate ist das Blatt von Goal-0 ...
+    assert g0_test.id in _leaf_ids(g0_nodes)
+    # ... und die Wurzel von Goal-1 haengt daran (wartet auf gruene Tests).
+    g1_root = next(n for n in dag.nodes if n.id == "g1_n1")
+    assert g0_test.id in g1_root.depends_on
+
+
 def test_decompose_strips_markdown_fences():
     """Modell liefert ```json...``` trotz Instruktion – soll trotzdem parsen."""
     fenced = f"```json\n{_goals_resp(_goal('explain', 'module:auth'))}\n```"

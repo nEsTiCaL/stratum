@@ -97,6 +97,7 @@ def build_dag(
     *,
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
+    with_test_gate: bool = False,
 ) -> TaskDag:
     """Bestaetigte Goals -> verketteter Gesamt-DAG (det, modellfrei).
 
@@ -104,6 +105,11 @@ def build_dag(
     Goals, von denen das jeweilige Goal abhaengt, als depends_on. Modul-Funktion
     (kein Modell noetig) -- so kann die Confirm-Schale (I-6.3) sie aufrufen, ohne
     einen IntentDecomposer/Model zu halten.
+
+    with_test_gate (I-REK.4): reicht das test_gate-Opt-in an jede Goal-Zerlegung
+    durch (greift nur bei implement/fix). Weil test_gate dann das Blatt des
+    Schreib-Sub-DAGs ist, warten abhaengige Goals ueber die Blatt-Kante bis die
+    Tests gruen sind (Frische-Invariante im Mehr-Goal-Plan, I-REK.2).
     """
     if not plan.goals:
         return TaskDag(dag_id=str(uuid.uuid4()), nodes=[])
@@ -118,6 +124,7 @@ def build_dag(
             goal.scope,
             scope_resolver=scope_resolver,
             cache_query=cache_query,
+            with_test_gate=with_test_gate,
         )
         prefixed = _prefix_dag(sub, prefix)
 
@@ -172,7 +179,13 @@ class IntentDecomposer:
         *,
         scope_resolver: ScopeResolver,
         cache_query: Callable[[str, str], bool] | None = None,
+        with_test_gate: bool = False,
     ) -> TaskDag:
         """Bestaetigte Goals -> verketteter Gesamt-DAG. Delegiert an die
         modellfreie Modul-Funktion build_dag (I-2.7-API bleibt erhalten)."""
-        return build_dag(plan, scope_resolver=scope_resolver, cache_query=cache_query)
+        return build_dag(
+            plan,
+            scope_resolver=scope_resolver,
+            cache_query=cache_query,
+            with_test_gate=with_test_gate,
+        )

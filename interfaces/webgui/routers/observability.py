@@ -120,14 +120,22 @@ async def get_tasks(
     return active + done
 
 
+def _settings_state(deps: AppDeps) -> dict[str, Any]:
+    return {
+        "auto_apply": deps.settings.get_auto_apply(),
+        "test_gate": deps.settings.get_test_gate(),
+    }
+
+
 @router.get("/api/settings")
 async def get_settings(
     owner: str = Depends(require_owner), deps: AppDeps = Depends(get_deps)
 ) -> dict[str, Any]:
-    """Laufzeit-Schalter (Schritt 7). auto_apply (opt-out, Default True): gruener
-    verify -> Patch automatisch anwenden. Aus -> Mensch wendet im Dashboard bewusst
-    an (Diff-Vorschau)."""
-    return {"auto_apply": deps.settings.get_auto_apply()}
+    """Laufzeit-Schalter (Schritt 7 + I-REK.4). auto_apply (opt-out, Default True):
+    gruenes Gate -> Patch automatisch anwenden. test_gate (opt-out, Default True):
+    Schreib-DAGs bekommen hinter dem lint_gate einen Sandbox-Test-Knoten, wenn der
+    Workspace Tests traegt."""
+    return _settings_state(deps)
 
 
 @router.post("/api/settings")
@@ -136,10 +144,13 @@ async def set_settings(
     owner: str = Depends(require_owner),
     deps: AppDeps = Depends(get_deps),
 ) -> dict[str, Any]:
-    """Setzt den Auto-Apply-Schalter (prozessweit; wirkt fuer den Worker-Thread
-    sofort beim naechsten gruenen verify)."""
-    deps.settings.set_auto_apply(body.auto_apply)
-    return {"auto_apply": deps.settings.get_auto_apply()}
+    """Setzt die Schalter (prozessweit; wirken fuer den Worker-Thread sofort).
+    Nur uebergebene Felder werden geaendert (None -> unberuehrt)."""
+    if body.auto_apply is not None:
+        deps.settings.set_auto_apply(body.auto_apply)
+    if body.test_gate is not None:
+        deps.settings.set_test_gate(body.test_gate)
+    return _settings_state(deps)
 
 
 @router.get("/api/live")

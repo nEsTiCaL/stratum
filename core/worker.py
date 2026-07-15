@@ -36,6 +36,7 @@ from core.router import (
     TaskType,
 )
 from core.secret_scan import EgressPolicy, Sensitivity
+from core.test_gate import feedback_text as test_feedback_text
 from core.validator import EscalationLoop, EscalationOutcome, Validator
 
 
@@ -375,14 +376,11 @@ class WorkerLoop:
         outcome = vw.run(item, self.repo)
         if outcome.passed:
             self.queue.complete(item.id)
-            # Auto-Apply (Schritt 7, opt-out): gruener verify -> Patch anwenden,
-            # ohne weiteren Klick. Best-effort: ein Apply-Fehler (kein Schreibziel,
-            # Diff schlaegt fehl) darf das erfolgreiche verify nicht kippen.
-            if self.auto_apply is not None:
-                try:
-                    self.auto_apply(item, root)
-                except Exception as exc:  # noqa: BLE001 - Apply ist Beiwerk zum verify
-                    print(f"[worker] Auto-Apply fehlgeschlagen ({item.scope}): {exc}")
+            # Auto-Apply (Schritt 7, opt-out): gruenes Gate -> Patch anwenden,
+            # aber erst nach dem LETZTEN gruenen Gate (I-REK.4): folgt hinter dem
+            # lint_gate noch ein test_gate, appliziert erst dessen Pass -- sonst
+            # ginge ein lint-gruener, aber test-roter Patch in den Workspace.
+            self._auto_apply_if_terminal(item, root)
             self._trace_result(
                 item,
                 validation_result="pass",
@@ -415,14 +413,28 @@ class WorkerLoop:
                 attempts=1,
             )
 
-    def _run_test_gate(self, item: QueueItem, root: Path | None = None) -> None:
-        """test_gate-Knoten (I-REK.3, G2 Teil 1): TestGateWorker fuehrt die
-        Projekttests in der Sandbox aus und schreibt IMMER ein test_report.
+    def _auto_apply_if_terminal(self, item: QueueItem, root: Path | None) -> None:
+        """Auto-Apply-Nachlauf (Schritt 7, opt-out) NUR nach dem letzten gruenen
+        Gate (I-REK.4): haengt noch ein weiteres Gate auf diesem, laeuft der Apply
+        erst dort. Best-effort -- ein Apply-Fehler (kein Schreibziel, Diff schlaegt
+        fehl) darf das erfolgreiche Gate nicht kippen."""
+        if self.auto_apply is None or not self.queue.is_terminal_gate(item):
+            return
+        try:
+            self.auto_apply(item, root)
+        except Exception as exc:  # noqa: BLE001 - Apply ist Beiwerk zum Gate
+            print(f"[worker] Auto-Apply fehlgeschlagen ({item.scope}): {exc}")
 
-        Teil 1 hat KEINE reopen-Rueckkante (das ist I-REK.4): ein applizierter
-        Lauf schliesst den Knoten ab (gruen/neutral -> pass; rot -> terminal fail
-        MIT gespeichertem Report als Beleg). Nur ein Patch, der nicht appliziert
-        (kein sinnvoller Lauf), failt ohne Report-Aussage."""
+    def _run_test_gate(self, item: QueueItem, root: Path | None = None) -> None:
+        """test_gate-Knoten (I-REK.4, G2 Teil 2): TestGateWorker fuehrt die
+        Projekttests in der Sandbox aus, schreibt IMMER ein test_report und ist das
+        LETZTE Gate der Schreib-Kette (implement -> lint_gate -> test_gate).
+
+        Symmetrisch zum lint_gate (_run_verify): gruen/neutral -> Knoten done +
+        Auto-Apply (terminal); rot -> Rueckkante zu implement/fix ueber dasselbe
+        reopen_after_verify (gemeinsames Attempt-Budget), Feedback = Summary +
+        pytest-Auszug; Kappung -> terminal fail (Report bleibt Beleg). Nur ein
+        Patch, der nicht appliziert (kein sinnvoller Lauf), failt ohne Rueckkante."""
         if self.test_gate is None:
             self._fail(item, "kein TestGateWorker konfiguriert")
             self._trace_result(item, validation_result="fail", trigger="no_test_gate")
@@ -438,22 +450,38 @@ class WorkerLoop:
                 final_model="test-gate-worker",
                 attempts=1,
             )
-        elif outcome.passed:
+            return
+        if outcome.passed:
             self.queue.complete(item.id)
+            self._auto_apply_if_terminal(item, root)
             self._trace_result(
                 item,
                 validation_result="pass",
                 final_model="test-gate-worker",
                 attempts=1,
             )
+            return
+        # Appliziert, aber Tests rot -> Rueckkante zu implement/fix (I-REK.4).
+        # Feedback = Summary + pytest-Auszug (core.test_gate.feedback_text).
+        reopened = self.queue.reopen_after_verify(
+            item,
+            feedback=test_feedback_text(outcome),
+            max_attempts=self.verify_max_attempts,
+        )
+        if reopened:
+            self._trace_result(
+                item,
+                validation_result="escalated",
+                trigger="test_failed_reopen",
+                final_model="test-gate-worker",
+                attempts=1,
+            )
         else:
-            # Appliziert, aber Tests rot -> terminal fail (Teil 1: keine Rueckkante;
-            # der Report bleibt als Beleg im Store). REK.4 macht daraus reopen.
             self._fail(item, f"test_gate rot: {outcome.summary}")
             self._trace_result(
                 item,
                 validation_result="fail",
-                trigger="test_failed",
+                trigger="test_failed_capped",
                 final_model="test-gate-worker",
                 attempts=1,
             )

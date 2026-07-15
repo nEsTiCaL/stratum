@@ -289,6 +289,47 @@ class TestArchitectInWriteTemplates:
         assert by_type["lint_gate"].depends_on == (by_type["implement"].id,)
 
 
+class TestTestGateOptIn:
+    """I-REK.4: with_test_gate haengt implement/fix hinter dem lint_gate einen
+    test_gate-Knoten an. Default (False) laesst die 4-Knoten-Kette unveraendert."""
+
+    def test_default_no_test_gate(self):
+        dag = decompose("implement", "file:new.py", scope_resolver=_STUB)
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "architect",
+            "implement",
+            "lint_gate",
+        ]
+
+    def test_opt_in_appends_test_gate_after_lint(self):
+        dag = decompose(
+            "implement", "file:new.py", scope_resolver=_STUB, with_test_gate=True
+        )
+        assert [n.task_type for n in dag.nodes] == [
+            "index",
+            "architect",
+            "implement",
+            "lint_gate",
+            "test_gate",
+        ]
+        by_type = {n.task_type: n for n in dag.nodes}
+        # test_gate haengt am lint_gate -> lint zuerst (G1 billig), dann G2.
+        assert by_type["test_gate"].depends_on == (by_type["lint_gate"].id,)
+        assert by_type["test_gate"].scope == "file:new.py"
+
+    def test_opt_in_fix_chain(self):
+        dag = decompose("fix", "file:a.py", scope_resolver=_STUB, with_test_gate=True)
+        assert [n.task_type for n in dag.nodes][-2:] == ["lint_gate", "test_gate"]
+
+    def test_opt_in_ignored_for_read_task(self):
+        # Nur implement/fix bekommen den Knoten; ein Analyse-Template nicht.
+        dag = decompose(
+            "review", "module:auth", scope_resolver=_STUB, with_test_gate=True
+        )
+        assert "test_gate" not in [n.task_type for n in dag.nodes]
+
+
 class TestUnknownTaskType:
     def test_unknown_raises_key_error(self):
         with pytest.raises(KeyError):

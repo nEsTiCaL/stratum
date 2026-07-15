@@ -40,6 +40,7 @@ from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL
 from core.task_routing import claim_model as _route_claim_model
 from core.template_registry import TaskDag
+from core.test_gate import workspace_has_tests
 from core.validator import Model
 from core.workspace import workspace_root
 
@@ -148,13 +149,20 @@ class AppDeps:
         brauchen denselben index->write->verify-Nachlauf statt eines nackten
         Ein-Knoten-DAGs -- der Grund, warum ein direkter fix/implement-Task frueher
         als Sackgassen-Artefakt endete (kein verify/auto-apply)."""
+        root = self.prompt_root(owner, capability_id)
+        # I-REK.4: test_gate-Knoten hinter den lint_gate der implement/fix-Goals,
+        # wenn der Schalter an ist (Default) UND der Workspace ueberhaupt Tests
+        # traegt -- sonst kein leerer Neutral-Knoten. root = Workspace des Keys.
+        with_test_gate = self.settings.get_test_gate() and workspace_has_tests(root)
         dag = build_dag(
-            plan, scope_resolver=RepoScopeResolver(self.repo), cache_query=None
+            plan,
+            scope_resolver=RepoScopeResolver(self.repo),
+            cache_query=None,
+            with_test_gate=with_test_gate,
         )
         task_ids = self.queue.enqueue(
             dag, CONFIRM_MODEL, owner=owner, capability_id=capability_id
         )
-        root = self.prompt_root(owner, capability_id)
 
         # I-REK.1: NICHT den fertigen Prompt vorab bauen, sondern nur die
         # Instruktion ablegen -- den Prompt baut der Worker/Human-Pfad zur

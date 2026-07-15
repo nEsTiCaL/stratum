@@ -164,6 +164,47 @@ class TestDirectWriteTask:
         assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 1
 
 
+class TestTestGateOptInWiring:
+    """I-REK.4: enqueue_plan haengt genau dann einen test_gate-Knoten hinter das
+    lint_gate, wenn der Schalter an ist UND der Workspace Tests traegt."""
+
+    def _enqueue_fix(self, conn, tmp_path, *, has_tests, test_gate_on):
+        from core.planner import GoalItem, Plan
+        from core.router import TaskType
+        from core.settings import RuntimeSettings
+        from interfaces.webgui.deps import AppDeps
+
+        (tmp_path / "core").mkdir(exist_ok=True)
+        (tmp_path / "core" / "q.py").write_text("x = 1\n", encoding="utf-8")
+        if has_tests:
+            (tmp_path / "test_x.py").write_text("def test_x(): ...\n", encoding="utf-8")
+        settings = RuntimeSettings()
+        settings.set_test_gate(test_gate_on)
+        deps = AppDeps(
+            queue=Queue(conn),
+            repo=Repository(conn),
+            settings=settings,
+            source_root=tmp_path,
+        )
+        plan = Plan(goals=(GoalItem(TaskType.fix, "file:core/q.py", ()),), large=False)
+        dag, _ids = deps.enqueue_plan(
+            plan, instruction="fix it", owner=TEST_OWNER, capability_id=None
+        )
+        return [n.task_type for n in dag.nodes]
+
+    def test_added_when_tests_present_and_switch_on(self, conn, tmp_path):
+        types = self._enqueue_fix(conn, tmp_path, has_tests=True, test_gate_on=True)
+        assert types == ["index", "architect", "fix", "lint_gate", "test_gate"]
+
+    def test_not_added_when_no_tests(self, conn, tmp_path):
+        types = self._enqueue_fix(conn, tmp_path, has_tests=False, test_gate_on=True)
+        assert "test_gate" not in types
+
+    def test_not_added_when_switch_off(self, conn, tmp_path):
+        types = self._enqueue_fix(conn, tmp_path, has_tests=True, test_gate_on=False)
+        assert "test_gate" not in types
+
+
 class TestStatusEndpoint:
     def test_status_ok_without_auth(self, client):
         r = client.get("/api/status")
@@ -431,10 +472,10 @@ class TestTasksEndpoint:
 
 
 class TestSettingsEndpoint:
-    def test_default_auto_apply_true(self, client):
+    def test_defaults_true(self, client):
         r = client.get("/api/settings", headers=AUTH)
         assert r.status_code == 200
-        assert r.json() == {"auto_apply": True}
+        assert r.json() == {"auto_apply": True, "test_gate": True}
 
     def test_requires_auth(self, client):
         assert client.get("/api/settings").status_code == 401
@@ -449,10 +490,26 @@ class TestSettingsEndpoint:
         with TestClient(app) as c:
             r = c.post("/api/settings", headers=AUTH, json={"auto_apply": False})
             assert r.status_code == 200
-            assert r.json() == {"auto_apply": False}
+            assert r.json() == {"auto_apply": False, "test_gate": True}
             # Folge-GET spiegelt den neuen Wert; auch das injizierte Objekt (Worker).
-            assert c.get("/api/settings", headers=AUTH).json() == {"auto_apply": False}
+            assert c.get("/api/settings", headers=AUTH).json() == {
+                "auto_apply": False,
+                "test_gate": True,
+            }
         assert settings.get_auto_apply() is False
+
+    def test_toggle_test_gate_leaves_auto_apply(self, conn):
+        """I-REK.4: PATCH-Semantik -- nur uebergebene Felder aendern sich."""
+        from core.settings import RuntimeSettings
+
+        settings = RuntimeSettings()
+        app = create_app(Queue(conn), Repository(conn), settings=settings)
+        with TestClient(app) as c:
+            r = c.post("/api/settings", headers=AUTH, json={"test_gate": False})
+            assert r.status_code == 200
+            assert r.json() == {"auto_apply": True, "test_gate": False}
+        assert settings.get_test_gate() is False
+        assert settings.get_auto_apply() is True
 
 
 class TestClaimEndpoint:

@@ -123,6 +123,21 @@ def _has_tests(copy_root: Path) -> bool:
     return False
 
 
+def workspace_has_tests(root: Path | None) -> bool:
+    """Erkennung fuer den Opt-in des test_gate-Knotens (I-REK.4): traegt der
+    Workspace ueberhaupt Testdateien? Dieselbe Konvention wie _has_tests, aber auf
+    dem ECHTEN Workspace-root (nicht der Sandbox-Kopie) -- der DAG-Bau entscheidet
+    damit, ob der implement/fix-Sub-DAG hinter dem lint_gate einen test_gate-Knoten
+    bekommt. Kein root -> False (kein Ziel erkennbar); ein Zugriffsfehler beim
+    rglob (fehlendes/kaputtes Verzeichnis) faellt best-effort auf False zurueck."""
+    if root is None or not root.exists():
+        return False
+    try:
+        return _has_tests(root)
+    except OSError:
+        return False
+
+
 def _outcome_from_rc(rc: int, out: str, cmd: tuple[str, ...]) -> TestOutcome:
     command = " ".join(cmd)
     if rc == 0:

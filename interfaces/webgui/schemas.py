@@ -35,7 +35,10 @@ class WorkspaceFileBody(BaseModel):
 
 
 class SettingsBody(BaseModel):
-    auto_apply: bool
+    # Beide optional -> ein Toggle laesst den anderen Schalter unberuehrt (PATCH-
+    # Semantik). I-REK.4: test_gate schaltet den Sandbox-Test-Knoten master-weit.
+    auto_apply: bool | None = None
+    test_gate: bool | None = None
 
 
 class PlanGoalBody(BaseModel):

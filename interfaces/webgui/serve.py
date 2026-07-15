@@ -41,7 +41,7 @@ from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL, auto_capable_task_types
 from core.template_registry import DagNode, TaskDag, decompose
-from core.test_gate import TestGateWorker
+from core.test_gate import TestGateWorker, workspace_has_tests
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from core.workspace import resolve_base, workspace_root
 from interfaces.webgui.app import create_app
@@ -304,11 +304,17 @@ def _make_worker_loop(
         noetig: der Scope wurde fuers Review indexiert."""
         scope = item.scope
         instruction = "Behebe die im Review gefundenen Probleme:\n" + findings
+        # I-REK.4: derselbe test_gate-Opt-in wie im Confirm-Pfad (Schalter an +
+        # Tests im Workspace des Keys erkannt) -- so laeuft ein automatischer Fix
+        # durch dieselbe G1->G2-Kette wie ein bestaetigter Plan.
+        fix_root = _resolve_root(item)
+        with_test_gate = settings.get_test_gate() and workspace_has_tests(fix_root)
         dag = decompose(
             "fix",
             scope,
             scope_resolver=RepoScopeResolver(worker_repo),
             dag_id=f"fix-{uuid.uuid4().hex[:8]}",
+            with_test_gate=with_test_gate,
         )
         ids = fix_queue.enqueue(
             dag, CONFIRM_MODEL, owner=item.owner, capability_id=item.capability_id

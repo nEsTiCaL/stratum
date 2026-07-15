@@ -133,6 +133,48 @@ Akzeptanz: Live-Wiederholung UC2-Muster: inhaltlich falscher, lint-gruener Fix
 Klasse  : gem   dep: I-REK.1, I-REK.3
 ```
 
+**FERTIG 2026-07-15.** test_gate ist als LETZTES Gate in die Schreib-Kette
+eingebaut (implement/fix -> ... -> lint_gate -> test_gate); Auto-Apply feuert erst
+nach dem terminalen Gate, die Rueckkante ist auf beide Gates verallgemeinert.
+
+- **Einbau/Opt-in**: `template_registry._template_for(task_type, with_test_gate)`
+  haengt fuer implement/fix einen `test_gate`-Knoten (node_id `n5`) HINTER das
+  lint_gate (`n4`) -- G1 (statisch, billig) zuerst, dann G2 (Sandbox). `decompose`
+  + `planner.build_dag`/`IntentDecomposer.build_dag` reichen `with_test_gate`
+  durch; Default False laesst die 4-Knoten-Kette unveraendert (Bestands-Shape-
+  Tests gruen). Weil test_gate dann das BLATT ist, wartet ein abhaengiges Goal
+  ueber die Cross-DAG-Kante bis die Tests gruen sind (Frische im Mehr-Goal-Plan).
+  Opt-in-Entscheidung in `deps.enqueue_plan` (+ `serve._spawn_fix`):
+  `settings.get_test_gate() AND test_gate.workspace_has_tests(root)` -- Master-
+  Schalter (Default an) UND Testdateien im Key-Workspace erkannt (sonst kein
+  leerer Neutral-Knoten). `RuntimeSettings.test_gate` + Toggle ueber POST
+  /api/settings (jetzt PATCH-Semantik: nur uebergebene Felder aendern sich).
+- **Rueckkante verallgemeinert**: `Queue.reopen_after_verify` laeuft vom roten Gate
+  im DAG NACH OBEN durch die Gate-Kette (nicht mehr nur direkte depends_on) bis
+  zum implement/fix-Erzeuger -- ein rotes test_gate sitzt zwei Hops hinter dem
+  lint_gate. Reopen: Erzeuger (attempts+1, payload.verify_feedback) + ALLE Gates
+  zwischen Erzeuger und rotem Gate (inkl. selbst) -> pending, damit die Kette
+  GEORDNET neu laeuft (test_gate wartet wieder auf lint_gate, nicht auf den alten
+  Patch). GEMEINSAMES Attempt-Budget: lint- UND test-Fehler zaehlen auf denselben
+  implement.attempts (verify_max_attempts). `_run_test_gate` symmetrisch zu
+  `_run_verify`: gruen/neutral -> done (+Auto-Apply wenn terminal), rot -> reopen
+  (Feedback = `test_gate.feedback_text`, pytest-Auszug), Kappung -> terminal fail.
+- **Auto-Apply nach letztem Gate**: `Queue.is_terminal_gate` (kein weiteres Gate
+  haengt am Knoten) -> `WorkerLoop._auto_apply_if_terminal` feuert nur dort. Ein
+  lint-gruener/test-roter Patch geht damit NICHT mehr in den Workspace.
+- **Akzeptanz belegt** (`TestGateChainEndToEnd`, ECHTE ruff-/pytest-Sandbox +
+  ECHTE Postgres-Queue): Workspace mit Bug `a-b`, Test erwartet `a+b`. Falscher
+  Fix `a*b` -> lint gruen, test_gate ROT -> fix neu geoeffnet, Feedback traegt den
+  pytest-Fehlschlag, KEIN Apply. Korrekter Fix `a+b` -> gruen -> done + Auto-Apply
+  (erst nach test_gate). 1077 gruen (+29), ruff check/format gruen.
+
+Befunde/offen: apply_gate prueft weiterhin nur den gruenen lint_report (nicht
+zusaetzlich test_report) -- die zeitliche Ordnung (Apply nur vom terminalen Gate)
+garantiert bereits, dass die Tests gruen waren, bevor appliziert wird; ein
+test_report-Check im manuellen /api/apply-Pfad bliebe eine spaetere Haertung. Das
+UI (static/index.html) toggelt bisher nur auto_apply; ein test_gate-Schalter in
+der Oberflaeche ist Beiwerk (Endpoint + RuntimeSettings existieren).
+
 ## I-REK.5  expand()-Seam (Refactor, verhaltensgleich)   [Strang S]
 
 ```

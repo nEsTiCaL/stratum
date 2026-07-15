@@ -156,6 +156,32 @@ REGISTRY: dict[str, tuple[NodeTemplate, ...]] = {
 }
 
 
+_WRITE_TEMPLATES: frozenset[str] = frozenset({"implement", "fix"})
+
+
+def _template_for(task_type: str, *, with_test_gate: bool) -> tuple[NodeTemplate, ...]:
+    """Template eines task_type, optional um einen test_gate-Knoten erweitert
+    (I-REK.4). Der test_gate haengt HINTER dem lint_gate (letzter Knoten der
+    Schreib-Templates): implement/fix laufen erst durch die statische Pruefung
+    (G1, billiger), dann durch die Sandbox-Tests (G2). So ist test_gate das
+    LETZTE Gate der Kette -- der Frische-/Auto-Apply-Nachlauf haengt daran, und
+    ein spaeteres Goal wartet ueber die Blatt-Kante bis die Tests gruen sind.
+
+    Nur fuer implement/fix und nur wenn der Aufrufer with_test_gate=True setzt
+    (Opt-in-Entscheidung Settings + Workspace-Erkennung, siehe deps.enqueue_plan);
+    alle anderen Templates bleiben unveraendert."""
+    template = REGISTRY[task_type]  # KeyError bei unbekanntem task_type
+    if not (with_test_gate and task_type in _WRITE_TEMPLATES):
+        return template
+    lint = template[-1]  # letzter Knoten = lint_gate
+    test_node = NodeTemplate(
+        node_id=f"n{len(template) + 1}",
+        task_type="test_gate",
+        depends_on=(lint.node_id,),
+    )
+    return template + (test_node,)
+
+
 # --------- Materialisierter DAG ---------
 
 
@@ -187,6 +213,7 @@ def decompose(
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
     dag_id: str | None = None,
+    with_test_gate: bool = False,
 ) -> TaskDag:
     """Zerlegung einer Anfrage in einen Task-DAG.
 
@@ -195,9 +222,11 @@ def decompose(
     scope_resolver : liefert files_in(scope) fuer Fan-out-Knoten
     cache_query    : (scope, artifact_type) -> bool; True -> node.status="done"
     dag_id         : optional; sonst UUID
+    with_test_gate : implement/fix bekommen hinter dem lint_gate einen
+                     test_gate-Knoten (I-REK.4-Opt-in); sonst unveraendert.
     """
     dag_id = dag_id or str(uuid4())
-    template = REGISTRY[task_type]  # KeyError bei unbekanntem task_type
+    template = _template_for(task_type, with_test_gate=with_test_gate)
 
     nodes: list[DagNode] = []
     # template_node_id -> [materialisierte node-IDs]

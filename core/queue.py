@@ -189,49 +189,96 @@ class Queue:
     def reopen_after_verify(
         self, verify_item: QueueItem, *, feedback: str, max_attempts: int = 2
     ) -> bool:
-        """Rueckkante implement<-verify (I-7.4).
+        """Rueckkante implement<-Gate (I-7.4, verallgemeinert in I-REK.4).
 
-        Bei rotem Verify die Vorgaenger-Knoten (task_type implement/fix) des
-        verify-Knotens im selben DAG neu oeffnen, sofern ihre attempts noch
-        unter der Kappung liegen:
-          - Vorgaenger: status='pending', attempts+=1, payload.verify_feedback
-            = feedback (Kontext fuer den naechsten Patch-Versuch)
-          - der verify-Knoten selbst: status='pending' (laeuft nach dem neuen
-            Patch erneut; wartet via depends_on auf den Vorgaenger)
-        Gibt True zurueck, wenn mindestens ein Vorgaenger neu geoeffnet wurde;
-        False bei Kappung (kein Vorgaenger mehr unter max_attempts) -> der
-        Aufrufer laesst den verify-Knoten terminal fehlschlagen (Belegkette:
-        Patch- + lint_report-Artefakt bleiben im Store).
+        Bei einem roten Gate (lint_gate ODER test_gate) den erzeugenden
+        implement/fix-Knoten im selben DAG neu oeffnen, sofern seine attempts noch
+        unter der Kappung liegen -- GEMEINSAMES Attempt-Budget: jeder Gate-Fehler
+        (statisch ODER Test) zaehlt auf denselben implement.attempts. Weil der
+        Schreib-Sub-DAG eine Kette implement -> lint_gate -> test_gate ist, sitzt
+        der implement-Knoten bei einem roten test_gate zwei Hops entfernt (hinter
+        dem lint_gate); die frueher direkte depends_on-Suche fand ihn nicht. Daher
+        laeuft die Suche jetzt ueber den DAG NACH OBEN durch die Gate-Knoten bis
+        zum implement/fix:
+          - implement/fix (Erzeuger): status='pending', attempts+=1,
+            payload.verify_feedback = feedback (Kontext fuer den naechsten Patch);
+          - ALLE Gate-Knoten zwischen Erzeuger und rotem Gate (inkl. des roten
+            selbst): status='pending' -- so laeuft die ganze Gate-Kette nach dem
+            neuen Patch erneut IN ORDNUNG (test_gate wartet via depends_on wieder
+            auf das lint_gate, nicht auf den alten Patch).
+        Gibt True zurueck, wenn der Erzeuger neu geoeffnet wurde; False bei
+        Kappung / keinem implement-Erzeuger -> der Aufrufer laesst das Gate
+        terminal fehlschlagen (Belegkette: Patch- + Report-Artefakte bleiben).
         """
-        deps = list(verify_item.depends_on)
-        if not deps:
-            return False
-        feedback_json = json.dumps({"verify_feedback": feedback})
+        _GATE = {"lint_gate", "test_gate"}
+        _IMPL = {"implement", "fix"}
         with self._conn.transaction():
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM queue "
-                    "WHERE dag_id = %s AND node_id = ANY(%s) "
-                    "AND task_type IN ('implement', 'fix') "
-                    "AND attempts < %s",
-                    (verify_item.dag_id, deps, max_attempts),
+                    "SELECT id, node_id, task_type, depends_on, attempts "
+                    "FROM queue WHERE dag_id = %s",
+                    (verify_item.dag_id,),
                 )
-                reopen_ids = [r[0] for r in cur.fetchall()]
-                if not reopen_ids:
+                qid: dict[str, int] = {}
+                task_type: dict[str, str] = {}
+                deps_of: dict[str, tuple[str, ...]] = {}
+                attempts: dict[str, int] = {}
+                for id_, node_id, tt, deps_j, att in cur.fetchall():
+                    qid[node_id] = id_
+                    task_type[node_id] = tt
+                    deps_of[node_id] = tuple(deps_j) if deps_j else ()
+                    attempts[node_id] = att
+
+                # Nach oben durch die Gate-Kette laufen: implement/fix sammeln,
+                # dazwischenliegende Gate-Knoten mitnehmen (bei implement stoppen,
+                # nicht weiter zu architect/index hoch).
+                impl_nodes: set[str] = set()
+                gate_nodes: set[str] = {verify_item.node_id}
+                seen = {verify_item.node_id}
+                frontier = [verify_item.node_id]
+                while frontier:
+                    for dep in deps_of.get(frontier.pop(), ()):
+                        tt = task_type.get(dep)
+                        if tt in _IMPL:
+                            impl_nodes.add(dep)
+                        elif tt in _GATE and dep not in seen:
+                            seen.add(dep)
+                            gate_nodes.add(dep)
+                            frontier.append(dep)
+
+                reopenable = [n for n in impl_nodes if attempts[n] < max_attempts]
+                if not reopenable:
                     return False
+
+                feedback_json = json.dumps({"verify_feedback": feedback})
                 cur.execute(
                     "UPDATE queue SET status = 'pending', attempts = attempts + 1, "
                     "claimed_at = NULL, "
                     "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
                     "WHERE id = ANY(%s)",
-                    (feedback_json, reopen_ids),
+                    (feedback_json, [qid[n] for n in reopenable]),
                 )
                 cur.execute(
                     "UPDATE queue SET status = 'pending', claimed_at = NULL "
-                    "WHERE id = %s",
-                    (verify_item.id,),
+                    "WHERE id = ANY(%s)",
+                    ([qid[n] for n in gate_nodes],),
                 )
         return True
+
+    def is_terminal_gate(self, item: QueueItem) -> bool:
+        """True, wenn KEIN weiteres Gate im selben DAG (direkt) auf `item` haengt
+        (I-REK.4). Der Auto-Apply-Nachlauf darf erst nach dem LETZTEN gruenen Gate
+        laufen: ein lint_gate mit nachfolgendem test_gate ist NICHT terminal
+        (dann appliziert erst der test_gate-Pass); ein lint_gate ohne test_gate und
+        das test_gate selbst (Blatt) sind terminal. `?` prueft, ob node_id ein
+        Element des jsonb-Arrays depends_on ist."""
+        row = self._conn.execute(
+            "SELECT 1 FROM queue WHERE dag_id = %s "
+            "AND task_type IN ('lint_gate', 'test_gate') "
+            "AND depends_on ? %s LIMIT 1",
+            (item.dag_id, item.node_id),
+        ).fetchone()
+        return row is None
 
     def claim_by_id(self, item_id: int, *, model: str = "human") -> QueueItem | None:
         """Beansprucht einen spezifischen pending-Knoten per ID.

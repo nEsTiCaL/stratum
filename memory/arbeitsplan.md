@@ -332,7 +332,7 @@ ID        Haeppchen                          Kl   dep            Detail
 I-REK.1   Lazy Prompt-Bau (4c-Rework)+Trace  gem  - FERTIG        `spec_rekursion`, `spec_beginner-flow`
 I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1 FERTIG   `spec_rekursion`
 I-REK.3   test_gate Runner+Artefakt (G2/1)   det  - FERTIG       `spec_rekursion`, `spec_schritt-7`
-I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3        `spec_rekursion`
+I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3 FERTIG `spec_rekursion`
 I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1          `spec_rekursion`
 I-REK.6   Architect konditional + Metrik     gem  REK.4,5        `spec_rekursion`
 I-REK.7   Completion-Hook + Supersede        det  REK.5          `spec_rekursion`
@@ -405,8 +405,20 @@ I-REK.3 FERTIG (2026-07-15): test_gate als det-Faehigkeit. core/test_gate.py
 task_type test_gate + Artefakttyp test_report (7 Schema-Stellen von Hand).
 WorkerLoop._run_test_gate dispatcht (KEINE Rueckkante -- das ist REK.4). 18 Tests
 + Real-pytest-Smoke. 1048 gruen.
-NAECHSTER SCHRITT: I-REK.4 (test_gate Einbau ins Template + reopen-Rueckkante +
-Opt-in), danach ist Strang V komplett -> dann Strang S (REK.5-6).
+I-REK.4 FERTIG (2026-07-15): test_gate als LETZTES Gate der Schreib-Kette
+(implement/fix -> ... -> lint_gate -> test_gate). template_registry._template_for
+haengt den Knoten via with_test_gate an (durch decompose/build_dag); Opt-in in
+deps.enqueue_plan + serve._spawn_fix = settings.get_test_gate() AND
+test_gate.workspace_has_tests(root). Queue.reopen_after_verify verallgemeinert
+(laeuft die Gate-Kette nach oben zum implement/fix, oeffnet Erzeuger + alle Gates
+dazwischen; GEMEINSAMES Attempt-Budget lint+test). Queue.is_terminal_gate ->
+Auto-Apply erst nach dem letzten Gate. Akzeptanz: TestGateChainEndToEnd (echte
+ruff/pytest-Sandbox + Postgres): falscher Fix a*b -> lint gruen/test rot -> reopen
+mit pytest-Feedback, kein Apply; korrekter Fix a+b -> gruen -> done + Apply. 1077
+gruen (+29), ruff clean. => STRANG V KOMPLETT (REK.1-4).
+NAECHSTER SCHRITT: Strang S -- I-REK.5 (expand()-Seam, verhaltensgleicher Refactor:
+EIN Ort fuer Sub-DAG-Entstehung, Budget-Guard) -> dann REK.6 (Architect konditional
++ Metrik, nutzt die jetzt existierende G2-Pass-Rate).
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 
