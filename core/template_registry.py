@@ -18,8 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from core.expansion import ExpansionBudget
 
 # --------- Protokolle ---------
 
@@ -214,8 +217,12 @@ def decompose(
     cache_query: Callable[[str, str], bool] | None = None,
     dag_id: str | None = None,
     with_test_gate: bool = False,
+    budget: ExpansionBudget | None = None,
 ) -> TaskDag:
     """Zerlegung einer Anfrage in einen Task-DAG.
+
+    Duenner Wrapper um core.expansion.expand() -- den EINEN Ort, an dem Sub-DAGs
+    entstehen (I-REK.5). decompose gibt dem Knoten-Ergebnis nur den dag_id-Rahmen.
 
     task_type      : Schluessel in REGISTRY (KeyError bei Unbekanntem)
     scope          : Top-Level-Scope der Anfrage, z.B. "module:auth"
@@ -224,59 +231,18 @@ def decompose(
     dag_id         : optional; sonst UUID
     with_test_gate : implement/fix bekommen hinter dem lint_gate einen
                      test_gate-Knoten (I-REK.4-Opt-in); sonst unveraendert.
+    budget         : Breiten-/Tiefen-Kappung je Wurzel (Default: DEFAULT_BUDGET
+                     in expand()); der Guard ist im Seam immer aktiv.
     """
+    from core.expansion import expand  # lazy: bricht den Modul-Zyklus expand<->registry
+
     dag_id = dag_id or str(uuid4())
-    template = _template_for(task_type, with_test_gate=with_test_gate)
-
-    nodes: list[DagNode] = []
-    # template_node_id -> [materialisierte node-IDs]
-    id_map: dict[str, list[str]] = {}
-
-    for tnode in template:
-        if tnode.fan_out and tnode.scope_rule == "files_in":
-            file_scopes = scope_resolver.files_in(scope)[: tnode.max_fanout]
-            expanded: list[str] = []
-            for i, fs in enumerate(file_scopes):
-                nid = f"{tnode.node_id}_{i}"
-                nodes.append(
-                    DagNode(
-                        id=nid,
-                        task_type=tnode.task_type,
-                        scope=fs,
-                        depends_on=(),
-                        status=_status(fs, tnode.task_type, cache_query),
-                        flags=tnode.flags,
-                    )
-                )
-                expanded.append(nid)
-            id_map[tnode.node_id] = expanded
-        else:
-            # Abhaengigkeiten aufloesen: Fan-out-Referenz -> alle expandierten IDs
-            resolved: list[str] = []
-            for dep in tnode.depends_on:
-                resolved.extend(id_map.get(dep, [dep]))
-
-            nid = tnode.node_id
-            nodes.append(
-                DagNode(
-                    id=nid,
-                    task_type=tnode.task_type,
-                    scope=scope,
-                    depends_on=tuple(resolved),
-                    status=_status(scope, tnode.task_type, cache_query),
-                    flags=tnode.flags,
-                )
-            )
-            id_map[tnode.node_id] = [nid]
-
+    nodes = expand(
+        task_type,
+        scope,
+        scope_resolver=scope_resolver,
+        cache_query=cache_query,
+        with_test_gate=with_test_gate,
+        budget=budget,
+    )
     return TaskDag(dag_id=dag_id, nodes=nodes)
-
-
-def _status(
-    scope: str,
-    artifact_type: str,
-    cache_query: Callable[[str, str], bool] | None,
-) -> str:
-    if cache_query is not None and cache_query(scope, artifact_type):
-        return "done"
-    return "pending"

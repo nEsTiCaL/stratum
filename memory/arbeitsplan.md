@@ -333,7 +333,7 @@ I-REK.1   Lazy Prompt-Bau (4c-Rework)+Trace  gem  - FERTIG        `spec_rekursio
 I-REK.2   Frische: Re-Ingest vor Briefing    det  REK.1 FERTIG   `spec_rekursion`
 I-REK.3   test_gate Runner+Artefakt (G2/1)   det  - FERTIG       `spec_rekursion`, `spec_schritt-7`
 I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3 FERTIG `spec_rekursion`
-I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1          `spec_rekursion`
+I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1 FERTIG   `spec_rekursion`
 I-REK.6   Architect konditional + Metrik     gem  REK.4,5        `spec_rekursion`
 I-REK.7   Completion-Hook + Supersede        det  REK.5          `spec_rekursion`
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7          `spec_rekursion`, `spec_beginner-flow`
@@ -416,9 +416,19 @@ Auto-Apply erst nach dem letzten Gate. Akzeptanz: TestGateChainEndToEnd (echte
 ruff/pytest-Sandbox + Postgres): falscher Fix a*b -> lint gruen/test rot -> reopen
 mit pytest-Feedback, kein Apply; korrekter Fix a+b -> gruen -> done + Apply. 1077
 gruen (+29), ruff clean. => STRANG V KOMPLETT (REK.1-4).
-NAECHSTER SCHRITT: Strang S -- I-REK.5 (expand()-Seam, verhaltensgleicher Refactor:
-EIN Ort fuer Sub-DAG-Entstehung, Budget-Guard) -> dann REK.6 (Architect konditional
-+ Metrik, nutzt die jetzt existierende G2-Pass-Rate).
+I-REK.5 FERTIG (2026-07-15): expand()-Seam. core/expansion.expand() ist der EINE
+Ort, an dem ein Sub-DAG materialisiert wird -- der frueher in decompose eingebettete
+Template-Loop (Fan-out aufloesen, deps binden, cache-status) sitzt jetzt dort;
+decompose (template_registry) ist der duenne Wrapper (dag_id-Rahmen, lazy Import
+bricht den Modul-Zyklus expand<->registry). build_dag/enqueue_plan laufen ueber
+decompose in denselben Seam. Budget-Guard von Anfang an: ExpansionBudget(max_nodes=
+Breite, max_depth=Tiefe), Default (512/8) grosszuegig -> verhaltensgleich (alle
+Shape-Tests ohne Anpassung gruen); knappes Budget kappt den Fan-out (Fixknoten
+bleiben), depth>max stoppt die Expansion (Rekursions-Stop, ab REK.7 wirksam). 11
+neue Tests (test_expansion.py), 1088 gruen, ruff clean.
+NAECHSTER SCHRITT: I-REK.6 (Architect konditional + Metrik, nutzt die G2-Pass-Rate;
+expand() fuegt den architect-Knoten heuristisch EIN statt Template-Zwang -- der Ort
+existiert jetzt).
 
 ## Produktiv-Meilensteine (siehe `plan_nutzstufen`)
 

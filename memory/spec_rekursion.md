@@ -187,6 +187,50 @@ Akzeptanz: verhaltensgleich -- alle Bestands-Shape-Tests gruen ohne Anpassung
 Klasse  : det   dep: I-REK.1 (payload-Form)   parallel zu V-Strang moeglich
 ```
 
+**FERTIG 2026-07-15.** `core/expansion.expand(task_type, scope, *, scope_resolver,
+cache_query, with_test_gate, budget, depth) -> list[DagNode]` ist der EINE Ort, an
+dem ein Sub-DAG materialisiert wird: der frueher in `decompose()` eingebettete
+Template-Loop (Template via `_template_for` -> Fan-out ueber ScopeResolver aufloesen
+-> depends_on binden -> `_status` aus cache_query) sitzt jetzt dort. `decompose()`
+(template_registry) ist der duenne Wrapper: `TaskDag(dag_id, expand(...))`, sonst
+nichts -- gibt dem Knoten-Ergebnis nur den dag_id-Rahmen. Die REGISTRY-Templates
++ Datentypen (`NodeTemplate`/`DagNode`/`TaskDag`/`ScopeResolver`) + `_template_for`
+BLEIBEN in template_registry (die "Regeln"); expand ist die "Maschine". Der
+Modul-Zyklus expand<->registry (expand importiert `_template_for`/Typen aus registry;
+decompose braucht expand) wird durch einen **lazy Import** in decompose gebrochen
+(`from core.expansion import expand` im Funktionskoerper, nicht am Modulkopf). Alle
+Bestands-Importe (`from core.template_registry import decompose/REGISTRY/DagNode/
+TaskDag/ScopeResolver`) bleiben unveraendert gueltig -> KEINE Test-/Aufrufer-Anpassung
+(planner.build_dag, serve._spawn_fix, deps.enqueue_plan rufen weiter decompose und
+landen transitiv im Seam).
+
+- **Budget-Guard von Anfang an** (arch_rekursion: "Rekursion ohne Kappung ist das
+  einzige neue Risiko"): `ExpansionBudget(max_nodes, max_depth)` frozen dataclass,
+  `DEFAULT_BUDGET` (max_nodes=512, max_depth=8). expand() wendet ihn IMMER an
+  (budget=None -> DEFAULT_BUDGET), also ist der Guard im Seam live, auch ohne dass
+  ein Aufrufer ein Budget durchreicht. BREITE: der Fan-out wird so gekappt, dass die
+  Gesamtknotenzahl <= max_nodes bleibt (1 Slot je Fixknoten reserviert -> die
+  Reduce-Kette dep_map/review ueberlebt knappes Budget). TIEFE: `depth > max_depth`
+  -> `return []` (Rekursions-Stop). Heute laeuft der Kern flach (depth immer 0), der
+  Guard ist dormant aber vorhanden; der Completion-Hook (REK.7) reicht spaeter
+  depth+1 durch und die Kappung greift ohne weitere Verdrahtung.
+- **Verhaltensgleich belegt**: Default-Budget (512) grosszuegig ggue. dem
+  vorhandenen Fan-out-Deckel (NodeTemplate.max_fanout=100) -> 200 Dateien liefern
+  weiter 100 index-Knoten, alle Shape-Tests (test_template_registry, test_patch,
+  test_planner) gruen OHNE Erwartungs-Anpassung.
+- **Guard-Test greift** (test_expansion.py, 11 Tests): max_nodes=10 auf review mit
+  200 Dateien -> 10 Knoten total (8 index + dep_map + review, Fixknoten bleiben);
+  max_nodes=4 auf 3 Dateien -> 2 index; depth=3 bei max_depth=2 -> []. Plus
+  Form-Paritaet (expand liefert dieselbe Knotenform wie zuvor der decompose-Loop).
+  1088 gruen (+11), ruff check/format gruen.
+
+Befunde/offen: `build_dag`/`enqueue_plan` reichen (noch) KEIN eigenes Budget durch
+-- sie nutzen das Default ueber decompose. Das genuegt "von Anfang an" (Guard live
+mit sanem Default in JEDER Expansion); ein von der Wurzel durchgereichtes Budget
+(z.B. Tiefe je Plan) wird erst mit dem Completion-Hook (REK.7) noetig, der die
+Rekursion ueberhaupt erzeugt. `_status` wurde von template_registry nach expansion
+verschoben (nur decompose nutzte es).
+
 ## I-REK.6  Architect konditional (Schwellwert) + Messbarkeit   [Strang S]
 
 ```
