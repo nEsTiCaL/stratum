@@ -310,6 +310,7 @@ class WorkerLoop:
     det_worker: DetWorker
     llm_worker: LlmWorker
     lint_gate: object | None = None  # I-7.3 LintGateWorker; None -> verify n/a
+    test_gate: object | None = None  # I-REK.3 TestGateWorker; None -> test_gate n/a
     on_item_start: Callable[[QueueItem], None] | None = None
     on_item_fail: Callable[[QueueItem, str], None] | None = None
     canary_fraction: float = 0.0  # I-5.5a: Anteil canary; 0 = alles baseline
@@ -414,6 +415,49 @@ class WorkerLoop:
                 attempts=1,
             )
 
+    def _run_test_gate(self, item: QueueItem, root: Path | None = None) -> None:
+        """test_gate-Knoten (I-REK.3, G2 Teil 1): TestGateWorker fuehrt die
+        Projekttests in der Sandbox aus und schreibt IMMER ein test_report.
+
+        Teil 1 hat KEINE reopen-Rueckkante (das ist I-REK.4): ein applizierter
+        Lauf schliesst den Knoten ab (gruen/neutral -> pass; rot -> terminal fail
+        MIT gespeichertem Report als Beleg). Nur ein Patch, der nicht appliziert
+        (kein sinnvoller Lauf), failt ohne Report-Aussage."""
+        if self.test_gate is None:
+            self._fail(item, "kein TestGateWorker konfiguriert")
+            self._trace_result(item, validation_result="fail", trigger="no_test_gate")
+            return
+        tw = replace(self.test_gate, root=root) if root is not None else self.test_gate
+        outcome = tw.run(item, self.repo)
+        if not outcome.applied:
+            self._fail(item, f"test_gate: {outcome.summary}")
+            self._trace_result(
+                item,
+                validation_result="fail",
+                trigger="test_apply_failed",
+                final_model="test-gate-worker",
+                attempts=1,
+            )
+        elif outcome.passed:
+            self.queue.complete(item.id)
+            self._trace_result(
+                item,
+                validation_result="pass",
+                final_model="test-gate-worker",
+                attempts=1,
+            )
+        else:
+            # Appliziert, aber Tests rot -> terminal fail (Teil 1: keine Rueckkante;
+            # der Report bleibt als Beleg im Store). REK.4 macht daraus reopen.
+            self._fail(item, f"test_gate rot: {outcome.summary}")
+            self._trace_result(
+                item,
+                validation_result="fail",
+                trigger="test_failed",
+                final_model="test-gate-worker",
+                attempts=1,
+            )
+
     def _maybe_spawn_fix(self, item: QueueItem) -> None:
         """Automatische Rueckkopplung (Schritt 7): ein Review/Analyse-Knoten, der
         Bugs meldet (Artefakt 'review_findings' mit nicht-leerem content.findings),
@@ -446,6 +490,9 @@ class WorkerLoop:
             task_type = TaskType(item.task_type)
             if task_type == TaskType.lint_gate:
                 self._run_verify(item, root)
+                return True
+            if task_type == TaskType.test_gate:
+                self._run_test_gate(item, root)
                 return True
             is_det = TASK_REQUIREMENTS[task_type].deterministic_model is not None
             if is_det:

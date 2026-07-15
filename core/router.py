@@ -61,6 +61,9 @@ class TaskType(StrEnum):
     implement = "implement"
     fix = "fix"
     lint_gate = "lint_gate"
+    # test_gate fuehrt die Projekttests in einer Sandbox aus (TestGateWorker, kein
+    # Modell) -- empirische Ergaenzung zum statischen lint_gate (I-REK.3).
+    test_gate = "test_gate"
 
 
 class Axis(StrEnum):
@@ -218,7 +221,7 @@ def _det(model: str = "tree-sitter") -> TaskRequirement:
     return TaskRequirement(deterministic_model=model)
 
 
-# Alle 17 task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
+# Alle 18 task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
 TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     TaskType.index: _det(),
     TaskType.symbol_lookup: _det(),
@@ -243,6 +246,7 @@ TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     TaskType.implement: TaskRequirement(Axis.code, 55, 100),
     TaskType.fix: TaskRequirement(Axis.code, 55, 100),
     TaskType.lint_gate: _det("lint_gate"),
+    TaskType.test_gate: _det("test_gate"),
 }
 
 

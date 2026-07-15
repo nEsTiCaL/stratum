@@ -63,7 +63,8 @@
         "plan",
         "patch",
         "verify_report",
-        "design"
+        "design",
+        "test_report"
       ],
       "description": "Typ des Artefakts. Geschlossene Enum ueber S1-S5, vorgebaut."
     },

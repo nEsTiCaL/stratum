@@ -29,6 +29,7 @@ class ArtifactType(StrEnum):
     patch = 'patch'
     lint_report = 'lint_report'
     design = 'design'
+    test_report = 'test_report'
 
 
 class Provenance(BaseModel):

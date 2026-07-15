@@ -82,7 +82,8 @@
             "plan",
             "patch",
             "verify_report",
-            "design"
+            "design",
+            "test_report"
           ]
         },
         "scope": { "type": "string" },

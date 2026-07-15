@@ -41,6 +41,7 @@ from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL, auto_capable_task_types
 from core.template_registry import DagNode, TaskDag, decompose
+from core.test_gate import TestGateWorker
 from core.worker import DetWorker, LlmWorker, WorkerLoop
 from core.workspace import resolve_base, workspace_root
 from interfaces.webgui.app import create_app
@@ -354,6 +355,7 @@ def _make_worker_loop(
             guard=cloud_guard,
         ),
         lint_gate=LintGateWorker(root=root),
+        test_gate=TestGateWorker(root=root),
         on_item_start=on_item_start,
         on_item_fail=on_item_fail,
         resolve_root=_resolve_root,

@@ -16,6 +16,7 @@ class ArtifactType(StrEnum):
     dependency_graph = 'dependency_graph'
     call_graph = 'call_graph'
     lint_report = 'lint_report'
+    test_report = 'test_report'
 
 
 class ResultDet(BaseModel):

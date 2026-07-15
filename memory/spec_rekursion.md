@@ -97,6 +97,26 @@ Klasse  : det   dep: -   Detail: `spec_schritt-7` (I-7.3-Historie: pytest raus
           2026-07-05 wegen Fremdcode -- Antwort ist SANDBOX, nicht Weglassen)
 ```
 
+**FERTIG 2026-07-15.** `core/test_gate.py` (analog `lint_gate.py`): `run_tests(diff,
+root, ...)` kopiert den Workspace in eine EPHEMERE tempdir (Rausch-Verzeichnisse
+via `_PRUNE_DIRS` ausgelassen), wendet den Patch git-frei auf die Kopie an
+(`apply_diff`) und laesst `python -m pytest -q` im Subprozess mit Timeout laufen;
+Kopie danach immer weg (finally rmtree). Neutral statt rot, wenn nichts sinnvoll
+laeuft (wie Linter ohne Sprache): keine Testdatei im Workspace (`_has_tests`),
+pytest fehlt (FileNotFoundError), oder rc 5 "no tests collected". rc 0 -> gruen,
+sonst rot mit Output-Auszug. `TestGateWorker` laedt das patch-Artefakt und schreibt
+IMMER ein `test_report` (det). Seams: `run_cmd`/`copy_tree`/`read_current`
+injizierbar. `TestOutcome`/`TestGateWorker` tragen `__test__ = False` (kein
+pytest-Sammelziel trotz "Test"-Praefix). Registrierung: task_type `test_gate`
+(`_det`), Artefakttyp `test_report` an allen 7 Schema-Stellen (3 JSON + 3
+core/models + generated.go) VON HAND (codegen bleibt wegen des Alt-Drifts
+verify_report/lint_report unausgefuehrt). Dispatch: `WorkerLoop._run_test_gate`
+(parallel zu lint_gate) -- gruen/neutral -> done, rot -> terminal fail (KEINE
+Rueckkante, Teil 1; Report bleibt Beleg), Patch passt nicht -> fail. serve.py
+verdrahtet `test_gate=TestGateWorker(root=root)`. NOCH KEIN Template-Einbau (REK.4).
+Tests: `test_test_gate.py` (18) + Real-pytest-Smoke (gruen/rot-mit-Befund/neutral/
+Original-heil). 1048 gruen, ruff clean.
+
 ## I-REK.4  test_gate Einbau + Rueckkante + Opt-in (G2, Teil 2)   [Strang V]
 
 ```
