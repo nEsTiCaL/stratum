@@ -309,6 +309,67 @@ Akzeptanz: Hook reiht Kinder korrekt ein (sichtbar erst nach Erzeuger-done);
 Klasse  : det   dep: I-REK.5
 ```
 
+**FERTIG 2026-07-15.** Der Completion-Hook (Kinder entstehen NACH ihrem Erzeuger)
++ Teilbaum-Supersede sind gebaut; die Mechanik ist da, ein LIVE-Konsument kommt
+erst mit REK.8/10 (der Hook bleibt in serve.py bewusst unverdrahtet = None ->
+kein Verhaltensregress).
+
+- **Reine Haelfte** (`core/subtree.py`, kein Postgres): `prepare_children`
+  verdrahtet die von `expand()` vorgeschlagenen Knoten unter einem Erzeuger in
+  drei Schritten -- (1) `filter_by_symbols` = det-Validierung (Invariante 2: ein
+  `symbol_exists(scope)`-Lookup verwirft Knoten, deren Ziel nicht im Graph ist;
+  None -> alles behalten, weil der det-Regel-Hook Scopes aus dem Graph enumeriert
+  -- der erste verwerfende Konsument ist der prob-Architect REK.8); (2)
+  `namespace_children` = IDs unter dem Erzeuger eindeutig (`"<parent>/<id>"`),
+  interne depends_on umgeschrieben, Wurzeln des Kinder-Teilbaums haengen per
+  depends_on am Erzeuger (Lineage fuer Supersede + Frische); (3)
+  `enforce_scope_sequence` = Scope-Kollision unter Geschwistern -> mutierende
+  Knoten (WRITE_TASK_TYPES) auf demselben File bekommen eine Sequenz-Kante auf den
+  vorherigen, die dumme Queue serialisiert sie dann selbst (kein nebenlaeufiger
+  Doppel-Patch). `make_expansion_hook(queue, rule, ...)` bindet das an `expand()`:
+  der Hook liest die Erzeuger-Tiefe aus `payload.depth`, ruft
+  `expand(..., depth=depth+1)` -> der Budget-Guard aus REK.5 kappt die Rekursion
+  (Tiefe UND Breite) OHNE weitere Verdrahtung; leere Rueckgabe -> kein Kind.
+- **DB-Haelfte** (`core.queue`, Queue bleibt dumm): `enqueue_children(parent,
+  nodes, *, base_payload, model_for)` reiht die Kinder in den SELBEN dag_id (damit
+  die claim()-depends_on-Pruefung greift), erbt owner + capability_id (gleicher
+  Workspace), stempelt `base_payload` (der Hook: `{"depth": depth+1}`). Idempotenz:
+  ein bereits als NICHT-superseded vorhandenes (dag_id, node_id) wird uebersprungen
+  -> ein erneut fertig gewordener Erzeuger (Reopen) erzeugt keine Dubletten, aber
+  nach einem Supersede duerfen dieselben IDs frisch rein (alte sind 'superseded').
+  `supersede_subtree(dag_id, root_node_id)` storniert ATOMAR den OFFENEN Teilbaum
+  (Reverse-BFS ueber depends_on: alle Nachkommen von root; root selbst bleibt) --
+  pending/running -> status='superseded'; done/failed-Nachkommen bleiben als
+  Belegkette (I-6-Geist: Versionierung statt Loeschen). Migration 0012 erweitert
+  `queue_status_chk` um den fuenften Wert 'superseded' (claim sieht nur 'pending',
+  also nicht mehr claimbar).
+- **Sichtbarkeit = Sicherheit (Invariante 4)**: vor dem Hook liegt KEIN Kind in
+  der Queue -> kein Worker kann es vorzeitig claimen. `WorkerLoop.expand_hook`
+  (neu, Default None) feuert via `_maybe_expand` NACH `queue.complete` in beiden
+  produktiven Zweigen (det + llm-done); best-effort (ein Hook-Fehler kippt das done
+  des Erzeugers nicht).
+- **Akzeptanz belegt**: `test_completion_hook.py` (echte Postgres-Queue +
+  WorkerLoop, det-Regel-Hook) -- vor dem Lauf 1 Knoten, nach dem Erzeuger-done sind
+  die Kinder eingereiht + tragen depth=1 + haengen am Erzeuger; zwei implement-
+  Geschwister auf demselben Scope laufen NACHEINANDER (nur eins claimbar, nach
+  dessen done das zweite). `test_queue.py` (enqueue_children: Sichtbarkeit,
+  owner/model-Erbung, base_payload, model_for-Routing, done-Skip, Idempotenz;
+  supersede_subtree: offene Nachkommen storniert, root unberuehrt, nicht mehr
+  claimbar, done-Nachkomme bleibt, re-expand mit denselben IDs, unbekannte root=0).
+  `test_subtree.py` (reine Helfer) + `test_worker.py` (Hook feuert nach det/llm-
+  done, nicht bei unresolved, best-effort bei Fehler). 1143 gruen (+36), ruff clean.
+
+Befunde/offen: serve.py verdrahtet expand_hook (noch) NICHT -- es gibt keinen
+det-Expansionsregel-Konsumenten im Live-Pfad (die Templates reihen weiter alles
+vorab ein). Der erste echte Konsument ist REK.8 (prob-Plan-Architect) bzw. REK.10
+(impact-Skelett); dann wird `make_expansion_hook` mit einer echten Regel +
+RepoScopeResolver + repo.find_symbol-basiertem symbol_exists in serve.py gebunden.
+`_maybe_expand` feuert bewusst nur in den produktiven Zweigen (det/llm-done), nicht
+nach Gate-Pässen (Gates verifizieren das Blatt, sie erzeugen keine Kinder).
+supersede_subtree laesst done/failed-Nachkommen stehen (nur der OFFENE Teilbaum
+wird storniert) -- fuer re-expand (REK.11) genuegt das; der Erzeuger wird dort
+separat neu geoeffnet.
+
 ## I-REK.8  Plan-Ebenen-Architect als prob-Expansion (ersetzt I-UX.4d)   [Strang S]
 
 ```

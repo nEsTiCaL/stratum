@@ -10,12 +10,13 @@ Hinter diesem Interface kann spaeter ein NATS-Adapter folgen (R2).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import psycopg
 
-from core.template_registry import TaskDag
+from core.template_registry import DagNode, TaskDag
 
 
 @dataclass(frozen=True)
@@ -264,6 +265,133 @@ class Queue:
                     ([qid[n] for n in gate_nodes],),
                 )
         return True
+
+    def enqueue_children(
+        self,
+        parent: QueueItem,
+        nodes: list[DagNode],
+        *,
+        base_payload: dict[str, Any] | None = None,
+        model_for: Callable[[DagNode], str] | None = None,
+        priority: int = 0,
+    ) -> list[int]:
+        """Reiht die (nach ihrem Erzeuger entstandenen) Kinder eines Knotens ein
+        (I-REK.7 Completion-Hook). Die Kinder liegen im SELBEN DAG wie der Erzeuger
+        (damit die dumme claim()-Abhaengigkeitspruefung ueber depends_on greift)
+        und erben owner + capability_id -> denselben Workspace.
+
+        Sichtbarkeit = Sicherheit (Invariante 4): vor diesem Aufruf lag KEIN
+        Kind-Knoten in der Queue, also konnte ihn kein Worker vorzeitig claimen;
+        der Hook feuert erst, wenn der Erzeuger 'done' ist.
+
+        Idempotenz: ein Knoten, dessen (dag_id, node_id) bereits als NICHT-
+        superseded-Zeile existiert, wird uebersprungen -- so erzeugt ein erneut
+        geoeffneter + fertig gewordener Erzeuger keine Dubletten. Nach einem
+        supersede_subtree (re-expand) sind die alten Kinder 'superseded' und
+        blockieren die frischen mit denselben IDs daher NICHT.
+
+        base_payload : je Kind in payload gemergt (der Hook stempelt hier die
+                       Tiefe depth+1 -- die naechste Ebene liest sie zurueck).
+        model_for    : Claim-Key je Kind (Worker-Routing); None -> parent.model.
+        done-Knoten (Cache-Treffer aus expand) werden wie in enqueue() ausgelassen.
+        """
+        payload_json = json.dumps(base_payload) if base_payload else None
+        ids: list[int] = []
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT node_id FROM queue "
+                    "WHERE dag_id = %s AND status != 'superseded'",
+                    (parent.dag_id,),
+                )
+                existing = {row[0] for row in cur.fetchall()}
+                for node in nodes:
+                    if node.status == "done" or node.id in existing:
+                        continue
+                    model = model_for(node) if model_for is not None else parent.model
+                    cur.execute(
+                        """
+                        INSERT INTO queue
+                            (dag_id, node_id, task_type, scope, model,
+                             priority, depends_on, flags, payload,
+                             owner, capability_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s,
+                                COALESCE(%s::jsonb, '{}'::jsonb), %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            parent.dag_id,
+                            node.id,
+                            node.task_type,
+                            node.scope,
+                            model,
+                            priority,
+                            json.dumps(list(node.depends_on)),
+                            json.dumps(sorted(node.flags)),
+                            payload_json,
+                            parent.owner,
+                            parent.capability_id,
+                        ),
+                    )
+                    row = cur.fetchone()
+                    assert row is not None
+                    ids.append(row[0])
+                    existing.add(node.id)  # keine Dubletten innerhalb DIESES Aufrufs
+        return ids
+
+    def supersede_subtree(self, dag_id: str, root_node_id: str) -> int:
+        """Storniert den OFFENEN Teilbaum unter `root_node_id` ATOMAR (I-REK.7).
+
+        Der Teilbaum sind alle Nachkommen von root (Knoten, die ueber depends_on
+        transitiv auf root zuruecklaufen); root selbst bleibt unberuehrt (bei
+        re-expand, REK.11, wird der Erzeuger separat neu geoeffnet). Nur OFFENE
+        Knoten (pending/running) werden auf status='superseded' gesetzt -- im Geist
+        der I-6-superseded-Kette (Versionierung statt Loeschen): die Zeilen bleiben
+        als Belegkette erhalten, sind aber nicht mehr claimbar. Bereits fertige/
+        fehlgeschlagene Nachkommen bleiben als Historie stehen.
+
+        Gibt die Zahl stornierter Zeilen zurueck.
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, node_id, depends_on, status "
+                    "FROM queue WHERE dag_id = %s",
+                    (dag_id,),
+                )
+                qid: dict[str, int] = {}
+                status: dict[str, str] = {}
+                # child_of[X] = Knoten, die direkt von X abhaengen (umgekehrte Kante)
+                child_of: dict[str, list[str]] = {}
+                for id_, node_id, deps_j, st in cur.fetchall():
+                    qid[node_id] = id_
+                    status[node_id] = st
+                    for dep in tuple(deps_j) if deps_j else ():
+                        child_of.setdefault(dep, []).append(node_id)
+
+                # Reverse-BFS ab root: alle Nachkommen einsammeln (root selbst NICHT)
+                descendants: set[str] = set()
+                frontier = list(child_of.get(root_node_id, ()))
+                while frontier:
+                    node_id = frontier.pop()
+                    if node_id in descendants:
+                        continue
+                    descendants.add(node_id)
+                    frontier.extend(child_of.get(node_id, ()))
+
+                open_ids = [
+                    qid[n]
+                    for n in descendants
+                    if status.get(n) in ("pending", "running")
+                ]
+                if not open_ids:
+                    return 0
+                cur.execute(
+                    "UPDATE queue SET status = 'superseded', claimed_at = NULL "
+                    "WHERE id = ANY(%s)",
+                    (open_ids,),
+                )
+                return cur.rowcount
 
     def is_terminal_gate(self, item: QueueItem) -> bool:
         """True, wenn KEIN weiteres Gate im selben DAG (direkt) auf `item` haengt

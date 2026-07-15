@@ -648,6 +648,69 @@ class TestReviewSpawnsFix:
 
 
 # ---------------------------------------------------------------------------
+# WorkerLoop: Completion-Hook (I-REK.7)
+# ---------------------------------------------------------------------------
+
+
+class TestCompletionHook:
+    """expand_hook feuert, NACHDEM ein produktiver Knoten done ist."""
+
+    def _loop(self, item, hook, fake_model=None):
+        return WorkerLoop(
+            queue=_FakeQueue(item),
+            repo=_FakeRepo(),
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(router=Router(), model_factory=lambda n: fake_model),
+            expand_hook=hook,
+        )
+
+    def test_det_completion_fires_hook(self):
+        calls: list = []
+        loop = self._loop(
+            _item(task_type="index", scope="file:core/router.py"),
+            lambda item, repo, root: calls.append(item.node_id),
+        )
+        loop.step("tree-sitter")
+        assert calls == ["n1"]
+
+    def test_llm_done_fires_hook(self):
+        calls: list = []
+        loop = self._loop(
+            _item(task_type="explain"),
+            lambda item, repo, root: calls.append(item.node_id),
+            fake_model=FakeModel(responses=[_prob_response()]),
+        )
+        loop.step("phi4-mini")
+        assert calls == ["n1"]
+
+    def test_llm_unresolved_does_not_fire_hook(self):
+        # Nur ein DONE-Knoten erzeugt Kinder; ein gefailter nicht.
+        calls: list = []
+        loop = WorkerLoop(
+            queue=_FakeQueue(_item(task_type="explain")),
+            repo=_FakeRepo(),
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(
+                router=Router(), model_factory=lambda n: FakeModel(responses=["", ""])
+            ),
+            expand_hook=lambda item, repo, root: calls.append(item.node_id),
+        )
+        loop.step("phi4-mini")
+        assert calls == []
+
+    def test_hook_error_is_best_effort(self):
+        # Ein Hook-Fehler kippt das done des Erzeugers nicht.
+        def boom(item, repo, root):
+            raise RuntimeError("expand kaputt")
+
+        item = _item(task_type="index", scope="file:core/router.py")
+        loop = self._loop(item, boom)
+        queue = loop.queue
+        assert loop.step("tree-sitter") is True
+        assert queue.completed == [item.id]  # trotzdem abgeschlossen
+
+
+# ---------------------------------------------------------------------------
 # WorkerLoop: task_result-Trace (I-5.1b)
 # ---------------------------------------------------------------------------
 

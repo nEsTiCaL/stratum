@@ -338,6 +338,15 @@ class WorkerLoop:
     # (confirm=True + gruener lint_report). None -> kein Auto-Apply (Mensch
     # wendet manuell an). Best-effort: ein Apply-Fehler kippt das done-verify nicht.
     auto_apply: Callable[[QueueItem, Path | None], None] | None = None
+    # I-REK.7 Completion-Hook: ein fertig gewordener Knoten kann Kinder erzeugen
+    # (arch_rekursion: "Kinder entstehen im COMPLETION-HOOK ihres Erzeugers").
+    # Wird mit (item, repo, root) aufgerufen, sobald ein produktiver Knoten (det/
+    # llm) 'done' ist -- der Hook (core.subtree.make_expansion_hook) ruft
+    # expand(..., depth+1) und reiht die validierten Kinder ueber
+    # queue.enqueue_children ein. None -> keine Expansion (Bestandsverhalten:
+    # Kinder werden weiterhin vorab beim Enqueue materialisiert). Best-effort:
+    # ein Hook-Fehler kippt das done des Erzeugers nicht.
+    expand_hook: Callable[[QueueItem, Repository, Path | None], None] | None = None
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -514,6 +523,20 @@ class WorkerLoop:
         if findings.strip():
             self.spawn_fix(item, findings.strip())
 
+    def _maybe_expand(self, item: QueueItem, root: Path | None) -> None:
+        """Completion-Hook (I-REK.7): ein fertig gewordener produktiver Knoten
+        kann Kinder erzeugen. Der Hook liest die Tiefe des Erzeugers, ruft
+        expand(..., depth+1) (Budget-Guard aus REK.5 kappt die Rekursion) und
+        reiht die det-validierten Kinder ueber queue.enqueue_children ein -- sie
+        werden also erst JETZT sichtbar (Invariante 4). Best-effort: ein
+        Hook-Fehler darf das done des Erzeugers nicht kippen."""
+        if self.expand_hook is None:
+            return
+        try:
+            self.expand_hook(item, self.repo, root)
+        except Exception as exc:  # noqa: BLE001 - Expansion ist Beiwerk zum done
+            print(f"[worker] Expansion-Hook fehlgeschlagen ({item.scope}): {exc}")
+
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""
         item = self.queue.claim(model)
@@ -536,6 +559,7 @@ class WorkerLoop:
                 det.run(item, self.repo)
                 self.queue.complete(item.id)
                 # det laeuft einmal, eskaliert nie -> pass.
+                self._maybe_expand(item, root)
                 self._trace_result(
                     item, validation_result="pass", final_model=item.model, attempts=1
                 )
@@ -545,6 +569,7 @@ class WorkerLoop:
                 if outcome.status == "done":
                     self.queue.complete(item.id)
                     self._maybe_spawn_fix(item)
+                    self._maybe_expand(item, root)
                 else:
                     self._fail(
                         item,

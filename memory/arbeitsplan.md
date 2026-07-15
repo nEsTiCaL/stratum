@@ -335,7 +335,7 @@ I-REK.3   test_gate Runner+Artefakt (G2/1)   det  - FERTIG       `spec_rekursion
 I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3 FERTIG `spec_rekursion`
 I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1 FERTIG   `spec_rekursion`
 I-REK.6   Architect konditional + Metrik     gem  REK.4,5 FERTIG `spec_rekursion`
-I-REK.7   Completion-Hook + Supersede        det  REK.5          `spec_rekursion`
+I-REK.7   Completion-Hook + Supersede        det  REK.5 FERTIG   `spec_rekursion`
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7          `spec_rekursion`, `spec_beginner-flow`
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5          `spec_rekursion`, `arch_pfadwahl`
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9        `spec_rekursion`
@@ -426,6 +426,22 @@ Breite, max_depth=Tiefe), Default (512/8) grosszuegig -> verhaltensgleich (alle
 Shape-Tests ohne Anpassung gruen); knappes Budget kappt den Fan-out (Fixknoten
 bleiben), depth>max stoppt die Expansion (Rekursions-Stop, ab REK.7 wirksam). 11
 neue Tests (test_expansion.py), 1088 gruen, ruff clean.
+I-REK.7 FERTIG (2026-07-15): Completion-Hook + Teilbaum-Supersede. Kinder
+entstehen NACH ihrem Erzeuger: core/subtree.py (reine Haelfte: prepare_children =
+filter_by_symbols det-Validierung + namespace_children "<parent>/<id>" +
+enforce_scope_sequence Kollision->Sequenz; make_expansion_hook ruft expand(...,
+depth+1) -> Budget-Guard aus REK.5 kappt die Rekursion). Queue (DB-Haelfte, bleibt
+dumm): enqueue_children reiht Kinder in den SELBEN dag_id (owner/capability geerbt,
+base_payload depth-Stempel, idempotent vs. nicht-superseded); supersede_subtree
+storniert den OFFENEN Teilbaum atomar (Reverse-BFS, pending/running->'superseded',
+done bleibt Belegkette -- I-6-Geist). Migration 0012: queue_status_chk +
+'superseded'. WorkerLoop.expand_hook (Default None) feuert via _maybe_expand nach
+complete in det+llm-done (Invariante 4: Kinder vorher unsichtbar; best-effort).
+Akzeptanz test_completion_hook.py (echte Queue+WorkerLoop, det-Regel-Hook): Kinder
+erst nach Erzeuger-done sichtbar; ueberlappende Scopes sequenzialisiert. serve.py
+verdrahtet den Hook NOCH NICHT (erster Konsument = REK.8/10). 1143 gruen (+36),
+ruff clean. NAECHSTER SCHRITT: I-REK.8 (Plan-Ebenen-Architect als prob-Expansion,
+nutzt den Hook) ODER Strang W (REK.9 Aenderungsart-Klassifikation, unabh. vom Hook).
 I-REK.6 FERTIG (2026-07-15): Architect konditional + Metrik. Der architect-Knoten
 ist NICHT mehr fest im Template -- REGISTRY implement/fix sind minimal (index->
 impl->lint_gate); _template_for setzt architect (with_architect) + test_gate

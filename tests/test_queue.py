@@ -330,6 +330,156 @@ class TestDiscardDag:
         assert Queue(conn).discard_dag("does-not-exist") == 0
 
 
+class TestEnqueueChildren:
+    """I-REK.7 Completion-Hook (DB-Haelfte): Kinder entstehen NACH dem Erzeuger."""
+
+    def _done_parent(self, q: Queue, *, dag_id: str = "d", owner: str = "alice"):
+        """Reiht einen Erzeuger ein, claimt + schliesst ihn ab, gibt das Item."""
+        q.enqueue(
+            _dag(dag_id, [_node("n1", task_type="index")]),
+            model="phi4-mini",
+            owner=owner,
+        )
+        parent = q.claim("phi4-mini")
+        assert parent is not None
+        q.complete(parent.id)
+        return parent
+
+    def _child(self, node_id: str, **kw) -> DagNode:
+        kw.setdefault("task_type", "implement")
+        kw.setdefault("scope", "file:x.py")
+        kw.setdefault("depends_on", ("n1",))  # haengt am Erzeuger
+        return _node(node_id, **kw)
+
+    def test_children_inserted_into_parent_dag(self, conn):
+        q = Queue(conn)
+        parent = self._done_parent(q)
+        ids = q.enqueue_children(parent, [self._child("n1/c1"), self._child("n1/c2")])
+        assert len(ids) == 2
+        assert q.ids_for_dag(parent.dag_id) == sorted([parent.id, *ids])
+
+    def test_children_claimable_only_after_parent_done(self, conn):
+        # Sichtbarkeit = Sicherheit (Invariante 4): vor dem Hook lag KEIN Kind in
+        # der Queue; nach enqueue_children (Erzeuger done) ist es claimbar.
+        q = Queue(conn)
+        q.enqueue(_dag("d", [_node("n1", task_type="index")]), model="phi4-mini")
+        parent = q.claim("phi4-mini")
+        assert parent is not None
+        # Erzeuger laeuft noch -> nichts weiter claimbar.
+        assert q.claim("phi4-mini") is None
+        q.complete(parent.id)
+        q.enqueue_children(parent, [self._child("n1/c1")])
+        child = q.claim("phi4-mini")
+        assert child is not None
+        assert child.node_id == "n1/c1"
+
+    def test_child_inherits_owner_and_model(self, conn):
+        q = Queue(conn)
+        parent = self._done_parent(q, owner="bob")
+        (cid,) = q.enqueue_children(parent, [self._child("n1/c1")])
+        info = q.get_task_info(cid)
+        assert info["owner"] == "bob"
+        assert info["model"] == parent.model
+
+    def test_base_payload_stamped(self, conn):
+        q = Queue(conn)
+        parent = self._done_parent(q)
+        (cid,) = q.enqueue_children(
+            parent, [self._child("n1/c1")], base_payload={"depth": 1}
+        )
+        assert q.get_task_info(cid)["payload"]["depth"] == 1
+
+    def test_model_for_routes_per_child(self, conn):
+        q = Queue(conn)
+        parent = self._done_parent(q)
+        ids = q.enqueue_children(
+            parent,
+            [self._child("n1/c1", task_type="index"), self._child("n1/c2")],
+            model_for=lambda n: "tree-sitter" if n.task_type == "index" else "human",
+        )
+        models = {q.get_task_info(i)["model"] for i in ids}
+        assert models == {"tree-sitter", "human"}
+
+    def test_done_child_skipped(self, conn):
+        q = Queue(conn)
+        parent = self._done_parent(q)
+        ids = q.enqueue_children(
+            parent, [self._child("n1/c1", status="done"), self._child("n1/c2")]
+        )
+        assert len(ids) == 1  # nur c2; c1 war Cache-Treffer
+
+    def test_idempotent_second_call_skips_existing(self, conn):
+        # Ein erneut fertig gewordener Erzeuger (z.B. nach Reopen) erzeugt keine
+        # Dubletten: ein bereits vorhandenes (dag_id, node_id) wird uebersprungen.
+        q = Queue(conn)
+        parent = self._done_parent(q)
+        first = q.enqueue_children(parent, [self._child("n1/c1")])
+        second = q.enqueue_children(parent, [self._child("n1/c1")])
+        assert len(first) == 1
+        assert second == []
+
+
+class TestSupersedeSubtree:
+    """I-REK.7: re-expand storniert den offenen Teilbaum atomar (I-6-Geist)."""
+
+    def _tree(self, conn):
+        """Erzeuger n1 (done) + zwei Kinder c1, c2 (pending)."""
+        q = Queue(conn)
+        q.enqueue(_dag("d", [_node("n1", task_type="index")]), model="phi4-mini")
+        parent = q.claim("phi4-mini")
+        assert parent is not None
+        q.complete(parent.id)
+        child_ids = q.enqueue_children(
+            parent,
+            [
+                _node("n1/c1", task_type="implement", depends_on=("n1",)),
+                _node("n1/c1/g", task_type="lint_gate", depends_on=("n1/c1",)),  # Enkel
+                _node("n1/c2", task_type="implement", depends_on=("n1",)),
+            ],
+        )
+        return q, parent, child_ids
+
+    def test_cancels_open_descendants(self, conn):
+        q, parent, child_ids = self._tree(conn)
+        n = q.supersede_subtree("d", "n1")
+        assert n == 3  # c1, c1/g (Enkel), c2 -- der ganze offene Teilbaum
+        for cid in child_ids:
+            assert q.get_status(cid) == "superseded"
+
+    def test_root_untouched(self, conn):
+        q, parent, _ = self._tree(conn)
+        q.supersede_subtree("d", "n1")
+        assert q.get_status(parent.id) == "done"  # Erzeuger bleibt
+
+    def test_superseded_not_claimable(self, conn):
+        q, _, _ = self._tree(conn)
+        q.supersede_subtree("d", "n1")
+        assert q.claim("phi4-mini") is None  # nichts Offenes mehr
+
+    def test_done_descendant_left_as_history(self, conn):
+        q, parent, child_ids = self._tree(conn)
+        # c1 fertigstellen -> es ist Historie/Belegkette, kein "offener" Knoten.
+        q.complete(child_ids[0])
+        q.supersede_subtree("d", "n1")
+        assert q.get_status(child_ids[0]) == "done"  # bleibt
+        assert q.get_status(child_ids[2]) == "superseded"  # c2 (offen) storniert
+
+    def test_reexpand_reuses_ids_after_supersede(self, conn):
+        # Nach dem Supersede darf ein re-expand dieselben Kinder-IDs neu einreihen:
+        # die alten 'superseded'-Zeilen blockieren die frischen nicht.
+        q, parent, _ = self._tree(conn)
+        q.supersede_subtree("d", "n1")
+        fresh = q.enqueue_children(
+            parent, [_node("n1/c1", task_type="implement", depends_on=("n1",))]
+        )
+        assert len(fresh) == 1
+        assert q.get_status(fresh[0]) == "pending"
+
+    def test_unknown_root_zero(self, conn):
+        q, _, _ = self._tree(conn)
+        assert q.supersede_subtree("d", "does-not-exist") == 0
+
+
 class TestGetTaskInfoPayload:
     """get_task_info liefert payload -> Anzeige-Endpoints lesen den echten Prompt."""
 
