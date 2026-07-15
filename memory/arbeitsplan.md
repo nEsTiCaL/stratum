@@ -336,7 +336,7 @@ I-REK.4   test_gate Einbau+Rueckkante (G2/2) gem  REK.1,3 FERTIG `spec_rekursion
 I-REK.5   expand()-Seam (verhaltensgleich)   det  REK.1 FERTIG   `spec_rekursion`
 I-REK.6   Architect konditional + Metrik     gem  REK.4,5 FERTIG `spec_rekursion`
 I-REK.7   Completion-Hook + Supersede        det  REK.5 FERTIG   `spec_rekursion`
-I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7          `spec_rekursion`, `spec_beginner-flow`
+I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7 FERTIG   `spec_rekursion`, `spec_beginner-flow`
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5          `spec_rekursion`, `arch_pfadwahl`
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9        `spec_rekursion`
 I-REK.11  Eskalation re-design/re-expand     det  REK.4,7        `spec_rekursion`
@@ -440,8 +440,22 @@ complete in det+llm-done (Invariante 4: Kinder vorher unsichtbar; best-effort).
 Akzeptanz test_completion_hook.py (echte Queue+WorkerLoop, det-Regel-Hook): Kinder
 erst nach Erzeuger-done sichtbar; ueberlappende Scopes sequenzialisiert. serve.py
 verdrahtet den Hook NOCH NICHT (erster Konsument = REK.8/10). 1143 gruen (+36),
-ruff clean. NAECHSTER SCHRITT: I-REK.8 (Plan-Ebenen-Architect als prob-Expansion,
-nutzt den Hook) ODER Strang W (REK.9 Aenderungsart-Klassifikation, unabh. vom Hook).
+ruff clean.
+I-REK.8 FERTIG (2026-07-15): Plan-Ebenen-Architect als prob-Wurzel-Expansion --
+ERSTER prob-Konsument des Hooks (expand_hook in serve.py verdrahtet). Neuer
+task_type plan_architect (reasoning, Artefakt design; kein Migration/Schema-Change).
+Grosser Modell-Plan -> create_intent (require_capability) reiht statt der Goals EINEN
+plan_architect-Knoten ein; grobe Fassung proposed+architecting (confirm->409). Hook
+(core.plan_architect) parst dessen design (## Schritte-Grammatik, plan_format), det-
+validiert die Goals (scope_exists, Greenfield-implement ausgenommen; nicht-existent ->
+not_covered-Nachfrage), extrahiert das geteilte Design, legt den ueberarbeiteten Plan
+PROPOSED ab (Goals erst JETZT sichtbar). G4 = Cockpit-Confirm -> enqueue_plan(shared_
+design) -> plan_design je Schreib-Kind ins Payload -> build_patch_prompt-Section
+(Kinder tragen das geteilte Design). build_dag(with_architect=) nimmt ein Callable pro
+Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppel).
+1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
+Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
+enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
 I-REK.6 FERTIG (2026-07-15): Architect konditional + Metrik. Der architect-Knoten
 ist NICHT mehr fest im Template -- REGISTRY implement/fix sind minimal (index->
 impl->lint_gate); _template_for setzt architect (with_architect) + test_gate

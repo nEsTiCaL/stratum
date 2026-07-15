@@ -34,6 +34,7 @@ from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
 from core.node_prep import materialize_prob_nodes
 from core.ollama_adapter import OllamaAdapter
+from core.plan_architect import make_plan_architect_hook
 from core.queue import Queue
 from core.repository import Repository
 from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
@@ -379,6 +380,12 @@ def _make_worker_loop(
         resolve_root=_resolve_root,
         spawn_fix=_spawn_fix,
         auto_apply=_auto_apply,
+        # I-REK.8: erster prob-Konsument des Completion-Hooks. Ein fertiger
+        # plan_architect-Knoten ueberarbeitet den Plan (formt+validiert Goals,
+        # geteiltes Design) und legt ihn als PROPOSED ab -> Cockpit-Confirm (G4)
+        # materialisiert. source_root = Stratum-Repo (Provenance des Plan-Artefakts);
+        # die Goal-Validierung nutzt den per-Item-root (Key-Workspace).
+        expand_hook=make_plan_architect_hook(source_root=root),
     )
     return loop, decompose_model, decompose_producer, auto_capable
 

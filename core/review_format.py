@@ -179,6 +179,16 @@ _SCHEMAS: dict[str, _AnswerSchema] = {
         review_split=False,
         prompt_label="Aenderungsabsicht des Nutzers",
     ),
+    # plan_architect (I-REK.8) baut seinen Prompt in core.plan_format (Design +
+    # ## Schritte, eine Quelle mit dem Parser) -- der Eintrag hier dient NUR
+    # build_content: review_split=False garantiert, dass die GANZE Antwort (inkl.
+    # des ## Schritte-Vorschlags) unzerteilt nach content.text geht, egal welche
+    # Ueberschriften das Modell setzt (der Hook parst content.text).
+    "plan_architect": _AnswerSchema(
+        header=_ARCHITECT_HEADER,
+        questions="",
+        review_split=False,
+    ),
     "summarize": _AnswerSchema(
         header=_SUMMARIZE_HEADER,
         questions=(

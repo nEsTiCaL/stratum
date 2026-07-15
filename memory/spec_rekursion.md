@@ -387,6 +387,74 @@ Akzeptanz: grosser Plan: Goals erscheinen erst nach plan-architect-done +
 Klasse  : gem   dep: I-REK.7   Detail: `spec_beginner-flow` (4d-Vorarbeit)
 ```
 
+**FERTIG 2026-07-15.** Der Plan-Architect ist der ERSTE prob-Konsument des
+Completion-Hooks (REK.7-Seam, in serve.py jetzt verdrahtet). Fuer einen GROSSEN
+Modell-Plan wird die STRUKTUR nicht mehr synchron geraten, sondern von einem prob-
+Knoten entworfen; die Goals erscheinen erst nach ihm + Confirm (G4).
+
+- **Neuer prob-task_type `plan_architect`** (router: Axis.reasoning 60-100 wie
+  architect -> Profil D via internem vLLM/Cloud; Artefakt `design`; NICHT in
+  PLANNABLE_TASK_TYPES -- die Expansion fuegt ihn ein, Invariante 5). Kein
+  Migration/Schema-Change: `design` existiert seit 4a, queue.task_type ist frei.
+- **Prompt = Struktur aus Design** (`plan_format.build_plan_architect_prompt`):
+  Design ZUERST (Wiederverwendung/Ansatz/Kohaerenz gekoppelter Scopes/Risiken),
+  dann `## Schritte` in DERSELBEN Grammatik wie die Zerlegung -> `parse_plan_response`
+  liest beide (Prompt + Parser eine Quelle im selben Modul). build_node_prompt hat
+  einen plan_architect-Zweig; build_content bewahrt den ganzen Text (`_SCHEMAS
+  ["plan_architect"]` review_split=False -> ## Schritte bleibt in content.text).
+- **Trigger** (`intent_plan.create_intent`, jetzt require_capability): Modell-
+  Zerlegung + `plan.large` + architect an -> statt der groben Goals wird EIN
+  plan_architect-Knoten eingereiht (`deps.enqueue_plan_architect`, scope repo:,
+  payload traegt instruction[+grobe Vorzerlegung] und den sauberen plan_prompt).
+  Die grobe Fassung wird als proposed+`architecting=true` abgelegt (Cockpit zeigt
+  "Architekt entwirft"); confirm darauf -> 409.
+- **Hook** (`core.plan_architect.make_plan_architect_hook`, plan_architect-only,
+  best-effort ueber _maybe_expand): design-Artefakt lesen -> `refine_plan` =
+  parse + det-`validate_goals` (Symbol/Datei existiert? via `scope_exists`;
+  Greenfield-`implement` ausgenommen; nicht-existent -> verworfen, als not_covered-
+  Nachfrage) + depends_on nach dem Verwerfen re-indexiert + geteiltes Design-Kapitel
+  extrahiert (`extract_shared_design`, OHNE die Schritte) -> ueberarbeiteter Plan als
+  PROPOSED abgelegt (supersedet die architecting-Fassung, Goals JETZT sichtbar). Der
+  Hook multipliziert NICHT selbst (Verifikation vor Multiplikation -- die Kinder
+  materialisiert erst der Confirm). Validierung gegen den per-Item-root (Key-
+  Workspace), Provenance ueber source_root.
+- **G4 = bestehender Cockpit-Confirm**: der Nutzer bestaetigt die ueberarbeitete
+  Fassung; `confirm_plan` -> `deps.enqueue_plan(shared_design=...)`.
+- **Kinder tragen das geteilte Design**: enqueue_plan reicht shared_design an
+  `materialize_prob_nodes` -> payload.plan_design je Schreib-Kind -> worker.run ->
+  build_node_prompt/build_patch_prompt (eigene Section "Geteilter Entwurf des Plan-
+  Architekten", VOR dem pro-Goal-Design). "Kinder-Prompts tragen das geteilte
+  Design" belegt.
+- **Jedes Kind eine Zelle** (Nutzer-Entscheidung 2026-07-15, nuanciert "kein
+  Doppel"): bei gesetztem shared_design ist `build_dag(with_architect=)` ein
+  Callable PRO Goal (`needs_architect(goal.scope, instruction="")` -> nur die
+  Datei-Groesse zaehlt, NICHT die lange Plan-Instruktion -- der Plan-Architect deckt
+  den Gesamtentwurf schon ab). Ein individuell grosses Goal bekommt einen eigenen
+  Detail-architect, ein kleines bleibt det/schlicht. build_dag akzeptiert
+  with_architect als bool ODER Callable[[GoalItem],bool].
+- **Akzeptanz belegt** (test_plan_architect.py, 23 Tests): reine Helfer (split/
+  extract/scope_exists/validate/refine/reindex) prob-frei mit Fake-Repo; Hook
+  schreibt PROPOSED-Plan (ghost verworfen -> not_covered, Design im Content);
+  E2E gegen echte Queue+WorkerLoop+FakeModel -- vor dem Lauf kein Plan-Artefakt,
+  nach plan_architect-done ist die ueberarbeitete Fassung current (Greenfield-
+  implement behalten, nicht-existentes fix verworfen). Endpoint-Tests: large ->
+  nur plan_architect-Knoten in der Queue (keine Goals) + architecting=True;
+  confirm auf architecting -> 409. build_dag per-Goal-Callable. Prompt-Threading
+  (build_patch_prompt/build_node_prompt/materialize). 1167 gruen (+24), ruff clean.
+
+Befunde/offen: (a) Ein Doppel-confirm entfaellt (die grobe Zerlegung wird nie
+bestaetigt), aber /api/intent gibt fuer grosse Plaene jetzt eine architecting-
+Fassung zurueck -> das Cockpit-UI (static/index.html) sollte den Confirm-Button
+ausblenden solange architecting; heute schuetzt nur der 409 (UI = Beiwerk).
+(b) Produziert das Modell UNPARSEBARE Struktur, bleibt die architecting-Fassung
+stehen (best-effort-Hook faengt den Fehler) -> der Nutzer muss per Revision neu
+anstossen; ein Fallback-proposed-Plan mit leeren Goals + Nachfrage waere spaetere
+Haertung. (c) shared_design steht im Plan-Content (design-Feld); ein Edit des
+Plans (PUT) traegt es NICHT weiter (edit_plan baut den Content neu) -- fuer den
+Normalfall (confirm ohne Zwischen-Edit) irrelevant. (d) supersede/re-expand (der
+Teilbaum-Cancel aus REK.7) nutzt REK.8 noch nicht -- das kommt mit re-expand
+(REK.11); der Plan-Architect legt heute EINE Fassung ab.
+
 ## I-REK.9  Aenderungsart-Klassifikation + det-Validierung   [Strang W]
 
 ```

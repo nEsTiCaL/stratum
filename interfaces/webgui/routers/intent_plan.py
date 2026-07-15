@@ -216,7 +216,7 @@ async def create_rename(
 @router.post("/api/intent", status_code=201)
 async def create_intent(
     body: IntentBody,
-    owner: str = Depends(require_owner),
+    cap: tuple[str, int] = Depends(require_capability),
     deps: AppDeps = Depends(get_deps),
 ) -> dict[str, Any]:
     """I-6.2/6.5: freier Prompt -> Plan-Artefakt (status=proposed).
@@ -232,7 +232,14 @@ async def create_intent(
     - Modell (Cache-first, artifact-first): gleicher Prompt -> Store-Hit -> derselbe
       Plan OHNE Modellaufruf.
     Antwort: {"cached": bool, "id": int, "plan": <artefakt>}.
-    """
+
+    I-REK.8: Ergibt die Modell-Zerlegung einen GROSSEN Plan (plan.large) und ist der
+    architect-Schalter an, wird NICHT die grobe Zerlegung als bestaetigbarer Plan
+    gezeigt, sondern ein plan_architect-Knoten eingereiht (require_capability liefert
+    den Workspace). Sein Hook ueberarbeitet den Plan (formt+validiert Goals, geteiltes
+    Design) -> die ueberarbeitete Fassung erscheint dann. Antwort traegt
+    architecting=True; confirm auf die architecting-Fassung wird abgewiesen."""
+    owner, capability_id = cap
     prompt = body.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=422, detail="prompt fehlt")
@@ -292,6 +299,36 @@ async def create_intent(
         )
 
     plan = IntentDecomposer(deps.decompose_model).decompose(effective)
+
+    # I-REK.8: grosser Plan + architect an -> Wurzel-Expansion statt sofortiger
+    # Goals. Der plan_architect formt die Struktur; die grobe Zerlegung geht nur
+    # als Startpunkt/Briefing an ihn. Kleiner Plan -> unveraendert (proposed).
+    if plan.large and deps.settings.get_architect() and plan.goals:
+        arch_dag_id, _ = deps.enqueue_plan_architect(
+            prompt=effective,
+            rough_plan=plan,
+            owner=owner,
+            capability_id=capability_id,
+        )
+        artifact = build_plan_artifact(
+            effective,
+            plan,
+            root=deps.source_root or Path("."),
+            producer=deps.decompose_producer,
+            status=STATUS_PROPOSED,
+        )
+        # Marker: diese Fassung ist noch nicht bestaetigbar (der Architect entwirft
+        # die endgueltige Struktur). arch_dag_id verknuepft den laufenden Knoten.
+        artifact.content["architecting"] = True
+        artifact.content["arch_dag_id"] = arch_dag_id
+        new_id = deps.repo.put_artifact(artifact)
+        return {
+            "cached": False,
+            "id": new_id,
+            "plan": artifact.model_dump(mode="json"),
+            "architecting": True,
+        }
+
     return deps.store_plan(effective, plan, producer=deps.decompose_producer)
 
 
@@ -409,6 +446,18 @@ async def confirm_plan(
             "plan_id": plan_id,
             "already_confirmed": True,
         }
+    # I-REK.8: eine architecting-Fassung ist die GROBE Zerlegung, waehrend der
+    # plan_architect noch die Struktur entwirft -- sie darf nicht bestaetigt werden
+    # (ihre Goals werden vom Architekten ueberarbeitet). Der Hook legt danach die
+    # ueberarbeitete Fassung ab (ohne dieses Flag), die dann bestaetigbar ist.
+    if current.content.get("architecting"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Plan wird noch vom Architekten entworfen — warte auf die "
+                "ueberarbeitete Fassung (Cockpit lädt sie automatisch)."
+            ),
+        )
     plan = plan_from_content(current.content)
     # Leerer Plan (Zerlegung konnte kein Ziel ableiten -> alles 'Nicht abgedeckt')
     # haette 0 Knoten enqueued: ein stiller No-Op, der den Plan als 'confirmed'
@@ -433,6 +482,9 @@ async def confirm_plan(
         instruction=current.content.get("prompt", ""),
         owner=owner,
         capability_id=capability_id,
+        # I-REK.8: geteiltes Design des Plan-Architekten (falls diese Fassung von
+        # ihm ueberarbeitet wurde) -> geht in jeden Schreib-Kind-Prompt.
+        shared_design=current.content.get("design", ""),
     )
     confirmed = build_plan_artifact(
         current.content.get("prompt", ""),

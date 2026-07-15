@@ -128,6 +128,7 @@ def build_node_prompt(
     feedback: str = "",
     *,
     root: Path | None = None,
+    plan_design: str = "",
 ) -> str:
     """Prob-Prompt je task_type -- die EINE Bau-Funktion fuer Worker- UND
     Human-Pfad (I-REK.1): Quellcode + Graph-Kontext + Design + Feedback in einem.
@@ -147,7 +148,20 @@ def build_node_prompt(
     read_design das Design tatsaechlich -- der 4c-Timing-Bug ist damit weg. Weil
     feedback jetzt Parameter dieser Funktion ist, entfaellt das separate
     prompt_with_feedback: der Verify-Fehler wird hier eingebettet (Patch-Pfad in
-    build_patch_prompt, Analyse-Pfad unten mit derselben Formulierung)."""
+    build_patch_prompt, Analyse-Pfad unten mit derselben Formulierung).
+
+    plan_design (I-REK.8): das GETEILTE Design des Plan-Architekten -- fuer
+    implement/fix-Kinder eines grossen Plans an build_patch_prompt durchgereicht,
+    damit jedes Kind den Gesamtkontext kennt ("Kinder-Prompts tragen das geteilte
+    Design"). Leer bei Einzeltasks/kleinen Plaenen (kein Plan-Architect)."""
+    if task_type == "plan_architect":
+        # I-REK.8: der Plan-Architect entwirft die STRUKTUR -- Design zuerst, Goals
+        # daraus (dieselbe ## Schritte-Grammatik wie die Zerlegung). Eigener Prompt
+        # in plan_format (Prompt + Parser eine Quelle), kein file:-Quellcode noetig.
+        from core.plan_format import build_plan_architect_prompt
+
+        context = gather_context(repo, scope, source_root=root)
+        return build_plan_architect_prompt(instruction, context)
     source_code = read_scope_source(scope, root)
     context = gather_context(repo, scope, source_root=root)
     if task_type in ("implement", "fix"):
@@ -159,6 +173,7 @@ def build_node_prompt(
             context=context,
             feedback=feedback,
             design=read_design(repo, scope),
+            plan_design=plan_design,
         )
     prompt = build_review_prompt(task_type, scope, source_code, instruction, context)
     if feedback:
@@ -174,6 +189,7 @@ def materialize_prob_nodes(
     auto_capable: frozenset[str] | None,
     instruction_for: Callable[[DagNode], str],
     base_model: str = CONFIRM_MODEL,
+    plan_design: str = "",
 ) -> None:
     """Fuer jeden eingereihten prob-Knoten (nicht det, nicht verify): Claim-Key
     ueber claim_model umrouten (set_model bei Abweichung) und die INSTRUKTION ins
@@ -187,7 +203,13 @@ def materialize_prob_nodes(
     ohne Profil-Wissen). instruction_for(node) liefert die Instruktion je Knoten;
     im Regelfall (ein Plan/ein Fix) fuer alle prob-Knoten dieselbe. task_ids
     stammen aus queue.enqueue (nur pending-Knoten, gleiche Reihenfolge wie die
-    non-done-Knoten des DAG)."""
+    non-done-Knoten des DAG).
+
+    plan_design (I-REK.8): das geteilte Design des Plan-Architekten wird den
+    Schreib-Knoten (implement/fix) ins Payload gelegt; der Worker reicht es zur
+    Claim-Zeit an build_node_prompt -> jedes Kind traegt das geteilte Design.
+    Leer -> Feld weggelassen (kein Regress fuer kleine Plaene/Einzeltasks)."""
+    write_types = {TaskType.implement.value, TaskType.fix.value}
     enqueued = [n for n in dag.nodes if n.status != "done"]
     for node, tid in zip(enqueued, task_ids, strict=True):
         if node.task_type == TaskType.lint_gate.value:
@@ -198,4 +220,7 @@ def materialize_prob_nodes(
             claim = claim_model(node.task_type, base_model, auto_capable=auto_capable)
             if claim != base_model:
                 queue.set_model(tid, claim)
-        queue.update_payload(tid, {"instruction": instruction_for(node)})
+        payload: dict[str, object] = {"instruction": instruction_for(node)}
+        if plan_design and node.task_type in write_types:
+            payload["plan_design"] = plan_design
+        queue.update_payload(tid, payload)

@@ -133,6 +133,66 @@ def build_decompose_prompt(prompt: str) -> str:
     return _PROMPT_TEMPLATE.format(task_types=lines, prompt=prompt)
 
 
+# I-REK.8: Prompt des plan_architect-Knotens (prob, Wurzel-Expansion grosser
+# Plaene). Anders als build_decompose_prompt entwirft er ZUERST das geteilte
+# Design (Ansatz/Wiederverwendung/Risiken -- geht an ALLE Kinder) und leitet die
+# Goal-Struktur DARAUS ab. Das "## Schritte"-Format ist identisch zu
+# build_decompose_prompt -> parse_plan_response liest beide Antworten. So bleibt
+# die Grammatik EINE Wahrheitsquelle (Prompt + Parser hier im selben Modul).
+_PLAN_ARCHITECT_TEMPLATE = """\
+Du bist ein Software-Architekt. Du bekommst einen Auftrag (und ggf. eine grobe \
+Vorzerlegung sowie Workspace-Kontext) und entwirfst die UMSETZUNGSSTRUKTUR eines \
+groesseren Vorhabens, BEVOR Code geschrieben wird.
+
+Antworte ausschliesslich mit Markdown. Verwende genau diese Ueberschriften in \
+dieser Reihenfolge -- keine anderen:
+## 1. Verstaendnis
+## 2. Design
+## 3. Nicht abgedeckt
+## 4. Schritte
+
+Unter "Verstaendnis": 2-3 Saetze, die den Auftrag zurueckspiegeln.
+Unter "Design": der geteilte Entwurf, der fuer ALLE Teilschritte gilt -- \
+Wiederverwendung (welche EXISTIERENDEN Symbole/Dateien/Konventionen genutzt oder \
+erweitert werden; nenne konkrete Namen aus dem Kontext, nichts doppelt anlegen), \
+Ansatz, Kohaerenz gekoppelter Scopes (Interface+Implementierung, Funktion+Test \
+gehoeren zusammen) und Risiken/Randfaelle. KEIN Code.
+Unter "Nicht abgedeckt": je Zeile "- <Anteil>: <kurzer Grund>" fuer Teile, die \
+sich NICHT auf einen task_type und einen konkreten Scope abbilden lassen. \
+Erfinde NIE einen task_type; wenn nichts fehlt, schreibe genau "- keine".
+Unter "Schritte": je Zeile "N. <task_type> <scope>", optional mit \
+"(nach: M, K)" fuer Abhaengigkeiten auf fruehere Schritt-Nummern. Ein Schritt = \
+genau EIN task_type und EIN konkreter Scope (z.B. module:auth oder \
+file:auth/login.py). Die Schritte setzen das Design oben um.
+
+Scope-Regeln:
+- implement: Scope ist der Ziel-Dateipfad; existiert die Datei noch nicht \
+(Greenfield), erfinde einen sinnvollen Pfad -- das ist erwuenscht, kein Fehler.
+- alle anderen task_types: der Scope muss plausibel existieren. Passt kein \
+task_type ODER gibt es keinen existierenden Scope -> "Nicht abgedeckt".
+
+Verfuegbare task_types:
+{task_types}
+
+---
+
+Auftrag:
+{prompt}"""
+
+
+def build_plan_architect_prompt(instruction: str, context: str = "") -> str:
+    """Prompt des plan_architect-Knotens (I-REK.8): Design ZUERST, Goals daraus.
+
+    Gleiche "## Schritte"-Grammatik wie build_decompose_prompt (ein Parser). Der
+    context (Graph-/Workspace-Umriss, optional) wird nach dem Auftrag eingehaengt.
+    """
+    lines = "\n".join(f"- {name}: {desc}" for name, desc in PLANNABLE_TASK_TYPES)
+    prompt = instruction
+    if context:
+        prompt = f"{instruction}\n\n{context}"
+    return _PLAN_ARCHITECT_TEMPLATE.format(task_types=lines, prompt=prompt)
+
+
 def _parse_json_response(text: str) -> dict[str, Any] | None:
     """Altformat-Toleranz: komplette JSON-Antwort (Objekt oder bare Array).
 

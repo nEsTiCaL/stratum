@@ -18,6 +18,8 @@ APIRouter(dependencies=[Depends(require_owner)]) an einer Stelle schuetzen.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -128,18 +130,28 @@ class AppDeps:
             return requested
         return _route_claim_model(task_type, requested, auto_capable=self.auto_capable)
 
-    def materialize_prob_nodes(self, dag, task_ids, instruction_for) -> None:
-        """core.node_prep.materialize_prob_nodes an queue + auto_capable gebunden."""
+    def materialize_prob_nodes(
+        self, dag, task_ids, instruction_for, *, plan_design: str = ""
+    ) -> None:
+        """core.node_prep.materialize_prob_nodes an queue + auto_capable gebunden.
+        plan_design (I-REK.8) wird an die Schreib-Kinder durchgereicht."""
         materialize_prob_nodes(
             self.queue,
             dag,
             task_ids,
             auto_capable=self.auto_capable,
             instruction_for=instruction_for,
+            plan_design=plan_design,
         )
 
     def enqueue_plan(
-        self, plan: Plan, *, instruction: str, owner: str, capability_id: int | None
+        self,
+        plan: Plan,
+        *,
+        instruction: str,
+        owner: str,
+        capability_id: int | None,
+        shared_design: str = "",
     ) -> tuple[TaskDag, list[int]]:
         """Plan -> verketteter Gesamt-DAG in die Queue (build_dag, modellfrei) +
         Prob-Knoten materialisiert (Claim-Routing + Prompt je Knoten, Auto-Index
@@ -149,26 +161,41 @@ class AppDeps:
         Intent->confirm) UND create_task fuer schreibende task_types. Beide
         brauchen denselben index->write->verify-Nachlauf statt eines nackten
         Ein-Knoten-DAGs -- der Grund, warum ein direkter fix/implement-Task frueher
-        als Sackgassen-Artefakt endete (kein verify/auto-apply)."""
+        als Sackgassen-Artefakt endete (kein verify/auto-apply).
+
+        shared_design (I-REK.8): das geteilte Design eines Plan-Architekten. Gesetzt
+        -> (a) die architect-Heuristik laeuft PRO Goal und ignoriert die (lange)
+        Plan-Instruktion -- der Plan-Architect hat den Gesamtentwurf schon geliefert
+        ("kein Doppel"), ein pro-Goal-architect lohnt nur bei einer individuell
+        grossen Zieldatei; (b) das geteilte Design wird jedem Schreib-Kind ins
+        Payload gelegt -> jeder Kind-Prompt traegt es. Leer -> bisheriges plan-
+        weites Verhalten (kein Regress fuer kleine Plaene)."""
         root = self.prompt_root(owner, capability_id)
         # I-REK.4: test_gate-Knoten hinter den lint_gate der implement/fix-Goals,
         # wenn der Schalter an ist (Default) UND der Workspace ueberhaupt Tests
         # traegt -- sonst kein leerer Neutral-Knoten. root = Workspace des Keys.
         with_test_gate = self.settings.get_test_gate() and workspace_has_tests(root)
-        # I-REK.6: architect-Knoten konditional. Plan-weit (die instruction ist
-        # eine fuer alle Goals): Master-Schalter an UND mindestens ein Schreib-Goal
-        # ueberschreitet die Trivial-Schwelle (lange Instruktion oder bestehende
-        # grosse Zieldatei). Trivialfall -> ohne architect (3-Knoten-Kette).
-        with_architect = self.settings.get_architect() and any(
-            needs_architect(
-                g.scope,
-                instruction,
-                root=root,
-                min_chars=self.settings.get_architect_min_chars(),
+        min_chars = self.settings.get_architect_min_chars()
+        architect_on = self.settings.get_architect()
+        with_architect: bool | Callable[[Any], bool]
+        if shared_design:
+            # I-REK.8: pro Goal entscheiden (jedes Kind eine Zelle). instruction=""
+            # -> nur die Datei-Groesse entscheidet, NICHT die Plan-Instruktion
+            # (der Plan-Architect deckt den Gesamtentwurf schon ab).
+            def _per_goal(goal) -> bool:
+                return architect_on and needs_architect(
+                    goal.scope, "", root=root, min_chars=min_chars
+                )
+
+            with_architect = _per_goal
+        else:
+            # I-REK.6: plan-weit -- Master-Schalter an UND mindestens ein Schreib-
+            # Goal ueberschreitet die Trivial-Schwelle. Trivialfall -> ohne architect.
+            with_architect = architect_on and any(
+                needs_architect(g.scope, instruction, root=root, min_chars=min_chars)
+                for g in plan.goals
+                if g.task_type.value in WRITE_TASK_TYPES
             )
-            for g in plan.goals
-            if g.task_type.value in WRITE_TASK_TYPES
-        )
         dag = build_dag(
             plan,
             scope_resolver=RepoScopeResolver(self.repo),
@@ -190,8 +217,66 @@ class AppDeps:
             self.ensure_indexed(root, node.scope)
             return instruction
 
-        self.materialize_prob_nodes(dag, task_ids, instruction_for=_instruction_for)
+        self.materialize_prob_nodes(
+            dag, task_ids, instruction_for=_instruction_for, plan_design=shared_design
+        )
         return dag, task_ids
+
+    def enqueue_plan_architect(
+        self,
+        *,
+        prompt: str,
+        rough_plan: Plan,
+        owner: str,
+        capability_id: int | None,
+    ) -> tuple[str, int]:
+        """I-REK.8: Wurzel-Expansion eines grossen Plans -- statt die Goals sofort
+        zu materialisieren, EINEN plan_architect-Knoten einreihen. Sein Completion-
+        Hook (core.plan_architect) ueberarbeitet den Plan (formt+validiert die
+        Goals, geteiltes Design) und legt ihn als PROPOSED ab; erst der Cockpit-
+        Confirm (G4) materialisiert die Kinder. Gibt (dag_id, task_id) zurueck.
+
+        Der Knoten liegt auf dem Plan-Scope (repo:); seine Instruktion ist der
+        Auftrag plus die grobe Vorzerlegung als Startpunkt. Der SAUBERE prompt
+        wandert zusaetzlich als plan_prompt ins Payload (der Hook baut daraus das
+        Plan-Artefakt -- Cache/Edit-Kohaerenz)."""
+        from core.plan_architect import PLAN_SCOPE
+        from core.template_registry import DagNode, TaskDag
+
+        rough = "\n".join(
+            f"{i + 1}. {g.task_type.value} {g.scope}"
+            for i, g in enumerate(rough_plan.goals)
+        )
+        instruction = prompt
+        if rough:
+            instruction = (
+                f"{prompt}\n\nGrobe Vorzerlegung (ueberarbeite + verfeinere sie, "
+                f"entwirf zuerst das geteilte Design):\n{rough}"
+            )
+        dag_id = f"planarch-{uuid.uuid4().hex[:8]}"
+        dag = TaskDag(
+            dag_id,
+            [
+                DagNode(
+                    id="n1",
+                    task_type="plan_architect",
+                    scope=PLAN_SCOPE,
+                    depends_on=(),
+                    status="pending",
+                    flags=frozenset(),
+                )
+            ],
+        )
+        task_ids = self.queue.enqueue(
+            dag,
+            self.claim_model("plan_architect", CONFIRM_MODEL),
+            owner=owner,
+            capability_id=capability_id,
+        )
+        self.queue.update_payload(
+            task_ids[0], {"instruction": instruction, "plan_prompt": prompt}
+        )
+        return dag_id, task_ids[0]
 
     def store_plan(self, prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
         artifact = build_plan_artifact(

@@ -58,6 +58,7 @@ def build_patch_prompt(
     context: str = "",
     feedback: str = "",
     design: str = "",
+    plan_design: str = "",
 ) -> str:
     """Prompt fuer implement/fix: fordert einen Unified-Diff fuer `scope` an.
 
@@ -66,7 +67,10 @@ def build_patch_prompt(
     instruction traegt die natuerlichsprachige Absicht (aus dem Plan-Prompt, da
     ein Goal selbst nur task_type/scope kennt); feedback traegt einen vorherigen
     Verify-Fehler fuer die Rueckkante (I-7.4); design traegt den Entwurf des
-    architect-Knotens (I-UX.4c), der VOR dem Patch entstand."""
+    (pro-Goal-)architect-Knotens (I-UX.4c), der VOR dem Patch entstand;
+    plan_design traegt das GETEILTE Design des Plan-Architekten (I-REK.8) -- der
+    Gesamtkontext, den alle Kinder desselben grossen Plans kennen (Kohaerenz
+    gekoppelter Scopes). plan_design steht VOR dem pro-Goal-Design (grob -> fein)."""
     from core.ingest import source_language
 
     verb = "Behebe den Fehler" if task_type == "fix" else "Implementiere die Aufgabe"
@@ -81,6 +85,11 @@ def build_patch_prompt(
         parts.append("\n(Die Zieldatei existiert noch nicht — lege sie neu an.)")
     if context:
         parts.append(f"\n{context}")
+    if plan_design:
+        parts.append(
+            "\nGeteilter Entwurf des Plan-Architekten (Gesamtkontext des Vorhabens, "
+            f"setze ihn konsistent um):\n{plan_design}"
+        )
     if design:
         parts.append(f"\nEntwurf des Architekten (setze ihn um):\n{design}")
     if feedback:

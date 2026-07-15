@@ -984,6 +984,14 @@ _GOALS_JSON = json.dumps(
     ]
 )
 
+# I-REK.8: >= LARGE_PLAN_THRESHOLD (5) Goals -> plan.large -> Wurzel-Expansion.
+_LARGE_GOALS_JSON = json.dumps(
+    [
+        {"task_type": "implement", "scope": f"file:m{i}.py", "depends_on": []}
+        for i in range(5)
+    ]
+)
+
 
 class TestIntentEndpoint:
     """I-6.2: POST /api/intent -> Plan-Artefakt (Prompt->Plan) + input_hash-Cache."""
@@ -1054,6 +1062,31 @@ class TestIntentEndpoint:
         with TestClient(self._app(conn, _CountingModel(_GOALS_JSON))) as c:
             r = c.post("/api/intent", json={"prompt": "Baue Auth"}, headers=AUTH)
         assert isinstance(r.json()["id"], int)
+
+    def test_large_plan_enqueues_plan_architect_not_goals(self, conn):
+        """I-REK.8: grosser Plan -> plan_architect-Knoten in der Queue, NICHT die
+        Goal-Sub-DAGs. Antwort traegt architecting=True (noch nicht bestaetigbar)."""
+        with TestClient(self._app(conn, _CountingModel(_LARGE_GOALS_JSON))) as c:
+            r = c.post(
+                "/api/intent", json={"prompt": "Baue ein grosses System"}, headers=AUTH
+            )
+        assert r.status_code == 201
+        assert r.json()["architecting"] is True
+        assert r.json()["plan"]["content"]["architecting"] is True
+        # In der Queue liegt genau EIN plan_architect-Knoten, keine implement-Goals.
+        rows = conn.execute("SELECT task_type FROM queue").fetchall()
+        types = [t for (t,) in rows]
+        assert types == ["plan_architect"]
+
+    def test_confirm_architecting_plan_rejected(self, conn):
+        """Die architecting-Fassung (grobe Zerlegung) darf nicht bestaetigt werden --
+        der Nutzer wartet auf die vom Architekten ueberarbeitete Fassung."""
+        with TestClient(self._app(conn, _CountingModel(_LARGE_GOALS_JSON))) as c:
+            pid = c.post(
+                "/api/intent", json={"prompt": "Baue ein grosses System"}, headers=AUTH
+            ).json()["id"]
+            r = c.post(f"/api/plan/{pid}/confirm", headers=AUTH)
+        assert r.status_code == 409
 
     def test_confirmed_plan_not_served_from_cache(self, conn):
         # Verbrauchter Plan (confirmed) + identischer Prompt -> KEIN Cache-Hit,

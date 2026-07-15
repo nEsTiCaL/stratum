@@ -57,6 +57,11 @@ class TaskType(StrEnum):
     # Gruppe F: schreibend (Schritt 7) -- architect entwirft (prob, Design vor
     # dem Code, I-UX.4), implement/fix erzeugen Patches (prob), lint_gate prueft
     # sie deterministisch (LintGateWorker, kein Modell).
+    # plan_architect (I-REK.8) entwirft die STRUKTUR eines grossen Plans (prob,
+    # Wurzel-Expansion): sein design-Artefakt traegt geteiltes Design + einen
+    # strukturierten Goal-Vorschlag. Kein nutzer-waehlbares Goal -- die Expansion
+    # fuegt ihn ein (Invariante 5), darum NICHT in PLANNABLE_TASK_TYPES.
+    plan_architect = "plan_architect"
     architect = "architect"
     implement = "implement"
     fix = "fix"
@@ -221,7 +226,7 @@ def _det(model: str = "tree-sitter") -> TaskRequirement:
     return TaskRequirement(deterministic_model=model)
 
 
-# Alle 18 task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
+# Alle task_types eindeutig zugeordnet (Achse + Band). Startwerte (S5).
 TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     TaskType.index: _det(),
     TaskType.symbol_lookup: _det(),
@@ -240,6 +245,9 @@ TASK_REQUIREMENTS: dict[TaskType, TaskRequirement] = {
     # min_cap=60 -> Profil D faehrt ihn ueber den internen vLLM/Cloud, nicht
     # lokal phi4-mini; kein exclusiver Slot noetig.
     TaskType.architect: TaskRequirement(Axis.reasoning, 60, 100),
+    # plan_architect entwirft die STRUKTUR (Goals) eines grossen Plans -- gleiches
+    # Band wie architect (Reasoning, Profil D -> intern/Cloud).
+    TaskType.plan_architect: TaskRequirement(Axis.reasoning, 60, 100),
     # Schreibend: implement/fix sind anspruchsvolle Code-Tasks. min_cap=55
     # schliesst phi4-mini (code=35) aus -> auf Profil D bleibt nur Cloud oder
     # model:human (schreibt keinen brauchbaren Code lokal). verify ist det.
@@ -414,6 +422,7 @@ TASK_TYPE_TO_ARTIFACT_TYPE: dict[TaskType, str] = {
     TaskType.cross_module: "review_findings",
     TaskType.crypto_audit: "review_findings",
     TaskType.architect: "design",
+    TaskType.plan_architect: "design",
     TaskType.implement: "patch",
     TaskType.fix: "patch",
 }

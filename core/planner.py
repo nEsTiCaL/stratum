@@ -97,7 +97,7 @@ def build_dag(
     *,
     scope_resolver: ScopeResolver,
     cache_query: Callable[[str, str], bool] | None = None,
-    with_architect: bool = True,
+    with_architect: bool | Callable[[GoalItem], bool] = True,
     with_test_gate: bool = False,
 ) -> TaskDag:
     """Bestaetigte Goals -> verketteter Gesamt-DAG (det, modellfrei).
@@ -107,13 +107,14 @@ def build_dag(
     (kein Modell noetig) -- so kann die Confirm-Schale (I-6.3) sie aufrufen, ohne
     einen IntentDecomposer/Model zu halten.
 
-    with_architect (I-REK.6) + with_test_gate (I-REK.4): plan-weite Opt-ins, an
-    jede Goal-Zerlegung durchgereicht (greifen nur bei implement/fix). Die
-    architect-Heuristik ist heute plan-weit (die Instruktion ist eine fuer alle
-    Goals, GoalItem traegt keine eigene); der Aufrufer (deps.enqueue_plan)
-    entscheidet einmal fuer den Plan. Weil test_gate das Blatt des Schreib-Sub-
-    DAGs ist, warten abhaengige Goals ueber die Blatt-Kante bis die Tests gruen
-    sind (Frische-Invariante im Mehr-Goal-Plan, I-REK.2).
+    with_architect (I-REK.6) + with_test_gate (I-REK.4): Opt-ins, an jede Goal-
+    Zerlegung durchgereicht (greifen nur bei implement/fix). with_architect ist
+    ENTWEDER ein bool (plan-weit, wie bisher -- die Instruktion ist eine fuer alle
+    Goals) ODER ein Callable(goal) -> bool (I-REK.8: PRO Goal entscheiden, ob das
+    Kind einen eigenen architect braucht oder ein det/schlichtes Kind ist -- jedes
+    Kind ist eine Zelle). Weil test_gate das Blatt des Schreib-Sub-DAGs ist, warten
+    abhaengige Goals ueber die Blatt-Kante bis die Tests gruen sind (Frische-
+    Invariante im Mehr-Goal-Plan, I-REK.2).
     """
     if not plan.goals:
         return TaskDag(dag_id=str(uuid.uuid4()), nodes=[])
@@ -123,12 +124,13 @@ def build_dag(
 
     for i, goal in enumerate(plan.goals):
         prefix = f"g{i}_"
+        wa = with_architect(goal) if callable(with_architect) else with_architect
         sub = decompose(
             goal.task_type,
             goal.scope,
             scope_resolver=scope_resolver,
             cache_query=cache_query,
-            with_architect=with_architect,
+            with_architect=wa,
             with_test_gate=with_test_gate,
         )
         prefixed = _prefix_dag(sub, prefix)

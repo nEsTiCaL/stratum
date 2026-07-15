@@ -10,9 +10,11 @@ import json
 
 from core.planner import (
     LARGE_PLAN_THRESHOLD,
+    GoalItem,
     IntentDecomposer,
     Plan,
     _leaf_ids,
+    build_dag,
 )
 from core.router import TaskType
 from core.validator import FakeModel
@@ -193,6 +195,28 @@ def test_build_dag_with_test_gate_makes_test_gate_the_leaf():
     # ... und die Wurzel von Goal-1 haengt daran (wartet auf gruene Tests).
     g1_root = next(n for n in dag.nodes if n.id == "g1_n1")
     assert g0_test.id in g1_root.depends_on
+
+
+def test_build_dag_with_architect_per_goal_callable():
+    """I-REK.8: with_architect darf ein Callable(goal)->bool sein -> PRO Goal
+    entscheiden, ob das Kind einen eigenen architect-Knoten bekommt (jedes Kind
+    eine Zelle). Hier: Goal-0 mit architect, Goal-1 ohne."""
+    plan = Plan(
+        goals=(
+            GoalItem(TaskType.implement, "file:big.py", ()),
+            GoalItem(TaskType.implement, "file:small.py", ()),
+        ),
+        large=False,
+    )
+    dag = build_dag(
+        plan,
+        scope_resolver=_FakeScopeResolver(),
+        with_architect=lambda g: g.scope == "file:big.py",
+    )
+    g0_types = {n.task_type for n in dag.nodes if n.id.startswith("g0_")}
+    g1_types = {n.task_type for n in dag.nodes if n.id.startswith("g1_")}
+    assert "architect" in g0_types  # grosses Goal -> eigener architect
+    assert "architect" not in g1_types  # kleines Goal -> det/schlichte Kette
 
 
 def test_decompose_strips_markdown_fences():

@@ -144,6 +144,7 @@ class LlmWorker:
                 instruction=item.payload.get("instruction", ""),
                 feedback=item.payload.get("verify_feedback", "") or "",
                 root=self.root,
+                plan_design=item.payload.get("plan_design", "") or "",
             )
         # Audit: der exakt gesendete Prompt pro VERSUCH in den Lauf-Trace (nicht
         # ins Voraus-Payload) -- so bleibt nachvollziehbar, was das Modell sah.

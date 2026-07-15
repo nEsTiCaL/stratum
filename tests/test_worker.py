@@ -318,7 +318,14 @@ class TestLlmWorker:
         captured: dict[str, str] = {}
 
         def fake_build(
-            repo, task_type, scope, instruction="", feedback="", *, root=None
+            repo,
+            task_type,
+            scope,
+            instruction="",
+            feedback="",
+            *,
+            root=None,
+            plan_design="",
         ):
             captured["instruction"] = instruction
             captured["feedback"] = feedback
@@ -351,7 +358,14 @@ class TestLlmWorker:
         captured: dict[str, str] = {}
 
         def fake_build(
-            repo, task_type, scope, instruction="", feedback="", *, root=None
+            repo,
+            task_type,
+            scope,
+            instruction="",
+            feedback="",
+            *,
+            root=None,
+            plan_design="",
         ):
             captured["feedback"] = feedback
             return "Nur Basis"
@@ -383,11 +397,10 @@ class TestLlmWorker:
         # dem local_phase geschrieben wird -> run() soll normal zurueckkehren.
         import core.node_prep as node_prep
 
-        monkeypatch.setattr(
-            node_prep,
-            "build_node_prompt",
-            lambda repo, tt, scope, instruction="", feedback="", *, root=None: "P",
-        )
+        def _fixed_prompt(repo, tt, scope, instruction="", feedback="", **kw):
+            return "P"
+
+        monkeypatch.setattr(node_prep, "build_node_prompt", _fixed_prompt)
         if design is not _UNSET:
             monkeypatch.setattr(node_prep, "read_design", lambda repo, scope: design)
 
@@ -884,7 +897,14 @@ class TestCloudPhase:
         built: list = []
 
         def fake_build(
-            repo, task_type, scope, instruction="", feedback="", *, root=None
+            repo,
+            task_type,
+            scope,
+            instruction="",
+            feedback="",
+            *,
+            root=None,
+            plan_design="",
         ):
             built.append((task_type, scope))
             return "fallback-prompt"
