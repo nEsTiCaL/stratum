@@ -278,6 +278,61 @@ class AppDeps:
         )
         return dag_id, task_ids[0]
 
+    def enqueue_impact(
+        self,
+        *,
+        op: str,
+        symbol: str,
+        anchor_scope: str,
+        prompt: str,
+        owner: str,
+        capability_id: int | None,
+        kind: str | None = None,
+    ) -> tuple[TaskDag, list[int]]:
+        """I-REK.10/12: validierte Graph-Op (rename/move/signature/delete) ->
+        EIN impact-Erzeuger-Knoten statt der generischen Zerlegung.
+
+        Der Knoten ist ein ``architect`` (er entwirft das geteilte Design fuer die
+        Aenderung); sein Completion-Hook (core.impact_expand.make_impact_hook,
+        in serve.py verdrahtet) enumeriert det die betroffenen Dateien, laesst bei
+        grossem Fan-out erst das Design reviewen (G3, Gate-Policy REK.12) und
+        materialisiert dann je betroffener Datei ein fix-Kind. ``anchor_scope`` =
+        Definition des Symbols (Anker fuer Graph-Kontext + das design-Artefakt, das
+        der Hook faedelt). Die Op-Metadaten liegen im Payload (``impact``), die
+        natuerlichsprachige Absicht als ``instruction`` (der architect-Prompt).
+        Gibt (dag, task_ids) zurueck -- analog enqueue_plan/enqueue_plan_architect."""
+        from core.template_registry import DagNode
+
+        root = self.prompt_root(owner, capability_id)
+        dag_id = f"impact-{uuid.uuid4().hex[:8]}"
+        dag = TaskDag(
+            dag_id,
+            [
+                DagNode(
+                    id="n1",
+                    task_type="architect",
+                    scope=anchor_scope,
+                    depends_on=(),
+                    status="pending",
+                    flags=frozenset(),
+                )
+            ],
+        )
+        task_ids = self.queue.enqueue(
+            dag,
+            self.claim_model("architect", CONFIRM_MODEL),
+            owner=owner,
+            capability_id=capability_id,
+        )
+        self.ensure_indexed(root, anchor_scope)
+        impact_meta: dict[str, str] = {"op": op, "symbol": symbol}
+        if kind:
+            impact_meta["kind"] = kind
+        self.queue.update_payload(
+            task_ids[0], {"instruction": prompt, "impact": impact_meta, "depth": 0}
+        )
+        return dag, task_ids
+
     def store_plan(self, prompt: str, plan: Plan, producer: str) -> dict[str, Any]:
         artifact = build_plan_artifact(
             prompt, plan, root=self.source_root or Path("."), producer=producer

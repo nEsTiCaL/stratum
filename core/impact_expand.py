@@ -35,10 +35,24 @@ geteilte Design prueft. Dieser Review-Knoten traegt selbst die impact-Metadaten 
 materialisiert JETZT die Kinder (Verifikation vor Multiplikation: 1 Review statt N
 konsistent falscher Patches). Der Trivial-/Mittelfall (Radius unter der Schwelle)
 materialisiert direkt wie vor REK.12 -- keine Zaehigkeit.
+
+Design-Review-Gate an die Eskalationsleiter gekoppelt (arch_rekursion, Rung
+re_design): das G3-Review liefert ein VERDIKT (``verdict: ok`` |
+``needs_redesign``). Ist der Review done und lautet das Verdikt ``needs_redesign``
+(und ist das re-design-Budget nicht erschoepft), wird NICHT materialisiert --
+stattdessen ein FRISCHER architect-Knoten (``build_redesign_node``) unter dem
+Review eingereiht, der das Design mit dem Review-Feedback (``verify_feedback``)
+neu entwirft; seine Fertigstellung feuert den Hook erneut -> neues Review -> ...
+(Stufen-Zaehler ``redesign_stage``, gekappt bei ``MAX_DESIGN_REVIEW_REDESIGNS``).
+Verdikt ``ok`` oder Budget erschoepft -> materialisieren. Das ist die re-design-
+Sprosse fuer die hook-erzeugte Kette (harter Reset mit frischer Knoten-Identitaet,
+wie in spec_rekursion I-REK.11 als Folge-Haeppchen skizziert), NICHT die
+template-gebundenen REK.11-Primitive (reopen_for_redesign/reexpand_write_subdag).
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -215,20 +229,79 @@ def build_design_review_node(scope: str) -> DagNode:
     )
 
 
+# Verdikt-Werte des Design-Reviews (parsebare Zeile "verdict: <wert>").
+REVIEW_VERDICT_OK = "ok"
+REVIEW_VERDICT_REDESIGN = "needs_redesign"
+
+# Wie oft ein Design nach einem needs_redesign-Verdikt neu entworfen werden darf,
+# bevor der Fan-out trotzdem materialisiert wird (Kappung wie die Eskalations-
+# leiter, LADDER_STAGES=2). Verhindert eine Endlosschleife Review<->re-design.
+MAX_DESIGN_REVIEW_REDESIGNS = 2
+
+_VERDICT_RE = re.compile(
+    r"verdict\s*[:=]\s*`?\*?(ok|needs_redesign)\*?`?", re.IGNORECASE
+)
+
+
+def parse_review_verdict(text: str) -> str:
+    """Verdikt aus einer Design-Review-Antwort ziehen (rein, tolerant).
+
+    Sucht die Zeile ``verdict: ok`` / ``verdict: needs_redesign`` (case-insensitiv,
+    Backtick/Stern-tolerant). Fehlt eine erkennbare Zeile -> ``ok`` (permissiv: das
+    Review LIEF, ein unlesbares Verdikt darf den Fan-out nicht dauerhaft blockieren
+    -- die Sicherheit liegt darin, dass ueberhaupt geprueft wurde)."""
+    m = _VERDICT_RE.search(text or "")
+    if m and m.group(1).lower() == REVIEW_VERDICT_REDESIGN:
+        return REVIEW_VERDICT_REDESIGN
+    return REVIEW_VERDICT_OK
+
+
 def render_review_instruction(
     expansion: ImpactExpansion, design: str, radius: int
 ) -> str:
     """Instruktion des Design-Review-Knotens (G3): das geteilte Design + der Auftrag,
-    es VOR dem Fan-out auf Luecken/Risiken zu pruefen. Das Design steht in der
-    Instruktion (nicht nur im plan_design), damit es der Review-Prompt traegt --
-    build_node_prompt reicht plan_design nur an implement/fix, der Review-Pfad
-    liest die instruction (build_review_prompt)."""
+    es VOR dem Fan-out auf Luecken/Risiken zu pruefen, plus die Verdikt-Zeile fuers
+    Eskalations-Signal. Das Design steht in der Instruktion (nicht nur im
+    plan_design), damit es der Review-Prompt traegt -- build_node_prompt reicht
+    plan_design nur an implement/fix, der Review-Pfad liest die instruction
+    (build_review_prompt)."""
     return (
         f"Pruefe VOR dem Fan-out das folgende geteilte Design fuer die Aenderung "
         f"`{expansion.op.value} {expansion.symbol}` ({radius} betroffene Datei(en)). "
         f"Ist der Ansatz stimmig und vollstaendig? Nenne Luecken, Risiken und "
         f"Inkonsistenzen, BEVOR die {radius} Patches erzeugt werden.\n\n"
-        f"Geteiltes Design:\n{design}"
+        f"Geteiltes Design:\n{design}\n\n"
+        f"Schliesse mit GENAU EINER Zeile ab:\n"
+        f"`verdict: {REVIEW_VERDICT_OK}` (Design tragfaehig, Fan-out freigeben) ODER "
+        f"`verdict: {REVIEW_VERDICT_REDESIGN}` (ernste Luecken -> ueberarbeiten)."
+    )
+
+
+def build_redesign_node(scope: str) -> DagNode:
+    """Ein frischer ``architect``-Knoten (re_design-Sprosse, I-REK.12/Teil B): entwirft
+    das Design nach einem ``needs_redesign``-Verdikt NEU (mit dem Review-Feedback im
+    Payload als ``verify_feedback`` -> build_node_prompt haengt es an). Frische
+    Knoten-Identitaet (unter dem Review namespaced) statt Reopen -- kein Kampf mit
+    der enqueue_children-Idempotenz; seine Fertigstellung feuert den Hook erneut."""
+    return DagNode(
+        id="redesign",
+        task_type="architect",
+        scope=scope,
+        depends_on=(),
+        status="pending",
+        flags=frozenset(),
+    )
+
+
+def render_redesign_instruction(expansion: ImpactExpansion) -> str:
+    """Instruktion des re-design-architect: das Design fuer die Graph-Op neu
+    entwerfen. Das konkrete Review-Feedback kommt separat als ``verify_feedback``
+    ins Payload (build_node_prompt haengt es an den architect-Prompt)."""
+    return (
+        f"Entwirf das Design fuer die Aenderung `{expansion.op.value} "
+        f"{expansion.symbol}` NEU -- das vorige Design wurde im Review als "
+        f"unzureichend bewertet (siehe Feedback). Adressiere die genannten "
+        f"Luecken/Risiken, bevor die betroffenen Dateien angepasst werden."
     )
 
 
@@ -275,6 +348,17 @@ def _existing_design(repo: Repository, scope: str) -> str:
     art = getter(scope, "design")
     text = (getattr(art, "content", None) or {}).get("text", "") if art else ""
     return (text or "").strip()
+
+
+def _review_text(repo: Repository, scope: str) -> str:
+    """Gesamter Text des aktuellen review_findings-Artefakts des Scopes (alle
+    content-Felder verbunden -- die Verdikt-Zeile kann in text/findings landen)."""
+    getter = getattr(repo, "get_current", None)
+    if getter is None:
+        return ""
+    art = getter(scope, "review_findings")
+    content = (getattr(art, "content", None) or {}) if art else {}
+    return "\n".join(str(v) for v in content.values())
 
 
 def make_impact_hook(
@@ -327,13 +411,58 @@ def make_impact_hook(
         )
         depth = int(payload.get("depth", 0))
         radius = len(prepared.nodes)
+        stage = int(payload.get("redesign_stage", 0))
+
+        def _materialize() -> None:
+            queue.enqueue_children(  # type: ignore[attr-defined]
+                item,
+                prepared.nodes,
+                base_payload={
+                    "depth": depth + 1,
+                    "instruction": expansion.instruction,
+                    "plan_design": design,
+                },
+                model_for=model_for,
+            )
+
+        # Re-Fire NACH dem Design-Review (der review-Knoten trug design_reviewed):
+        # Verdikt lesen und die re_design-Sprosse entscheiden (Teil B).
+        if payload.get("design_reviewed"):
+            verdict = parse_review_verdict(_review_text(repo, scope))
+            if (
+                verdict == REVIEW_VERDICT_REDESIGN
+                and stage < MAX_DESIGN_REVIEW_REDESIGNS
+            ):
+                # re_design: frischer architect-Knoten mit dem Review-Feedback; NICHT
+                # materialisieren. Seine Fertigstellung feuert den Hook erneut (ohne
+                # design_reviewed -> Gate-Zweig -> neues Review), Stufe hochgezaehlt.
+                redesign = prepare_children(item.node_id, [build_redesign_node(scope)])
+                if not redesign.nodes:
+                    return
+                queue.enqueue_children(  # type: ignore[attr-defined]
+                    item,
+                    redesign.nodes,
+                    base_payload={
+                        "depth": depth + 1,
+                        "instruction": render_redesign_instruction(expansion),
+                        "impact": meta,
+                        "redesign_stage": stage + 1,
+                        "verify_feedback": _review_text(repo, scope),
+                    },
+                    model_for=model_for,
+                )
+                return
+            # Verdikt ok ODER re-design-Budget erschoepft -> Fan-out materialisieren.
+            _materialize()
+            return
 
         # I-REK.12: Gate-Haerte ~ Wirkradius. Verlangt der Fan-out ein Design-Review
         # (G3) und ist es noch nicht gelaufen, wird statt der N Kinder EIN review-
-        # Knoten eingereiht. Er traegt die impact-Metadaten + design_reviewed; ist er
-        # done, feuert dieser Hook erneut und materialisiert die Kinder (Verifikation
-        # vor Multiplikation). Trivial-/Mittelfall -> direkt wie vor REK.12.
-        if requires_design_review(radius) and not payload.get("design_reviewed"):
+        # Knoten eingereiht. Er traegt die impact-Metadaten + design_reviewed (+ die
+        # aktuelle re-design-Stufe); ist er done, feuert dieser Hook erneut und
+        # entscheidet ueber das Verdikt (Verifikation vor Multiplikation).
+        # Trivial-/Mittelfall -> direkt wie vor REK.12.
+        if requires_design_review(radius):
             review = prepare_children(item.node_id, [build_design_review_node(scope)])
             if not review.nodes:
                 return
@@ -346,32 +475,30 @@ def make_impact_hook(
                     "plan_design": design,
                     "impact": meta,
                     "design_reviewed": True,
+                    "redesign_stage": stage,
                 },
                 model_for=model_for,
             )
             return
 
-        queue.enqueue_children(  # type: ignore[attr-defined]
-            item,
-            prepared.nodes,
-            base_payload={
-                "depth": depth + 1,
-                "instruction": expansion.instruction,
-                "plan_design": design,
-            },
-            model_for=model_for,
-        )
+        _materialize()
 
     return hook
 
 
 __all__ = [
+    "MAX_DESIGN_REVIEW_REDESIGNS",
+    "REVIEW_VERDICT_OK",
+    "REVIEW_VERDICT_REDESIGN",
     "ImpactExpansion",
     "UncertainCaller",
     "build_design_review_node",
     "build_impact_children",
+    "build_redesign_node",
     "impact_expand",
     "make_impact_hook",
+    "parse_review_verdict",
+    "render_redesign_instruction",
     "render_review_instruction",
     "render_shared_design",
 ]

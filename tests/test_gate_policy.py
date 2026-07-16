@@ -21,7 +21,14 @@ from core.gate_policy import (
     min_gate,
     requires_design_review,
 )
-from core.impact_expand import build_design_review_node, make_impact_hook
+from core.impact_expand import (
+    MAX_DESIGN_REVIEW_REDESIGNS,
+    REVIEW_VERDICT_OK,
+    REVIEW_VERDICT_REDESIGN,
+    build_design_review_node,
+    make_impact_hook,
+    parse_review_verdict,
+)
 from core.queue import Queue
 from core.repository import SymbolHit
 from core.template_registry import DagNode, TaskDag
@@ -103,12 +110,16 @@ def _hit(name: str, scope: str) -> SymbolHit:
 
 class _FakeRepo:
     """find_symbol + impact fuer einen konfigurierbaren Fan-out; get_edges leer
-    (keine unsicheren Kanten), get_current ohne Design-Artefakt."""
+    (keine unsicheren Kanten). get_current liefert optional ein review_findings-
+    Artefakt (Design-Review-Verdikt, Teil B); design bleibt leer -> det-Seed."""
 
-    def __init__(self, symbol: str, def_scope: str, users: list[str]) -> None:
+    def __init__(
+        self, symbol: str, def_scope: str, users: list[str], review: str | None = None
+    ) -> None:
         self._symbol = symbol
         self._def = def_scope
         self._users = users
+        self._review = review
 
     def find_symbol(self, name, *, kind=None):  # noqa: ARG002
         return [_hit(name, self._def)] if name == self._symbol else []
@@ -120,6 +131,8 @@ class _FakeRepo:
         return []
 
     def get_current(self, scope, artifact_type, *, trustworthy=False):  # noqa: ARG002
+        if artifact_type == "review_findings" and self._review is not None:
+            return type("_Art", (), {"content": {"text": self._review}})()
         return None
 
 
@@ -228,6 +241,87 @@ def test_build_design_review_node_shape():
 
 
 # --------------------------------------------------------------------------- #
+# 2b. Design-Review-Gate an die Eskalation gekoppelt (Verdikt -> re_design)   #
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_review_verdict():
+    assert (
+        parse_review_verdict("...\nverdict: needs_redesign") == REVIEW_VERDICT_REDESIGN
+    )
+    assert parse_review_verdict("verdict: ok") == REVIEW_VERDICT_OK
+    assert parse_review_verdict("VERDICT = `needs_redesign`") == REVIEW_VERDICT_REDESIGN
+    # Keine erkennbare Zeile -> permissiv ok (das Review lief; nicht blockieren).
+    assert parse_review_verdict("nur Prosa ohne Verdikt") == REVIEW_VERDICT_OK
+    assert parse_review_verdict("") == REVIEW_VERDICT_OK
+
+
+def _reviewed_producer(review: str, *, stage: int = 0) -> _Producer:
+    """Ein 'review done'-Erzeuger: design_reviewed gesetzt, impact-Metadaten da,
+    aktuelle re-design-Stufe -- so wie der review-Knoten beim Re-Fire aussieht."""
+    return _Producer(
+        "n1/review",
+        payload={
+            "impact": {"op": "signature", "symbol": "big"},
+            "depth": 1,
+            "design_reviewed": True,
+            "redesign_stage": stage,
+        },
+    )
+
+
+def test_review_verdict_ok_materializes():
+    """Verdikt ok -> die fix-Kinder werden materialisiert (Fan-out freigegeben)."""
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    repo = _FakeRepo(
+        "big",
+        "file:a.py",
+        [f"file:u{i}.py" for i in range(6)],
+        review="Design tragfaehig.\nverdict: ok",
+    )
+    hook(_reviewed_producer(repo._review), repo, None)
+    nodes = queue.calls[0]["nodes"]
+    assert all(n.task_type == "fix" for n in nodes)
+    assert len(nodes) > 1  # der Fan-out, kein Review/Redesign
+
+
+def test_review_verdict_needs_redesign_enqueues_redesign():
+    """Verdikt needs_redesign (Budget frei) -> KEIN Fan-out; ein frischer
+    architect-redesign-Knoten mit dem Review-Feedback + hochgezaehlter Stufe."""
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    review = "Luecke: Aufrufer X uebersehen.\nverdict: needs_redesign"
+    repo = _FakeRepo(
+        "big", "file:a.py", [f"file:u{i}.py" for i in range(6)], review=review
+    )
+    hook(_reviewed_producer(review, stage=0), repo, None)
+
+    nodes = queue.calls[0]["nodes"]
+    assert len(nodes) == 1
+    assert nodes[0].task_type == "architect"  # re_design
+    base = queue.calls[0]["base_payload"]
+    assert base["redesign_stage"] == 1
+    assert "Luecke" in base["verify_feedback"]  # Review-Feedback gefaedelt
+    assert "design_reviewed" not in base  # der redesign-Knoten laeuft ins Gate
+
+
+def test_redesign_budget_exhausted_materializes_anyway():
+    """Verdikt needs_redesign, aber Budget erschoepft (Stufe == Kappung) ->
+    trotzdem materialisieren (keine Endlosschleife)."""
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    review = "immer noch Luecken.\nverdict: needs_redesign"
+    repo = _FakeRepo(
+        "big", "file:a.py", [f"file:u{i}.py" for i in range(6)], review=review
+    )
+    hook(_reviewed_producer(review, stage=MAX_DESIGN_REVIEW_REDESIGNS), repo, None)
+
+    nodes = queue.calls[0]["nodes"]
+    assert all(n.task_type == "fix" for n in nodes)  # Fan-out trotz needs_redesign
+
+
+# --------------------------------------------------------------------------- #
 # 3. Ende-zu-Ende gegen echtes Postgres (Re-Fire-Kette persistiert)           #
 # --------------------------------------------------------------------------- #
 
@@ -293,3 +387,33 @@ class TestReviewGateEndToEnd:
         # def a.py + (Schwelle+1) Aufrufer, alle unter dem Review namespaced.
         assert len(fix_ids) == DEFAULT_REVIEW_RADIUS + 2
         assert all(fid.startswith("n1/review/") for fid in fix_ids)
+
+    def test_needs_redesign_verdict_reopens_design(self, conn):
+        """Teil B: ein needs_redesign-Verdikt aus dem Review reiht statt der
+        fix-Kinder einen frischen architect-redesign-Knoten ein (echtes Postgres)."""
+        q = Queue(conn)
+        review_text = "Aufrufer uebersehen.\nverdict: needs_redesign"
+        repo = _FakeRepo(
+            "big", "file:a.py", [f"file:u{i}.py" for i in range(6)], review=review_text
+        )
+        hook = make_impact_hook(q)
+
+        (pid,) = q.enqueue(_producer_dag("rd"), model="tree-sitter")
+        q.update_payload(
+            pid, {"impact": {"op": "signature", "symbol": "big"}, "depth": 0}
+        )
+        producer = q.claim("tree-sitter")
+        q.complete(producer.id)
+        hook(producer, repo, None)  # -> review-Knoten
+
+        review = q.claim("tree-sitter")
+        assert review.node_id == "n1/review"
+        q.complete(review.id)
+        hook(review, repo, None)  # Verdikt needs_redesign -> re_design
+
+        rows = _dag_rows(conn, "rd")
+        by_type = {r[1] for r in rows}
+        assert "fix" not in by_type  # NICHT materialisiert
+        redesign = [r for r in rows if r[1] == "architect"]
+        assert len(redesign) == 1
+        assert redesign[0][0].startswith("n1/review/")  # frischer Knoten unter Review

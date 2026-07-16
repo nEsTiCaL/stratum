@@ -579,6 +579,12 @@ class WorkerLoop:
         Wiederholung, kein Kreislauf. spawn_fix injiziert (Routing/Workspace)."""
         if self.spawn_fix is None:
             return
+        # I-REK.12: ein review-Knoten INNERHALB der impact-Expansion ist ein
+        # Design-Review-Gate (payload["impact"] gesetzt), kein eigenstaendiges
+        # Code-Review -- sein Nachlauf ist der impact-Hook (_maybe_expand:
+        # materialisieren bzw. re-design), NICHT ein separater fix-Spawn.
+        if (getattr(item, "payload", {}) or {}).get("impact"):
+            return
         try:
             task_type = TaskType(item.task_type)
         except ValueError:

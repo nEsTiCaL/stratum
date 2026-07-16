@@ -74,6 +74,41 @@ def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
     )
 
 
+def _detect_graph_op(
+    deps: AppDeps, prompt: str, owner: str, capability_id: int | None
+) -> tuple[Any, str] | None:
+    """I-REK.9/10-Weiche: ist der Schreib-Auftrag eine VALIDIERTE Graph-Op
+    (rename/move/signature/delete) auf GENAU EINEM existenten Symbol?
+
+    Ja -> (ValidatedChange, anchor_scope) fuer den impact-Pfad (deterministische
+    Enumeration der betroffenen Dateien statt geratener Zerlegung). Sonst None ->
+    Fallback auf die generische enqueue_plan-Zerlegung. Braucht ein Klassifikations-
+    modell (decompose_model) und einen aufloesbaren Workspace; fehlt eins, kein
+    Shortcut (der generische Pfad ist immer korrekt, nur weniger praezise --
+    arch_rekursion Risiko 2, "falsche Weiche = verlorener Shortcut, nie Korrektheit").
+    Mehr als ein Zielsymbol -> Fallback (der impact-Erzeuger traegt EIN Symbol;
+    Mehrfachziele sind ein Folge-Haeppchen)."""
+    from core.change_classify import classify_and_validate
+
+    model = deps.decompose_model
+    if model is None or not prompt.strip():
+        return None
+    root = deps.prompt_root(owner, capability_id)
+    if root is None:
+        return None
+    allowed = frozenset(file_scope(rel) for rel in source_files(root))
+    if not allowed:
+        return None
+    change = classify_and_validate(model, deps.repo, prompt, allowed_scopes=allowed)
+    if not change.validated or len(change.targets) != 1:
+        return None
+    symbol = change.targets[0]
+    hits = [h for h in deps.repo.find_symbol(symbol) if h.scope in allowed]
+    if not hits:
+        return None
+    return change, hits[0].scope
+
+
 @router.post("/api/task", status_code=201)
 async def create_task(
     body: TaskCreateBody,
@@ -130,6 +165,31 @@ async def create_task(
     # damit der Patch verifiziert + auto-appliziert wird statt als Sackgassen-
     # Artefakt zu enden. Ein-Goal-Plan durch dieselbe Enqueue-Schale.
     if task_type in _WRITE_TASK_TYPES:
+        # I-REK.9/10/12-Weiche: ist der Auftrag eine validierte Graph-Op auf EINEM
+        # Symbol, laeuft er ueber den impact-Pfad (det-Enumeration der betroffenen
+        # Dateien + Design-vor-Fan-out + Gate-Policy) statt der generischen
+        # Zerlegung. Nicht validierbar / kein Modell -> Fallback (immer korrekt).
+        detected = _detect_graph_op(deps, body.prompt, owner, capability_id)
+        if detected is not None:
+            change, anchor_scope = detected
+            dag, task_ids = deps.enqueue_impact(
+                op=change.op.value,
+                symbol=change.targets[0],
+                anchor_scope=anchor_scope,
+                prompt=body.prompt,
+                owner=owner,
+                capability_id=capability_id,
+            )
+            resp = {
+                "id": task_ids[0],
+                "dag_id": dag.dag_id,
+                "task_ids": task_ids,
+                "change_op": change.op.value,
+            }
+            if classified:
+                resp["task_type"] = task_type
+            return resp
+
         plan = Plan(
             goals=(GoalItem(TaskType(task_type), body.scope, ()),),
             large=False,

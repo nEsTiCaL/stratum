@@ -184,6 +184,102 @@ class TestDirectWriteTask:
         assert conn.execute("SELECT count(*) FROM queue").fetchone()[0] == 1
 
 
+class _FakeChangeModel:
+    """decompose_model-Stub fuer die Aenderungsart-Weiche: liefert jede
+    Klassifikations-Antwort woertlich zurueck (classify_change ruft .complete)."""
+
+    def __init__(self, response: str) -> None:
+        self._response = response
+
+    def complete(self, prompt: str) -> str:  # noqa: ARG002
+        return self._response
+
+
+def _graph_op_app(conn, tmp_path, response: str):
+    """create_app mit Workspace (tmp_path) + Klassifikationsmodell, sodass die
+    I-REK.9/10-Weiche in create_task greifen kann. Symbol foo liegt indexiert."""
+    src = "def foo():\n    return 1\n"
+    (tmp_path / "mod.py").write_text(src, encoding="utf-8")
+    repo = Repository(conn)
+    ingest_content(repo, "mod.py", src, source_hash="h-foo")
+    return create_app(
+        Queue(conn),
+        repo,
+        source_root=tmp_path,
+        decompose_model=_FakeChangeModel(response),
+        sse_delay=0,
+        sse_max_events=1,
+    )
+
+
+class TestGraphOpWeiche:
+    """I-REK.9/10/12: eine validierte Graph-Op im create_task-Write-Zweig laeuft
+    ueber den impact-Pfad (EIN architect-Erzeuger mit impact-Metadaten) statt der
+    generischen Zerlegung; eine offene Aenderung faellt auf enqueue_plan zurueck."""
+
+    def test_validated_graph_op_routes_to_impact(self, conn, tmp_path):
+        app = _graph_op_app(conn, tmp_path, "change_op: rename\ntargets: foo")
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/task",
+                json={
+                    "task_type": "fix",
+                    "scope": "file:mod.py",
+                    "prompt": "benenne foo um",
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["change_op"] == "rename"
+        assert body["dag_id"].startswith("impact-")
+        rows = conn.execute(
+            "SELECT task_type, payload FROM queue WHERE dag_id = %s",
+            (body["dag_id"],),
+        ).fetchall()
+        assert len(rows) == 1  # EIN impact-Erzeuger (architect), kein Sub-DAG
+        assert rows[0][0] == "architect"
+        assert rows[0][1]["impact"] == {"op": "rename", "symbol": "foo"}
+
+    def test_open_change_falls_back_to_plan(self, conn, tmp_path):
+        app = _graph_op_app(conn, tmp_path, "change_op: open\ntargets:")
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/task",
+                json={
+                    "task_type": "fix",
+                    "scope": "file:mod.py",
+                    "prompt": "raeum das modul auf",
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert "change_op" not in body  # kein impact-Pfad
+        rows = conn.execute(
+            "SELECT task_type FROM queue WHERE dag_id = %s ORDER BY id",
+            (body["dag_id"],),
+        ).fetchall()
+        assert [row[0] for row in rows] == ["index", "fix", "lint_gate"]
+
+    def test_nonexistent_symbol_falls_back_to_plan(self, conn, tmp_path):
+        # Modell raet rename eines Symbols, das der Graph NICHT kennt -> det-Gate
+        # verwirft (validated False) -> generische Zerlegung (immer korrekt).
+        app = _graph_op_app(conn, tmp_path, "change_op: rename\ntargets: ghost")
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/task",
+                json={
+                    "task_type": "fix",
+                    "scope": "file:mod.py",
+                    "prompt": "benenne ghost um",
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        assert "change_op" not in r.json()
+
+
 class TestTestGateOptInWiring:
     """I-REK.4: enqueue_plan haengt genau dann einen test_gate-Knoten hinter das
     lint_gate, wenn der Schalter an ist UND der Workspace Tests traegt."""

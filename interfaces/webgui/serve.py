@@ -30,6 +30,7 @@ import uvicorn
 from core.apply_gate import apply_confirmed_patch
 from core.architect_policy import needs_architect
 from core.db import apply_migrations
+from core.impact_expand import make_impact_hook
 from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
 from core.node_prep import materialize_prob_nodes
@@ -41,7 +42,7 @@ from core.router import MODEL_CAPABILITIES, Provider, Router, TaskType
 from core.scope_resolver import RepoScopeResolver
 from core.secret_scan import EgressPolicy
 from core.settings import RuntimeSettings
-from core.task_routing import CONFIRM_MODEL, auto_capable_task_types
+from core.task_routing import CONFIRM_MODEL, auto_capable_task_types, claim_model
 from core.template_registry import DagNode, TaskDag, decompose
 from core.test_gate import TestGateWorker, workspace_has_tests
 from core.worker import DetWorker, LlmWorker, WorkerLoop
@@ -360,6 +361,24 @@ def _make_worker_loop(
             print(f"[worker] Auto-Apply uebersprungen ({item.scope}): {result.reason}")
 
     worker_queue = Queue(worker_conn)
+
+    # Completion-Hooks komponieren: der plan_architect-Hook (REK.8, feuert nur bei
+    # task_type plan_architect) UND der impact-Hook (REK.10/12, feuert nur bei
+    # payload["impact"]). Beide sind ausserhalb ihres Triggers No-Op -> die
+    # Komposition ruft schlicht beide. Der impact-Hook routet Kinder (fix/review/
+    # architect) per claim_model auf einen faehigen Worker (sonst model:human).
+    plan_arch_hook = make_plan_architect_hook(source_root=root)
+    impact_hook = make_impact_hook(
+        worker_queue,
+        model_for=lambda node: claim_model(
+            node.task_type, CONFIRM_MODEL, auto_capable=auto_capable
+        ),
+    )
+
+    def _expand_hook(item, hook_repo, hook_root):
+        plan_arch_hook(item, hook_repo, hook_root)
+        impact_hook(item, hook_repo, hook_root)
+
     loop = WorkerLoop(
         queue=worker_queue,
         repo=worker_repo,
@@ -380,12 +399,12 @@ def _make_worker_loop(
         resolve_root=_resolve_root,
         spawn_fix=_spawn_fix,
         auto_apply=_auto_apply,
-        # I-REK.8: erster prob-Konsument des Completion-Hooks. Ein fertiger
-        # plan_architect-Knoten ueberarbeitet den Plan (formt+validiert Goals,
-        # geteiltes Design) und legt ihn als PROPOSED ab -> Cockpit-Confirm (G4)
-        # materialisiert. source_root = Stratum-Repo (Provenance des Plan-Artefakts);
-        # die Goal-Validierung nutzt den per-Item-root (Key-Workspace).
-        expand_hook=make_plan_architect_hook(source_root=root),
+        # I-REK.8/10/12: komponierter Completion-Hook (plan_architect + impact).
+        # plan_architect ueberarbeitet einen grossen Plan (G4-Confirm materialisiert);
+        # impact enumeriert eine Graph-Op det, reviewt bei grossem Fan-out das Design
+        # (G3) und materialisiert je Datei ein fix-Kind. source_root = Stratum-Repo
+        # (Provenance); die Validierung nutzt den per-Item-root (Key-Workspace).
+        expand_hook=_expand_hook,
     )
     return loop, decompose_model, decompose_producer, auto_capable
 

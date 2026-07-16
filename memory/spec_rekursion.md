@@ -670,13 +670,66 @@ grosser Fan-out reiht EINEN review-Knoten (nicht die Kinder), Re-Fire (design_re
 im Payload) materialisiert die fix-Kinder mit geprueftem Design, kleiner Fan-out direkt.
 (3) E2E echtes Postgres: Erzeuger done -> nur `n1/review` sichtbar (kein fix-Kind),
 Review done -> die N `n1/review/…`-fix-Kinder. 1227 gruen (+12), ruff clean.
-Befunde/offen: (a) Das Review-Gate LAEUFT vor dem Fan-out, blockiert die Kinder aber
-nicht bei einem inhaltlich schlechten Review -- prob-Review hat (anders als lint/test)
-kein pass/fail; die Review-Ausgabe ist heute Feedback, die Kopplung an die
-Eskalationsleiter (schlechtes Design-Review -> re-design) waere ein Folge-Haeppchen.
-(b) `make_impact_hook` ist weiterhin NICHT an serve.py verdrahtet (wie REK.10) -- der
-REK-Strang ist als Bausatz komplett, die Live-Verdrahtung (Weiche REK.9 -> impact-
-Erzeuger einreihen, Hook mit dem plan_architect-Hook komponieren) ist der naechste Schritt.
+Befunde/offen (beide in I-REK.13 aufgeloest): (a) Das Review-Gate lief vor dem Fan-out,
+blockierte die Kinder aber nicht bei schlechtem Review -- prob-Review hat kein pass/fail;
+die Kopplung an die Eskalationsleiter war als Folge-Haeppchen markiert -> JETZT REK.13
+Teil B (Verdikt-Zeile -> re_design). (b) `make_impact_hook` war nicht an serve.py
+verdrahtet -> JETZT REK.13 Teil 1/2 (Weiche in create_task, komponierter expand_hook).
+
+## I-REK.13  Live-Verdrahtung (REK.9->10->12) + Design-Review-Eskalation   [Strang W/S]
+
+```
+Ziel    : den det-Expansionspfad in serve.py scharf schalten (bisher Bausatz) UND
+          das G3-Design-Review an die Eskalationsleiter koppeln (Rung re_design).
+Akzeptanz: validierte Graph-Op im Hauptpfad -> impact statt Zerlegung; offene/
+          nicht-existente Aenderung -> Fallback; needs_redesign-Verdikt -> re-design
+          (gekappt); ok/Budget erschoepft -> Fan-out. Regression minimal (Weiche
+          nur bei vorhandenem Klassifikationsmodell + Workspace).
+Klasse  : gem   dep: I-REK.9, 10, 12
+```
+
+**FERTIG 2026-07-16.** Drei Stuecke:
+
+1. **Weiche** (`interfaces/webgui/routers/intent_plan._detect_graph_op`): im Write-
+   Zweig von `create_task` klassifiziert `change_classify.classify_and_validate`
+   (REK.9) den Prompt gegen den Key-Workspace (`allowed_scopes` = source_files des
+   prompt_root). Validierte Graph-Op (rename/move/signature/delete) auf GENAU EINEM
+   existenten Symbol -> `deps.enqueue_impact`; sonst (open / kein Modell / kein
+   Workspace / >1 Ziel) Fallback auf `enqueue_plan`. "falsche Weiche = verlorener
+   Shortcut, nie Korrektheit" (arch_rekursion Risiko 2). Antwort traegt `change_op`.
+2. **impact-Erzeuger** (`deps.enqueue_impact`): EIN `architect`-Knoten auf dem
+   Symbol-Def-Scope, `payload["impact"]={op,symbol}` + Instruktion (der Nutzer-
+   Prompt). Analog `enqueue_plan_architect`. **Komponierter `expand_hook`** in
+   serve.py: `make_plan_architect_hook` (REK.8) + `make_impact_hook` (REK.10/12) --
+   beide No-Op ausserhalb ihres Triggers (task_type plan_architect bzw.
+   payload["impact"]); der impact-Hook routet die Kinder (fix/review/architect) per
+   `claim_model`. Der Erzeuger done -> impact-Hook enumeriert -> (bei grossem Fan-out)
+   Review -> Fan-out.
+3. **Design-Review-Gate an die Eskalation** (Teil B, `core/impact_expand`): der G3-
+   Review liefert eine Verdikt-Zeile (`render_review_instruction` fordert sie an);
+   `parse_review_verdict` liest `verdict: ok|needs_redesign` (tolerant, Default `ok`
+   -- ein unlesbares Verdikt blockiert nicht). Beim Review-Re-Fire: `needs_redesign`
+   UND `redesign_stage < MAX_DESIGN_REVIEW_REDESIGNS` (=2) -> KEIN Fan-out, sondern
+   ein FRISCHER `architect`-redesign-Knoten (`build_redesign_node`) unter dem Review,
+   das Review-`review_findings` als `verify_feedback` (build_node_prompt haengt es an),
+   `redesign_stage+1`; seine Fertigstellung feuert den Hook erneut (Gate-Zweig ->
+   neues Review). Verdikt `ok` ODER Budget erschoepft -> materialisieren. Frische
+   Knoten-Identitaet statt Reopen (das REK.11-Befund-(a)-Folge-Haeppchen fuer hook-
+   erzeugte Ketten -- die template-gebundenen REK.11-Primitive greifen hier nicht).
+   `worker._maybe_spawn_fix` ueberspringt review-Knoten mit `payload["impact"]` (ein
+   Design-Review-Gate ist kein eigenstaendiges Code-Review -> kein Doppel-Spawn).
+
+Akzeptanz: `test_gate_policy.py` erweitert (Verdikt-Parser; Hook ok->Fan-out /
+needs_redesign->re_design mit Feedback+Stufe / Budget erschoepft->Fan-out; E2E echtes
+Postgres: needs_redesign persistiert einen redesign-architect statt fix-Kinder) +
+`test_webgui.py::TestGraphOpWeiche` (validierte Op->impact-Erzeuger; open->Zerlegung;
+nicht-existentes Symbol->Zerlegung). 1235 gruen (+8), ruff clean.
+Befunde/offen: (a) Mehrfach-Ziel-Ops fallen bewusst auf die Zerlegung zurueck (der
+impact-Erzeuger traegt EIN Symbol) -- Mehrsymbol-Impact waere ein Folge-Haeppchen.
+(b) Die Weiche ruft das Klassifikationsmodell pro Schreib-Task (nur wenn eins da ist);
+auf Profil D ohne Cloud (decompose_model None) ist sie ein No-Op = null Overhead.
+(c) Noch kein Live-Beleg auf einem realen Projekt (Dogfooding: grosse Graph-Op ->
+Review-Gate -> Fan-out), nur Test-Ebene.
 
 ## Handoff-Konvention je Paket
 

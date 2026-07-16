@@ -341,6 +341,7 @@ I-REK.9   Aenderungsart + det-Validierung    gem  REK.5 FERTIG   `spec_rekursion
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9 FERTIG `spec_rekursion`
 I-REK.11  Eskalation re-design/re-expand     det  REK.4,7 FERTIG `spec_rekursion`
 I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10 FERTIG `spec_rekursion`
+I-REK.13  Live-Verdrahtung + Review-Eskal.   gem  REK.9,10,12 FERTIG `spec_rekursion`
 ```
 
 Reihenfolge: Strang V zuerst KOMPLETT (REK.1-4, "messen vor optimieren" --
@@ -456,6 +457,29 @@ Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppe
 1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
 Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
 enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
+I-REK.13 FERTIG (2026-07-16): Live-Verdrahtung des det-Expansionspfads (REK.9->10->12)
+in serve.py + Design-Review-Gate an die Eskalation gekoppelt. (1) Weiche in create_task
+(_detect_graph_op): ist der Schreib-Auftrag eine validierte Graph-Op (classify_and_
+validate, REK.9) auf GENAU EINEM existenten Symbol -> deps.enqueue_impact statt der
+generischen Zerlegung. Der impact-Erzeuger ist ein architect-Knoten (scope = Symbol-
+Definition), payload["impact"]={op,symbol}. Nicht validierbar / kein Modell / >1 Ziel ->
+Fallback enqueue_plan (immer korrekt). (2) expand_hook in serve.py komponiert: plan_
+architect-Hook (REK.8) + impact-Hook (REK.10/12) -- beide No-Op ausserhalb ihres Triggers;
+impact-Kinder per claim_model geroutet. (3) Teil B (Design-Review->Eskalation, arch_
+rekursion Rung re_design): das G3-Review liefert eine Verdikt-Zeile (verdict: ok|needs_
+redesign, parse_review_verdict tolerant, Default ok). needs_redesign + Budget frei ->
+statt Materialisierung ein FRISCHER architect-redesign-Knoten (build_redesign_node) unter
+dem Review, Review-Feedback als verify_feedback, redesign_stage+1; seine Fertigstellung
+feuert den Hook erneut (neues Review). Verdikt ok ODER Budget erschoepft (MAX_DESIGN_
+REVIEW_REDESIGNS=2) -> materialisieren. Frische Knoten-Identitaet statt Reopen (das in
+REK.11 skizzierte Folge-Haeppchen fuer hook-erzeugte Ketten). worker._maybe_spawn_fix
+ueberspringt review-Knoten mit payload["impact"] (Design-Review-Gate != Code-Review, kein
+Doppel-Spawn). Akzeptanz: test_gate_policy.py erweitert (Verdikt-Parser, ok->Fan-out /
+needs_redesign->re_design / Budget erschoepft->Fan-out; E2E echtes Postgres re_design
+persistiert) + test_webgui.py TestGraphOpWeiche (validierte Op->impact / open->Zerlegung /
+nicht-existentes Symbol->Zerlegung). 1235 gruen (+8), ruff clean. NAECHSTER SCHRITT: REK-
+Strang inkl. Live-Verdrahtung komplett; offen nur Live-Beleg auf einem realen Projekt
+(Dogfooding: grosse Graph-Op -> Review-Gate -> Fan-out) sowie optional Mehrfach-Ziel-Ops.
 I-REK.12 FERTIG (2026-07-16): Gate-Policy Haerte~Wirkradius (+G3 Design-Review) --
 LETZTES REK-Haeppchen, REK-Strang damit komplett. Neu core/gate_policy.py (rein):
 GateLevel IntEnum G0..G4 (geordnet, "Mindest-Gate" braucht Ordnung) + min_gate(radius,
