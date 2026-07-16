@@ -391,6 +391,52 @@ E-10 implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      verbrannt). Leiter kann strukturelle Ursache nicht heilen (korrekt,
      aber teuer). Kandidat: Patch det auf den Ziel-Scope filtern (fremde
      create-Bloecke verwerfen) -> Folge-Goals EDITIEREN dann Bestand.
+E-11 /api/tasks-Fenster verliert die EIGENEN frischen done-Tasks (34er-Mix,
+     alte done bleiben drin); Query-Params dag_id/limit/status werden
+     IGNORIERT (identische Antwort); kein GET /api/task/{id}. Anwender kann
+     den Endstand seines DAGs nicht via REST verifizieren (K3-Messung nur
+     ueber DB moeglich). Kandidat: echte Filter-Params + Einzel-GET.
+E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
+     auf die 10k-Datei plan_format.py reproduzierbar applied=false
+     ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
+     das knappe Rueckkanten-Feedback reicht dem Modell NICHT zur Reparatur
+     (9 Laeufe). Leiter eskaliert die DENKebene (re_design/re_expand),
+     Ursache lag auf der FORMATebene. Kontrast: kleine Patches (router.py
+     F2, json_extract B3) applizieren im 1. Versuch. Kandidaten: toleranter
+     Apply (fuzzy/difflib bzw. git apply -C1), Feedback mit den ECHTEN
+     Umgebungszeilen der Fail-Stelle, Formatwechsel-Sprosse (whole-file-
+     Rewrite) VOR re_design.
+E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
+     TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
+     die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.
+     Kandidat: Task-/DAG-History-Endpoint (supersede-Kette + Reasons).
+E-14 Apply-Integritaet (F3, kritisch): /api/patches koppelt verified an den
+     letzten lint_report des SCOPES statt an das Patch-Artefakt -> nie
+     geprueft e impact-Patches erben fremde gruene Alt-Reports (verified=
+     true). /api/apply-Idempotenzwache is_applied ist ebenfalls scope-weit:
+     je einmal applizierter Scope -> NEUER Patch wird als "bereits
+     angewendet" verschluckt, Response applied:true OHNE Schreibvorgang
+     (stille Erfolgsluege; strict-Signatur nachweislich nicht im WS).
+     Auto-Apply-Pfad prueft is_applied dagegen NICHT (B3-fix auf
+     json_extract feuerte trotz F1-Flag) -> Asymmetrie. impact-Fan-outs
+     sind damit Ende-zu-Ende NICHT abschliessbar, sobald ein Ziel-Scope je
+     einen Apply sah. Kandidaten: verified/applied an die Patch-Artefakt-ID
+     koppeln; /api/apply ehrlich (applied:false wenn nichts geschrieben).
+E-15 debug-Briefing traegt Symptomort-Quelle + DEPENDENTS ("Aufrufer/
+     Dependents"), aber KEINE Dependency-Quelltexte -- fuer Ursachensuche
+     ist die Richtung verkehrt (Verdaechtige eines Symptoms in X sind Xs
+     Dependencies). qwen inferierte die extract_json-Ursache trotzdem aus
+     Import+Verhalten (beachtlich), konnte sie aber nicht BELEGEN.
+     Kandidat: debug-Briefing mit beiden Graph-Richtungen + Import-
+     Quelltexte (budget-gedeckelt).
+E-16 task_type debug laeuft auf dem woertlichen review-Systemprompt ("Du
+     bist ein erfahrener Code-Reviewer ... genau diese vier Ueberschriften
+     ... keine anderen"); die Anwender-Frage haengt als nachrangiger
+     "Hinweis:" bei ~12k/14k. Ursachen-Auftraege ("benenne die Datei unter
+     'Ursache'") KOENNEN nicht befolgt werden, ohne dem Systemprompt zu
+     widersprechen -- Antworten bleiben Review-Raster. Kandidat: eigenes
+     debug-Template (Repro -> Wirkkette -> Ursache mit Dateipfad ->
+     Fix-Ort), Anwender-Instruktion VOR den Quelltext.
 ```
 Erweiterungs-Protokoll nach jedem Lauf: (1) bestandene K-Stufe -> naechste
 fahren; (2) Grenzbefund -> hier listen + als Haeppchen-Kandidat an den Nutzer
@@ -462,3 +508,104 @@ Policy); die Grenzen liegen NICHT in der Rekursions-Mechanik, sondern in
 Patches ueberschreiten ihren Scope, und nichts prueft das Gesamtergebnis).
 Empfohlene Reihenfolge vor K3/K4: E-5 (Image+Haertung, sonst verfaelscht
 jeder Test-Gate-Fall), E-10 (det-Scope-Filter), E-8 (Report-Sichtbarkeit).
+
+### K3-Lauf 2026-07-16 nachmittags (Agent; Bestand TP-A, minicore+-Erweiterung
+### nicht noetig -- F3 nutzt strip_markdown_fence=2 Dateien unter der Schwelle)
+
+Vorbedingungen: Container-Recreate (Image 13:42, HEAD d247a68) hatte den
+E-5-Workaround GELOESCHT -> pytest fehlte wieder (E-5-Fluechtigkeit doppelt
+belegt), erneut pip install pytest. Baseline 57 gruen. Settings unveraendert
+(auto_apply/test_gate/architect an, min_chars 240). B2-Bug (number_to_index)
+und F3-Ground-Truth (1 def review_format + 1 user plan_format) code-verifiziert.
+
+- **REK-F2 (DAG 209-213): BESTANDEN.** Shape exakt: 5 Knoten ab Anlage
+  (index->architect->implement->lint_gate->test_gate; architect wegen
+  Instruktion ~590 Z. UND 15k-Datei), kein change_op in der Antwort (keine
+  Graph-Op -- Weiche laesst Feature-Prompts korrekt durch). REK.1 live:
+  implement-Prompt (20k) traegt "Entwurf des Architekten (setze ihn um):"
+  mit substanziellem Design (nennt _COST_RANK/Candidate.cost_tier/Immutable-
+  Konvention); producer qwen3.6-35b (model-Feld in /api/tasks ist nur das
+  Anlage-Modell, Claim routet um). Patch minimal (Sequence-Import + Funktion,
+  2 Hunks), Auto-Apply NACH test_gate, 57 Tests gruen + Funktionsprobe 3/3
+  (leer/paid_top/local), R9: 18 Dateien, keine Nachbarn (E-10 trat mit
+  explizitem "keine neuen Dateien anlegen"-Prompt nicht auf).
+- **REK-B2 (review 214 + fix-DAGs 215-222, 224-231): BESTANDEN nach
+  Hinweis-Retry; ergiebigster K3-Fall.**
+  - Review OHNE Hinweis: number_to_index-Duplikat NICHT gefunden (Stelle
+    sogar als "sicher" beschrieben) = R8-Ausgang (b) Modellgrenze; 3 andere
+    Befunde (davon 1 echter kleiner Bug: Heading-Reset fehlt). auto-spawn ✓
+    baut fix-DAG MIT architect (plan_format 10k >= min_loc; 5 Knoten statt
+    der erwarteten 4 -- Policy-konform).
+  - fix-DAG 1 (215-222): 2. LIVE-BELEG DER VOLLEN LEITER, diesmal im
+    Review-Fix-Pfad: re_act (217 a2) -> re_design (216 neu, DB stage=2 am
+    Ende) -> re_expand (217-219 superseded, frische Kette 220-222) ->
+    unresolved; Fail-Reason woertlich am GATE-Knoten 221: "verify
+    unresolved: Eskalationsleiter erschoepft (re_act -> re_design ->
+    re_expand -> unresolved)". test_gate 222 haengt seither pending
+    (E-7-Muster hinter unresolved). URSACHE der 9 roten Laeufe: E-12
+    (alle lint_reports applied=false, Kontext-Mismatch). Gates hielten
+    dicht: Workspace byte-identisch (R9 ✓, Invariante 3 live).
+  - Review MIT Hinweis (223, Prompt lenkt auf doppelte Schrittnummern ohne
+    Loesung vorzusagen): Bug EXAKT benannt ("Critical Logic Bug" + Trace).
+    fix-DAG 2 (224-231): Leiter half diesmal -- re_act-Kappung, re_design,
+    re_expand, dritter Anlauf 229 in EINEM Versuch gruen -> Auto-Apply.
+    Duplikat wirft jetzt ValueError ("nie still verfaelschen"-konform),
+    57 Tests gruen, R9 ✓. NEBENBEFUND Scope-Creep in-file: Patch enthielt
+    2 UNGEFORDERTE Extra-Aenderungen, davon 1 stille Verhaltensaenderung
+    (Schritt-Validierung gegen _VALID_PLANABLE_TYPES statt
+    _VALID_TASK_TYPES -- semantisch eher richtiger, aber unauditiert und
+    testungedeckt; E-10-Muster innerhalb der Zieldatei).
+- **REK-F3 (impact-09bed250, 232-234): Mechanik REK.9/10/13 voll BESTANDEN;
+  Abschluss-Pfad durch E-14 blockiert (neuer Kritisch-Befund).**
+  Antwort traegt change_op=signature + EIN Erzeuger [232] ✓. Invariante 4
+  gemessen: Snapshot vor Erzeuger-done NUR 232; nach done GENAU 2 fix-Kinder
+  n1/impact_0 (plan_format=user) + n1/impact_1 (review_format=def), KEIN
+  review-Knoten (2<5) ✓. Erzeuger-Payload impact={op:signature,
+  symbol:strip_markdown_fence} (kompakte Ein-Symbol-Form) ✓. Kinder-Prompt
+  (11.4k) traegt geteiltes Design inkl. strict-Parameter ✓. Patches
+  koordiniert (def: Signatur+ValueError+interner Aufrufer; user: explizit
+  strict=False). E-1 live: kein Auto-Apply, Workspace unveraendert. DANN
+  E-14: /api/patches verified=true fuer beide (aus FREMDEN Alt-Reports);
+  POST /api/apply 2x "applied":true/"bereits angewendet" OHNE Anwendung
+  (strict nachweislich nicht im WS). Kein Datenverlust, aber stille
+  Erfolgsluege; F4/F5 damit Ende-zu-Ende erst nach E-14-Fix sinnvoll.
+- **REK-B3 (Praeparat + debug 237/238 + fix 239-243): System-PASS; Analyse-
+  Qualitaet durch E-15/E-16 gedeckelt (Grenzbefunde, R10).**
+  Praeparat-Anpassung dokumentiert: der Plan-Wortlaut "Fence mit fuehrenden
+  Leerzeichen" schlaegt via plan_format NICht durch (strip_markdown_fence +
+  startswith-Guard reinigen doppelt vor) -> wirksamer cross-file-Kanal ist
+  die Trailing-Prosa-Toleranz (raw_decode); Praeparat kombiniert beides +
+  None-statt-ValueError. Symptom-Test vor Praeparat gruen (58), danach
+  GENAU 1 rot, Traceback endet in plan_format.py:238 -- Ursache unsichtbar
+  (silent None). debug-Task: Einzelknoten, ~20 s, KEINE Gates, KEIN Write
+  (R9 ✓); Prompt traegt Graph-Kontext (Import extract_json + Dependents),
+  aber E-15 (keine Dependency-Quelltexte, Richtung verkehrt). Lauf 1: qwen
+  benennt die extract_json-Schwaeche IM Review-Raster (Inferenz trotz
+  Korsett); Lauf 2 mit PFLICHT-"Ursache"-Sektion: ignoriert -> E-16
+  (debug==review-Systemprompt, Vier-Sektionen-Zwang, Anwender-Frage als
+  "Hinweis" bei 12k). Abschluss-fix auf die URSACHEN-Datei (Instruktion
+  benennt die 3 Aspekte): 80 s, 1. Versuch, Gates gruen, AUTO-Apply feuerte
+  trotz altem is_applied-Flag von F1 (E-14-Asymmetrie belegt), 58 gruen.
+  MESSNOTIZ R7-Grenze: nur 2/3 Instruktions-Aspekte geheilt (Trailing +
+  Fence-Spaces); None-statt-ValueError blieb -- der TESTUNGEDECKTE Teil der
+  Instruktion faellt runter, "gruen==geloest" gilt nur bis zur Testdeckung.
+
+K3-Messlektionen: (a) docker exec -w scheitert aus Git-Bash (Pfad-Mangling)
+-> sh -c 'cd ...'; (b) DB-Blick (queue/artifacts in stratum-db) ist wegen
+E-8/E-11/E-13 aktuell das EINZIGE vollstaendige Messwerkzeug fuer
+Endzustaende/Reports/Belegketten (4'b-konform nach Fail bzw. als Ersatz
+dokumentiert); (c) /api/prompt funktioniert auch fuer done-Tasks (Design-/
+Feedback-Nachweise nachtraeglich abrufbar).
+
+K3-Fazit: Die REK-Mechanik traegt auch auf Stufe 3 (Shapes exakt, Weiche
+korrekt in beide Richtungen, Invariante 3+4 gemessen, Leiter 2x live).
+Die Grenzen konzentrieren sich auf (1) Apply-Integritaet E-14 (kritisch,
+blockiert F4/F5-Abschluss + belegt stille Erfolgsluege), (2) Patch-Format-
+Robustheit E-12 (Multi-Hunk auf 10k+ -> Leiter-Verbrennung), (3) Analyse-
+Briefing/-Template E-15/E-16 (billig zu heben), (4) Beobachtbarkeit
+E-8/E-11/E-13 (Messen ohne DB unmoeglich). Empfehlung vor K4: E-14 zuerst
+(F4=8-Datei-Fan-out braucht anwendbare Patches; 6 frische Dateien haetten
+verified=false->409, die 2 alten die "bereits angewendet"-Falle), dann
+E-12 (jeder groessere fix), E-16+E-15 als Kleinpaket, E-8/E-11 fuer
+messbare K4/K5-Laeufe. K4 als reine Mechanik-Messung (bis Patch-Erzeugung,
+ohne Apply) waere heute schon fahrbar.
