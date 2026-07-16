@@ -582,6 +582,49 @@ Akzeptanz: permanent roter Fall durchlaeuft die Sprossen genau einmal je
 Klasse  : det   dep: I-REK.4 (Feedback-Quellen), I-REK.7 (Supersede)
 ```
 
+**FERTIG 2026-07-16.** Volle Leiter (Nutzer-Entscheidung: ein Paket). Neu
+`core/escalation.py` (reine Logik) + drei Queue-Primitive + Worker-Verdrahtung.
+Einhaengepunkt: die zwei `else`-Zweige von `_run_verify`/`_run_test_gate` (wo die
+re-act-Kappung reopen_after_verify=False liefert) rufen jetzt `_after_gate_capped`
+statt sofort `_fail`. Ablauf:
+- `core/escalation.next_rung(stage)`: 0 -> re_design, 1 -> re_expand, >=2 ->
+  unresolved (jede Sprosse genau einmal); `belegkette(stage,feedback)` = die
+  Belegkette-Meldung fuer den unresolved-Fail (re_act -> ... -> unresolved +
+  letztes Feedback). LADDER_STAGES=2.
+- Worker `_escalate(gate_item, feedback)`: liest die Stufe (`queue.escalation_stage`),
+  waehlt die Sprosse, ruft das Primitiv; Rueckgabe = durchgefuehrte Sprosse /
+  "unresolved" / None. `_after_gate_capped` traced escalated bzw. failt terminal
+  (trigger `<kind>_re_design|_re_expand|_unresolved|_failed_capped`).
+- Stufen-Zaehler liegt im Payload des **architect** (escalation_stage) -- er
+  ueberlebt beide Reopen-Wege. Die Leiter greift NUR bei einem Schreib-Sub-DAG MIT
+  architect (ohne Design nichts neu zu entwerfen); triviale Ketten ohne architect
+  UND Queues ohne die Primitive (getattr-defensiv, Fake-Queues/Tests) fallen
+  terminal fehl wie vor REK.11 (`<kind>_failed_capped`) -> minimale Regressionsflaeche.
+- Queue-Primitive: `escalation_stage` (Stufe | None); `reopen_for_redesign`
+  (architect + impl + Gates -> pending, attempts 0, Feedback+Stufe in den
+  architect-Payload; sein Prompt haengt verify_feedback ueber den else-Zweig von
+  build_node_prompt an -> KEINE node_prep-Aenderung noetig); `reexpand_write_subdag`
+  (impl/Gate-Teilbaum superseded egal welcher Status -> Belegkette bleibt, FRISCHE
+  Kette impl'->architect, gate'->Vorgaenger mit ~r<stage>-Suffix, Gate-Form+Modelle
+  aus der alten Kette; architect neu offen). Gemeinsamer Helfer `_write_chain`:
+  aufwaerts vom roten Gate zum impl, dann EINEN Hop zum architect, und ALLE Gates
+  ABWAERTS vom impl (sonst zeigt ein nachgelagertes test_gate nach re-expand auf
+  einen superseded Knoten).
+Akzeptanz `test_escalation.py` (17): next_rung/belegkette (rein); Queue gegen echtes
+Postgres (escalation_stage 0/None-ohne-architect; reopen_for_redesign oeffnet
+architect+Kette mit Feedback+Stufe; reexpand superseded alt + baut frische Kette am
+architect); Worker-Dispatch (stage0->re_design, 1->re_expand, 2->unresolved+Fail,
+keine Leiter->failed_capped wie bisher). 1215 gruen (+13), ruff clean.
+Befunde/offen: (a) re-expand ist fuer eine Template-Kette (index->architect->impl->
+Gates) definiert als "impl/Gate-Teilbaum verwerfen + frisch unter dem architect neu
+bauen" (harter Reset mit unbelasteter Knoten-Identitaet), NICHT als Neu-Enumeration
+einer prob-Expansion -- fuer hook-erzeugte Kinder (impact/plan_architect) waere
+letzteres die staerkere Form; Folge-Haeppchen. (b) superseded ein re-expand einen
+Knoten, auf den ein Cross-Goal-depends_on zeigt, bricht diese Kante -- fuer die
+Blatt-Schreibkette (kein Downstream) unkritisch, fuer verschraenkte Plaene zu
+haerten. (c) Belegkette steht in der Fail-Reason (on_item_fail) + als superseded-
+Kette der Artefakte/Knoten; kein eigenes Belegketten-Artefakt.
+
 ## I-REK.12  Gate-Policy: Haerte ~ Wirkradius (+G3 Design-Review)   [Strang W/S]
 
 ```

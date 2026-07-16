@@ -19,6 +19,7 @@ from pathlib import Path
 from core.canary import assign_variant
 from core.cloud_adapter import CloudSender, cloud_model_factory
 from core.cloud_egress import prepare_cloud_egress
+from core.escalation import LADDER_STAGES, Rung, belegkette, next_rung
 from core.lint_gate import feedback_text
 from core.models.result_prob_schema import ArtifactType, ResultProb
 from core.provenance_stamp import build_prob_provenance
@@ -354,6 +355,73 @@ class WorkerLoop:
         if self.on_item_fail is not None:
             self.on_item_fail(item, reason)
 
+    def _escalate(self, gate_item: QueueItem, feedback: str) -> str | None:
+        """Eskalationsleiter (I-REK.11), gerufen wenn die re-act-Kappung eines
+        roten Gate erschoepft ist. Entscheidet det aus der Stufe (Payload des
+        architect) den naechsten Zug und fuehrt ihn ueber die Queue-Primitive aus:
+          re_design -> reopen_for_redesign (architect + Kette neu, Feedback ins
+                       Design);
+          re_expand -> reexpand_write_subdag (impl/Gate-Teilbaum superseden + frisch
+                       aufbauen);
+          unresolved-> None-artiges Signal (Ruf-Ebene laesst terminal fehlschlagen,
+                       mit Belegkette).
+        Rueckgabe: der durchgefuehrte Sprossen-Name ("re_design"/"re_expand"),
+        "unresolved" bei erschoepfter Leiter, oder None wenn es keine Leiter gibt
+        (kein architect ODER Queue ohne die Primitive = Verhalten wie vor REK.11)."""
+        stage_fn = getattr(self.queue, "escalation_stage", None)
+        if stage_fn is None:
+            return None
+        stage = stage_fn(gate_item)
+        if stage is None:  # kein architect -> keine Leiter (Trivialfall)
+            return None
+        rung = next_rung(stage)
+        if rung is Rung.re_design and self.queue.reopen_for_redesign(
+            gate_item, feedback=feedback, new_stage=stage + 1
+        ):
+            return Rung.re_design.value
+        if rung is Rung.re_expand and self.queue.reexpand_write_subdag(
+            gate_item, feedback=feedback, new_stage=stage + 1
+        ):
+            return Rung.re_expand.value
+        return Rung.unresolved.value
+
+    def _after_gate_capped(
+        self,
+        item: QueueItem,
+        *,
+        feedback: str,
+        summary: str,
+        gate_model: str,
+        kind: str,
+    ) -> None:
+        """Gemeinsamer Nachlauf beider Gates, wenn die re-act-Kappung erschoepft ist
+        (I-REK.11): erst die Eskalationsleiter, sonst terminaler Fail. ``kind`` ist
+        das Trigger-Praefix ("verify"|"test")."""
+        verdict = self._escalate(item, feedback)
+        if verdict in (Rung.re_design.value, Rung.re_expand.value):
+            self._trace_result(
+                item,
+                validation_result="escalated",
+                trigger=f"{kind}_{verdict}",
+                final_model=gate_model,
+                attempts=1,
+            )
+            return
+        if verdict == Rung.unresolved.value:
+            trace = belegkette(LADDER_STAGES, feedback)
+            self._fail(item, f"{kind} unresolved: {trace}")
+            trigger = f"{kind}_unresolved"
+        else:  # None -> keine Leiter (kein architect): Verhalten wie vor REK.11
+            self._fail(item, f"{kind} erschoepft: {summary}")
+            trigger = f"{kind}_failed_capped"
+        self._trace_result(
+            item,
+            validation_result="fail",
+            trigger=trigger,
+            final_model=gate_model,
+            attempts=1,
+        )
+
     def _trace_result(
         self,
         item: QueueItem,
@@ -422,13 +490,12 @@ class WorkerLoop:
                 attempts=1,
             )
         else:
-            self._fail(item, f"verify erschoepft: {outcome.summary}")
-            self._trace_result(
+            self._after_gate_capped(
                 item,
-                validation_result="fail",
-                trigger="verify_failed_capped",
-                final_model="verify-worker",
-                attempts=1,
+                feedback=feedback_text(outcome),
+                summary=outcome.summary,
+                gate_model="verify-worker",
+                kind="verify",
             )
 
     def _auto_apply_if_terminal(self, item: QueueItem, root: Path | None) -> None:
@@ -495,13 +562,12 @@ class WorkerLoop:
                 attempts=1,
             )
         else:
-            self._fail(item, f"test_gate rot: {outcome.summary}")
-            self._trace_result(
+            self._after_gate_capped(
                 item,
-                validation_result="fail",
-                trigger="test_failed_capped",
-                final_model="test-gate-worker",
-                attempts=1,
+                feedback=test_feedback_text(outcome),
+                summary=outcome.summary,
+                gate_model="test-gate-worker",
+                kind="test",
             )
 
     def _maybe_spawn_fix(self, item: QueueItem) -> None:

@@ -266,6 +266,250 @@ class Queue:
                 )
         return True
 
+    # --- I-REK.11: Eskalationsleiter Sprossen 2-3 (re-design, re-expand) ------
+    #
+    # Wenn die re-act-Kappung (reopen_after_verify) eines Schreib-Knotens
+    # erschoepft ist, gibt der Worker NICHT sofort auf, sondern faehrt die Leiter:
+    # re_design (den architect-Elternknoten mit Feedback neu oeffnen) -> re_expand
+    # (den impl/Gate-Teilbaum superseden und frisch unter dem architect neu
+    # aufbauen) -> unresolved. Der Stufen-Zaehler liegt im Payload des architect
+    # (escalation_stage) -- er ueberlebt beide Reopen-Wege. Die Leiter greift NUR,
+    # wenn der Schreib-Sub-DAG einen architect hat (ohne Design gibt es nichts neu
+    # zu entwerfen); triviale Ketten ohne architect fallen terminal fehl wie bisher.
+
+    def _write_chain(
+        self, verify_item: QueueItem
+    ) -> tuple[str | None, list[dict], list[dict], dict[str, dict]]:
+        """Von einem roten Gate den Schreib-Sub-DAG nach oben aufloesen.
+
+        Rueckgabe: (architect_node_id | None, impl_rows, gate_rows, rows_by_node_id).
+        Laeuft (wie reopen_after_verify) durch die Gate-Kette bis implement/fix und
+        von dort EINEN Hop weiter zum architect (falls vorhanden)."""
+        _GATE = {"lint_gate", "test_gate"}
+        _IMPL = {"implement", "fix"}
+        rows: dict[str, dict] = {}
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, node_id, task_type, depends_on, attempts, status, "
+                "COALESCE(payload, '{}'::jsonb), scope, model, owner, capability_id "
+                "FROM queue WHERE dag_id = %s",
+                (verify_item.dag_id,),
+            )
+            for r in cur.fetchall():
+                rows[r[1]] = {
+                    "id": r[0],
+                    "node_id": r[1],
+                    "task_type": r[2],
+                    "depends_on": tuple(r[3]) if r[3] else (),
+                    "attempts": r[4],
+                    "status": r[5],
+                    "payload": r[6] or {},
+                    "scope": r[7],
+                    "model": r[8],
+                    "owner": r[9],
+                    "capability_id": r[10],
+                }
+        # Aufwaerts vom roten Gate durch die Gate-Kette bis zum implement/fix.
+        impl: set[str] = set()
+        seen = {verify_item.node_id}
+        frontier = [verify_item.node_id]
+        while frontier:
+            for dep in rows.get(frontier.pop(), {}).get("depends_on", ()):
+                tt = rows.get(dep, {}).get("task_type")
+                if tt in _IMPL:
+                    impl.add(dep)
+                elif tt in _GATE and dep not in seen:
+                    seen.add(dep)
+                    frontier.append(dep)
+        # Abwaerts vom impl ALLE Gates der Kette einsammeln (lint UND test) --
+        # das rote Gate liegt evtl. VOR einem weiteren (test_gate hinter lint_gate);
+        # ein zurueckbleibendes Gate wuerde sonst auf einen superseded/neu gebauten
+        # Knoten zeigen (re-expand). children[d] = Knoten mit d in depends_on.
+        children: dict[str, list[str]] = {}
+        for nid, r in rows.items():
+            for d in r["depends_on"]:
+                children.setdefault(d, []).append(nid)
+        gates: set[str] = set()
+        seen = set(impl)
+        frontier = list(impl)
+        while frontier:
+            for ch in children.get(frontier.pop(), ()):
+                if ch in seen:
+                    continue
+                seen.add(ch)
+                if rows[ch]["task_type"] in _GATE:
+                    gates.add(ch)
+                    frontier.append(ch)
+        architect: str | None = None
+        for i in impl:
+            for dep in rows[i]["depends_on"]:
+                if rows.get(dep, {}).get("task_type") == "architect":
+                    architect = dep
+        impl_rows = [rows[n] for n in impl]
+        gate_rows = [rows[n] for n in gates if n in rows]
+        return architect, impl_rows, gate_rows, rows
+
+    def escalation_stage(self, verify_item: QueueItem) -> int | None:
+        """Aktuelle Eskalations-Stufe des Schreib-Sub-DAG, oder None wenn es keinen
+        architect gibt (dann keine Leiter -> terminaler Fail wie bisher). Der
+        Zaehler steht im Payload des architect (escalation_stage, Default 0)."""
+        architect, impl, _gates, rows = self._write_chain(verify_item)
+        if architect is None or not impl:
+            return None
+        return int(rows[architect]["payload"].get("escalation_stage", 0))
+
+    def reopen_for_redesign(
+        self, verify_item: QueueItem, *, feedback: str, new_stage: int
+    ) -> bool:
+        """Sprosse 2 (re-design): den architect-Elternknoten + den Schreib-Sub-DAG
+        (impl/fix + Gates) neu oeffnen, Verify-/Test-Feedback in den Payload des
+        architect legen (sein Prompt haengt es an -> er ueberarbeitet das Design;
+        put_artifact supersedet das alte design, der Coder liest das neue) und die
+        Stufe hochsetzen. attempts der neu geoeffneten Knoten -> 0 (frisches Budget
+        gegen das neue Design). False, wenn kein architect existiert."""
+        architect, impl, gates, rows = self._write_chain(verify_item)
+        if architect is None or not impl:
+            return False
+        arch_payload = json.dumps(
+            {"verify_feedback": feedback, "escalation_stage": new_stage}
+        )
+        impl_payload = json.dumps({"verify_feedback": feedback})
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', attempts = 0, "
+                    "claimed_at = NULL, "
+                    "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
+                    "WHERE id = %s",
+                    (arch_payload, rows[architect]["id"]),
+                )
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', attempts = 0, "
+                    "claimed_at = NULL, "
+                    "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
+                    "WHERE id = ANY(%s)",
+                    (impl_payload, [n["id"] for n in impl]),
+                )
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', claimed_at = NULL "
+                    "WHERE id = ANY(%s)",
+                    ([n["id"] for n in gates],),
+                )
+        return True
+
+    def reexpand_write_subdag(
+        self, verify_item: QueueItem, *, feedback: str, new_stage: int
+    ) -> bool:
+        """Sprosse 3 (re-expand): der impl/Gate-Teilbaum wird verworfen (superseded,
+        unabhaengig vom Status -> Belegkette bleibt) und FRISCH unter dem architect
+        neu aufgebaut (neue node_ids); der architect wird mit Feedback + neuer Stufe
+        neu geoeffnet. Anders als re-design gibt es dem Coder eine unbelastete
+        Knoten-Identitaet (die alte Patch-/Gate-Historie liegt als superseded-Kette
+        daneben). Gate-Form (lint_gate/test_gate) + Modelle werden aus der alten
+        Kette uebernommen. False, wenn kein architect existiert."""
+        architect, impl, gates, rows = self._write_chain(verify_item)
+        if architect is None or not impl:
+            return False
+        impl_row = impl[0]
+        suffix = f"~r{new_stage}"
+        # Gate-Form der alten Kette bewahren (Reihenfolge lint -> test).
+        old_gates = sorted(
+            gates, key=lambda g: 0 if g["task_type"] == "lint_gate" else 1
+        )
+        old_ids = [n["id"] for n in impl] + [g["id"] for g in gates]
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue SET status = 'superseded' WHERE id = ANY(%s)",
+                    (old_ids,),
+                )
+                # Frische Kette: impl' -> architect; jedes Gate' -> Vorgaenger.
+                impl_id = f"{impl_row['node_id']}{suffix}"
+                fresh_payload = {
+                    "verify_feedback": feedback,
+                    "instruction": impl_row["payload"].get("instruction", ""),
+                }
+                if impl_row["payload"].get("plan_design"):
+                    fresh_payload["plan_design"] = impl_row["payload"]["plan_design"]
+                self._insert_node(
+                    cur,
+                    dag_id=verify_item.dag_id,
+                    node_id=impl_id,
+                    task_type=impl_row["task_type"],
+                    scope=impl_row["scope"],
+                    model=impl_row["model"],
+                    depends_on=[architect],
+                    payload=fresh_payload,
+                    owner=impl_row["owner"],
+                    capability_id=impl_row["capability_id"],
+                )
+                prev = impl_id
+                for g in old_gates:
+                    gate_id = f"{g['node_id']}{suffix}"
+                    self._insert_node(
+                        cur,
+                        dag_id=verify_item.dag_id,
+                        node_id=gate_id,
+                        task_type=g["task_type"],
+                        scope=g["scope"],
+                        model=g["model"],
+                        depends_on=[prev],
+                        payload=None,
+                        owner=g["owner"],
+                        capability_id=g["capability_id"],
+                    )
+                    prev = gate_id
+                # architect neu oeffnen (Feedback + neue Stufe).
+                cur.execute(
+                    "UPDATE queue SET status = 'pending', attempts = 0, "
+                    "claimed_at = NULL, "
+                    "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
+                    "WHERE id = %s",
+                    (
+                        json.dumps(
+                            {"verify_feedback": feedback, "escalation_stage": new_stage}
+                        ),
+                        rows[architect]["id"],
+                    ),
+                )
+        return True
+
+    @staticmethod
+    def _insert_node(
+        cur: Any,
+        *,
+        dag_id: str,
+        node_id: str,
+        task_type: str,
+        scope: str,
+        model: str,
+        depends_on: list[str],
+        payload: dict | None,
+        owner: str,
+        capability_id: int | None,
+    ) -> None:
+        """Eine einzelne Queue-Zeile einfuegen (fuer re-expand-Frischknoten)."""
+        cur.execute(
+            """
+            INSERT INTO queue
+                (dag_id, node_id, task_type, scope, model,
+                 depends_on, flags, payload, owner, capability_id)
+            VALUES (%s, %s, %s, %s, %s, %s, '[]'::jsonb,
+                    COALESCE(%s::jsonb, '{}'::jsonb), %s, %s)
+            """,
+            (
+                dag_id,
+                node_id,
+                task_type,
+                scope,
+                model,
+                json.dumps(depends_on),
+                json.dumps(payload) if payload else None,
+                owner,
+                capability_id,
+            ),
+        )
+
     def enqueue_children(
         self,
         parent: QueueItem,

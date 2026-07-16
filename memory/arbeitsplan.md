@@ -339,7 +339,7 @@ I-REK.7   Completion-Hook + Supersede        det  REK.5 FERTIG   `spec_rekursion
 I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7 FERTIG   `spec_rekursion`, `spec_beginner-flow`
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5 FERTIG   `spec_rekursion`, `arch_pfadwahl`
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9 FERTIG `spec_rekursion`
-I-REK.11  Eskalation re-design/re-expand     det  REK.4,7        `spec_rekursion`
+I-REK.11  Eskalation re-design/re-expand     det  REK.4,7 FERTIG `spec_rekursion`
 I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10       `spec_rekursion`
 ```
 
@@ -456,6 +456,22 @@ Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppe
 1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
 Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
 enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
+I-REK.11 FERTIG (2026-07-16): Eskalationsleiter Sprossen 2-3 (re-design, re-expand)
+-- volle Leiter in einem Paket (Nutzer-Entscheidung). Neu core/escalation.py (rein:
+next_rung 0->re_design/1->re_expand/>=2->unresolved, belegkette) + drei Queue-
+Primitive (escalation_stage, reopen_for_redesign, reexpand_write_subdag; Helfer
+_write_chain) + Worker-Verdrahtung. Einhaengepunkt: die else-Zweige von _run_verify/
+_run_test_gate (re-act-Kappung erschoepft) rufen _after_gate_capped -> _escalate statt
+sofort _fail. re_design: architect + impl + Gates neu offen, Feedback+Stufe in den
+architect-Payload (sein Prompt haengt verify_feedback ueber build_node_prompt an, KEINE
+node_prep-Aenderung); re_expand: impl/Gate-Teilbaum superseden (Belegkette bleibt) +
+frische Kette impl'->architect neu bauen; unresolved: terminaler Fail mit belegkette.
+Stufen-Zaehler im architect-Payload (ueberlebt beide Reopen-Wege). Leiter greift NUR bei
+architect-Existenz + Queue mit den Primitiven (getattr-defensiv) -> triviale Ketten /
+Fake-Queues fallen terminal wie vor REK.11 (verify_failed_capped) = minimale Regression.
+Akzeptanz test_escalation.py (17, inkl. echtes Postgres). 1215 gruen (+13), ruff clean.
+NAECHSTER SCHRITT: REK.12 (Gate-Policy Haerte~Wirkradius, letztes REK-Haeppchen; erster
+grosser Fan-out-Konsument = impact/plan_architect) ODER Live-Verdrahtung REK.9->10.
 I-REK.10 FERTIG (2026-07-15): impact-Skelett (L2-Muster), ERSTER Nutzer von
 enqueue_children aus REK.7. Neu core/impact_expand.py, generalisiert rename_expand von
 L1 (mechanisch) auf L2 (validierte Graph-Op signature/delete/move + EIN geteiltes
