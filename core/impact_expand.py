@@ -285,21 +285,48 @@ def parse_review_verdict(text: str) -> str:
     return REVIEW_VERDICT_OK
 
 
+def render_intent_block(intent: str) -> str:
+    """Die WOERTLICHE Nutzer-Absicht als det-Block (I-E.18, Befund E-18).
+
+    Die Absicht (z.B. die ZIEL-Namen eines rename) liegt det am Erzeuger-Payload;
+    haengt sie nur am prob-Design, ist sie verloren, sobald der Architekt sie
+    auslaesst (F5: Review gab ok ohne die Ziele je zu sehen, drei Kinder rieten
+    drei verschiedene Namen). Deshalb wird sie UNVERAENDERT in Review-, Redesign-
+    und Kinder-Instruktionen gefaedelt ("det speist JEDEN prob-Prompt")."""
+    text = (intent or "").strip()
+    if not text:
+        return ""
+    return f"Aenderungsabsicht des Nutzers (verbindlich, exakt umsetzen): {text}"
+
+
 def render_review_instruction(
-    expansion: ImpactExpansion, design: str, radius: int
+    expansion: ImpactExpansion, design: str, radius: int, intent: str = ""
 ) -> str:
     """Instruktion des Design-Review-Knotens (G3): das geteilte Design + der Auftrag,
     es VOR dem Fan-out auf Luecken/Risiken zu pruefen, plus die Verdikt-Zeile fuers
     Eskalations-Signal. Das Design steht in der Instruktion (nicht nur im
     plan_design), damit es der Review-Prompt traegt -- build_node_prompt reicht
     plan_design nur an implement/fix, der Review-Pfad liest die instruction
-    (build_review_prompt)."""
+    (build_review_prompt). ``intent`` = woertliche Nutzer-Absicht (I-E.18): steht
+    VOR dem Design und erweitert den Auftrag um die Abdeckungs-Leitfrage."""
+    block = render_intent_block(intent)
+    intro = f"{block}\n\n" if block else ""
+    coverage = (
+        (
+            f" Pruefe INSBESONDERE, ob das Design die Aenderungsabsicht "
+            f"vollstaendig abdeckt (alle Ziel-Namen/Ziel-Zustaende exakt "
+            f"benannt); wenn nicht -> `verdict: {REVIEW_VERDICT_REDESIGN}`."
+        )
+        if block
+        else ""
+    )
     return (
+        f"{intro}"
         f"Pruefe VOR dem Fan-out das folgende geteilte Design fuer die Aenderung "
         f"`{expansion.op.value}` an {_symbols_display(expansion.symbols)} "
         f"({radius} betroffene Datei(en)). "
         f"Ist der Ansatz stimmig und vollstaendig? Nenne Luecken, Risiken und "
-        f"Inkonsistenzen, BEVOR die {radius} Patches erzeugt werden.\n\n"
+        f"Inkonsistenzen, BEVOR die {radius} Patches erzeugt werden.{coverage}\n\n"
         f"Geteiltes Design:\n{design}\n\n"
         f"Schliesse mit GENAU EINER Zeile ab:\n"
         f"`verdict: {REVIEW_VERDICT_OK}` (Design tragfaehig, Fan-out freigeben) ODER "
@@ -323,11 +350,15 @@ def build_redesign_node(scope: str) -> DagNode:
     )
 
 
-def render_redesign_instruction(expansion: ImpactExpansion) -> str:
+def render_redesign_instruction(expansion: ImpactExpansion, intent: str = "") -> str:
     """Instruktion des re-design-architect: das Design fuer die Graph-Op neu
     entwerfen. Das konkrete Review-Feedback kommt separat als ``verify_feedback``
-    ins Payload (build_node_prompt haengt es an den architect-Prompt)."""
+    ins Payload (build_node_prompt haengt es an den architect-Prompt). ``intent``
+    = woertliche Nutzer-Absicht (I-E.18), steht dem Neuentwurf voran."""
+    block = render_intent_block(intent)
+    intro = f"{block}\n\n" if block else ""
     return (
+        f"{intro}"
         f"Entwirf das Design fuer die Aenderung `{expansion.op.value}` an "
         f"{_symbols_display(expansion.symbols)} NEU -- das vorige Design wurde im "
         f"Review als unzureichend bewertet (siehe Feedback). Adressiere die "
@@ -452,14 +483,25 @@ def make_impact_hook(
         depth = int(payload.get("depth", 0))
         radius = len(prepared.nodes)
         stage = int(payload.get("redesign_stage", 0))
+        # I-E.18: die woertliche Nutzer-Absicht. Beim Erzeuger IST sie dessen
+        # instruction (enqueue_impact legt sie so ab); Review-/Redesign-Knoten
+        # tragen als instruction ihren eigenen Auftrag -> dort hat das explizit
+        # gefaedelte intent-Feld Vorrang.
+        intent = str(payload.get("intent") or payload.get("instruction") or "")
 
         def _materialize() -> None:
+            block = render_intent_block(intent)
+            instruction = (
+                f"{block}\n\n{expansion.instruction}"
+                if block
+                else expansion.instruction
+            )
             queue.enqueue_children(  # type: ignore[attr-defined]
                 item,
                 prepared.nodes,
                 base_payload={
                     "depth": depth + 1,
-                    "instruction": expansion.instruction,
+                    "instruction": instruction,
                     "plan_design": design,
                 },
                 model_for=model_for,
@@ -484,8 +526,11 @@ def make_impact_hook(
                     redesign.nodes,
                     base_payload={
                         "depth": depth + 1,
-                        "instruction": render_redesign_instruction(expansion),
+                        "instruction": render_redesign_instruction(
+                            expansion, intent=intent
+                        ),
                         "impact": meta,
+                        "intent": intent,
                         "redesign_stage": stage + 1,
                         "verify_feedback": _review_text(repo, scope),
                     },
@@ -511,9 +556,12 @@ def make_impact_hook(
                 review.nodes,
                 base_payload={
                     "depth": depth + 1,
-                    "instruction": render_review_instruction(expansion, design, radius),
+                    "instruction": render_review_instruction(
+                        expansion, design, radius, intent=intent
+                    ),
                     "plan_design": design,
                     "impact": meta,
+                    "intent": intent,
                     "design_reviewed": True,
                     "redesign_stage": stage,
                 },
@@ -538,6 +586,7 @@ __all__ = [
     "impact_expand",
     "make_impact_hook",
     "parse_review_verdict",
+    "render_intent_block",
     "render_redesign_instruction",
     "render_review_instruction",
     "render_shared_design",

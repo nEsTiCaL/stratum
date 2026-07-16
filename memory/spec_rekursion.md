@@ -738,8 +738,34 @@ nicht-existentes Symbol->Zerlegung; MEHRERE Ziele->impact mit symbols) +
 (+12), ruff clean.
 Befunde/offen: (a) Die Weiche ruft das Klassifikationsmodell pro Schreib-Task (nur wenn
 eins da ist); auf Profil D ohne Cloud (decompose_model None) ist sie ein No-Op = null
-Overhead. (b) Noch kein Live-Beleg auf einem realen Projekt (Dogfooding: grosse Graph-Op
--> Review-Gate -> Fan-out), nur Test-Ebene.
+Overhead. (b) Live-Beleg 2026-07-16 K4-Lauf: F4/F5 Mechanik voll bestanden
+(`ops_rekursionstests` K4-Ergebnisse); dabei Befunde E-17/E-18 -> I-E-Familie.
+
+## I-E.18: User-Absicht det in Review-/Kinder-/Redesign-Prompts (2026-07-16, fertig)
+
+Befund E-18 (K4/F5, `ops_rekursionstests`): Review-/Kinder-Prompts trugen NUR das
+prob-Design + die det-Instruktion (Altnamen). Liess der Architekt die Ziel-Namen
+aus, waren sie systemisch verloren -- Review gab ok ohne die Ziele zu kennen, die
+Kinder halluzinierten drei verschiedene Namen. Fix in `core/impact_expand.py`
+("det speist JEDEN prob-Prompt"):
+
+- `render_intent_block(intent)`: die WOERTLICHE Nutzer-Absicht als det-Block
+  ("Aenderungsabsicht des Nutzers (verbindlich, exakt umsetzen): ...").
+- Hook liest `intent = payload["intent"] or payload["instruction"]` -- beim
+  Erzeuger IST die instruction die Absicht (enqueue_impact legt sie so ab);
+  Review-/Redesign-Knoten tragen als instruction ihren EIGENEN Auftrag, deshalb
+  faedelt der Hook die Absicht als eigenes `intent`-Payload-Feld weiter (Re-Fire
+  liest sie von dort; kein Schema-Change, payload ist frei).
+- Kinder-Instruktion = Absicht-Block VORAN + det-Instruktion; Review-Instruktion
+  = Absicht + Abdeckungs-Leitfrage ("deckt das Design die Absicht vollstaendig
+  ab (alle Ziel-Namen exakt benannt)? sonst needs_redesign") + Design + Verdikt;
+  Redesign-Instruktion analog. `render_review_instruction`/`render_redesign_
+  instruction` nehmen `intent=""` (Default rueckwaerts-kompatibel, kein Block).
+
+Akzeptanz: `test_impact_expand.py` +7 (Kinder/Review/Redesign tragen das Ziel;
+Re-Fire nutzt die ORIGINAL-Absicht statt der Review-Instruktion; ohne intent
+kein leerer Block). 1251 gruen (+8 inkl. I-E.5), ruff clean. Offen: Live-Beleg
+(F5-Wiederholung) nach Redeploy.
 
 ## Handoff-Konvention je Paket
 

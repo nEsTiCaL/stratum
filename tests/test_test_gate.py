@@ -139,6 +139,22 @@ class TestRunTests:
         assert out.commands[0]["status"] == "missing"
         assert "nicht installiert" in out.summary
 
+    def test_missing_pytest_module_rc1_is_neutral(self):
+        # I-E.5 (Befund E-5): "python -m pytest" ohne installiertes pytest wirft
+        # KEIN FileNotFoundError (python existiert), sondern rc=1 + "No module
+        # named pytest" -- gleiche Klasse wie oben: neutral statt falscher roter
+        # Rueckkante auf JEDEM Workspace mit Tests.
+        out = run_tests(
+            _DIFF,
+            root=_ROOT,
+            read_current=_reader({"x.py": "a\n"}),
+            copy_tree=lambda _s, d: _plant(d),
+            run_cmd=lambda *_a: (1, "/usr/local/bin/python: No module named pytest"),
+        )
+        assert out.passed and out.applied
+        assert out.commands[0]["status"] == "skipped"
+        assert "nicht installiert" in out.summary
+
     def test_sandbox_copy_removed_after_run(self):
         seen: dict[str, Path] = {}
 

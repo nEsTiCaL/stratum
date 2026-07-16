@@ -357,14 +357,14 @@ E-3  DEFAULT_REVIEW_RADIUS nicht per Settings tunable -> Grenztests brauchen
      Projektumbau. Kandidat: Settings-Feld review_radius.
 E-4  Key-Erzeugung nur per CLI (kein REST) -> Greenfield-Setup bricht
      REST-only. Kandidat: Admin-Endpoint (Phase 2 / I-S.*).
-E-5  pytest FEHLT im Server-Image UND die neutral-Erkennung greift nicht:
-     _TEST_CMD "python -m pytest" liefert bei fehlendem Modul rc=1 (KEIN
-     FileNotFoundError, python existiert ja) -> test_gate wuerde ROT statt
-     neutral = falsche Rueckkante mit unbrauchbarem Feedback auf JEDEM
-     Workspace mit Tests. Unit-Suite blind dafuer (Dev-Env hat pytest immer).
-     Smoke-Workaround: pip install pytest im laufenden Container (FLUECHTIG,
-     bei Container-Recreate weg!). Kandidat: pytest ins .[web]-Image + Code-
-     Haertung (Output "No module named pytest" -> neutral).
+E-5  [BEHOBEN I-E.5, 2026-07-16] pytest FEHLT im Server-Image UND die
+     neutral-Erkennung greift nicht: _TEST_CMD "python -m pytest" liefert bei
+     fehlendem Modul rc=1 (KEIN FileNotFoundError) -> test_gate ROT statt
+     neutral = falsche Rueckkante auf JEDEM Workspace mit Tests; der
+     pip-install-Workaround starb mit jedem Recreate (3x belegt). FIX:
+     Dockerfile installiert ruff+pytest; core/test_gate._outcome_from_rc
+     wertet "No module named pytest" als neutral (skipped). Live ab dem
+     naechsten Image-Build.
 E-6  Race ensure_indexed (create_task, synchron) <-> DetWorker-index-Knoten:
      UniqueViolation artifacts_current_uq (symbol_index), index-Knoten failed,
      Rest-DAG haengt. Nicht deterministisch (Retry lief durch; Standalone-
@@ -458,7 +458,8 @@ E-17 impact-Fan-out ueberinklusiv + kein No-op-Vertrag (F4+F5, reproduziert):
      Referenzen statt Datei-transitiv), No-op-Antwort legalisieren
      ("KEINE_AENDERUNG" -> done ohne Patch), det-Textvorfilter vor
      Materialisierung (nur Dateien mit Symbol-Treffer werden Kinder).
-E-18 [KRITISCH] User-Absicht geht hinter dem Design verloren (F5): Review-
+E-18 [BEHOBEN I-E.18, 2026-07-16; Live-Beleg nach Redeploy offen]
+     User-Absicht geht hinter dem Design verloren (F5): Review-
      und Kinder-Prompts tragen NUR das prob-Design + det-Instruktion (Alt-
      Symbole), NICHT die "Aenderungsabsicht des Nutzers" (liegt det am
      Erzeuger-Task vor, nur dessen Briefing traegt sie). Nennt das Design
@@ -471,9 +472,10 @@ E-18 [KRITISCH] User-Absicht geht hinter dem Design verloren (F5): Review-
      semantisch falsch). F4 gelang nur, weil das Design dort das Ziel
      zufaellig zitierte. Schaden=0 NUR dank E-1 (kein Auto-Apply) + E-14-Fix
      (Apply->409). Verletzt "det speist JEDEN prob-Prompt" (arch_pfadwahl).
-     Fix-Kandidat (billig): Absicht-Block det in render_review_instruction
-     + Kinder-Briefing durchreichen; Review-Instruktion explizit fragen
-     "deckt das Design die Nutzer-Absicht ab?".
+     FIX (I-E.18): render_intent_block faedelt die woertliche Absicht det in
+     Kinder-/Review-/Redesign-Instruktionen (intent-Payload-Feld fuers
+     Re-Fire; Review mit Abdeckungs-Leitfrage -> needs_redesign bei
+     fehlenden Zielnamen). Details `spec_rekursion` I-E.18.
 ```
 Erweiterungs-Protokoll nach jedem Lauf: (1) bestandene K-Stufe -> naechste
 fahren; (2) Grenzbefund -> hier listen + als Haeppchen-Kandidat an den Nutzer

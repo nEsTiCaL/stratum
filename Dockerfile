@@ -10,7 +10,11 @@ RUN uv pip install --system --no-cache ".[web]"
 
 # Per-File-Linter fuer den VerifyWorker (core.verify_worker DEFAULT_LINTERS):
 # ohne ruff degradiert Verify von Python-Patches auf "Linter nicht installiert".
-RUN uv pip install --system --no-cache ruff
+# pytest fuer das test_gate (core.test_gate laesst die Projekt-Tests des
+# Workspace laufen): fehlt es, faellt das Gate auf neutral zurueck und die
+# Verifikations-Rueckkante ist blind (I-E.5, Befund E-5 -- der fruehere
+# pip-install-Workaround starb mit jedem Container-Recreate).
+RUN uv pip install --system --no-cache ruff pytest
 
 # Quellcode
 COPY . .

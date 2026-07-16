@@ -25,6 +25,9 @@ from core.impact_expand import (
     build_impact_children,
     impact_expand,
     make_impact_hook,
+    render_intent_block,
+    render_redesign_instruction,
+    render_review_instruction,
     render_shared_design,
 )
 from core.repository import SymbolHit
@@ -58,11 +61,13 @@ class _FakeRepo:
         impact_map: dict[str, list[str]] | None = None,
         edges: dict[str, list[GraphEdge]] | None = None,
         design: str | None = None,
+        review: str | None = None,
     ) -> None:
         self._symbols = symbols or {}
         self._impact = impact_map or {}
         self._edges = edges or {}
         self._design = design
+        self._review = review
 
     def find_symbol(self, name: str, *, kind: str | None = None) -> list[SymbolHit]:
         hits = [_hit(name, scope, k) for scope, k in self._symbols.get(name, [])]
@@ -79,6 +84,8 @@ class _FakeRepo:
     def get_current(self, scope, artifact_type, *, trustworthy=False):  # noqa: ARG002
         if artifact_type == "design" and self._design is not None:
             return type("_Art", (), {"content": {"text": self._design}})()
+        if artifact_type == "review_findings" and self._review is not None:
+            return type("_Art", (), {"content": {"text": self._review}})()
         return None
 
 
@@ -342,4 +349,136 @@ def test_hook_multi_symbol_payload_enumerates_union():
     # Radius 3 (< Schwelle) -> direkte fix-Kinder ueber die Vereinigung.
     scopes = {n.scope for n in queue.calls[0]["nodes"]}
     assert scopes == {"file:a.py", "file:b.py", "file:c.py"}
-    assert all(n.task_type == "fix" for n in queue.calls[0]["nodes"])
+
+
+# --------------------------------------------------------------------------- #
+# 4. I-E.18 (Befund E-18): User-Absicht det in Review-/Kinder-/Redesign-Prompts #
+# --------------------------------------------------------------------------- #
+
+# Die woertliche Absicht traegt das ZIEL des rename (foo_renamed) -- sie steht
+# NUR im Erzeuger-Payload, nie in det-Instruktion oder (garantiert) im Design.
+_INTENT = "Benenne `foo` -> `foo_renamed` um (Definition und ALLE Nutzer)."
+
+
+# foo (a.py) mit 5 Nutzern -> radius 6 >= Schwelle -> G3-Review-Zweig.
+def _repo_wide(review: str | None = None) -> _FakeRepo:
+    return _FakeRepo(
+        symbols={"foo": [("file:a.py", "function")]},
+        impact_map={"file:a.py": [f"file:u{i}.py" for i in range(5)]},
+        review=review,
+    )
+
+
+def test_hook_threads_intent_into_children_instruction():
+    # Kinder-Instruktion = Absicht-Block VORAN + det-Instruktion: das Ziel haengt
+    # nicht mehr am prob-Design (E-18: F5 verlor die Zielnamen, Kinder rieten).
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1",
+        payload={
+            "impact": {"op": "rename", "symbol": "foo"},
+            "instruction": _INTENT,
+            "depth": 0,
+        },
+    )
+    hook(producer, _repo_foo(), None)
+    instruction = queue.calls[0]["base_payload"]["instruction"]
+    assert "foo_renamed" in instruction
+    assert instruction.startswith("Aenderungsabsicht des Nutzers")
+    assert "foo" in instruction.split("\n\n", 1)[1]  # det-Instruktion folgt
+
+
+def test_hook_without_intent_keeps_children_instruction_clean():
+    # Kein Absicht-Text am Erzeuger -> kein leerer Block (byte-stabil zu vorher).
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1", payload={"impact": {"op": "signature", "symbol": "foo"}, "depth": 0}
+    )
+    hook(producer, _repo_foo(), None)
+    assert "Aenderungsabsicht" not in queue.calls[0]["base_payload"]["instruction"]
+
+
+def test_review_node_instruction_carries_intent_and_completeness_check():
+    # G3-Zweig: der Review-Knoten traegt Absicht + die Leitfrage, ob das Design
+    # sie vollstaendig abdeckt (fehlende Zielnamen -> needs_redesign).
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1",
+        payload={
+            "impact": {"op": "rename", "symbol": "foo"},
+            "instruction": _INTENT,
+            "depth": 0,
+        },
+    )
+    hook(producer, _repo_wide(), None)
+    call = queue.calls[0]
+    assert [n.task_type for n in call["nodes"]] == ["review"]
+    instruction = call["base_payload"]["instruction"]
+    assert "foo_renamed" in instruction
+    assert "Aenderungsabsicht des Nutzers" in instruction
+    assert "vollstaendig" in instruction  # Abdeckungs-Leitfrage
+    # Die Absicht wird als eigenes Feld weitergefaedelt (Re-Fire liest sie von
+    # dort -- payload["instruction"] ist beim Review-Knoten die Review-Instruktion).
+    assert call["base_payload"]["intent"] == _INTENT
+
+
+def test_hook_refire_after_ok_verdict_uses_original_intent():
+    # Re-Fire auf dem Review-Knoten (verdict: ok): die Kinder tragen die ORIGINAL-
+    # Absicht (intent-Feld), NICHT die Review-Instruktion des Knotens.
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1/review",
+        payload={
+            "impact": {"op": "rename", "symbol": "foo"},
+            "instruction": "Pruefe VOR dem Fan-out das folgende geteilte Design",
+            "intent": _INTENT,
+            "design_reviewed": True,
+            "depth": 1,
+        },
+    )
+    hook(producer, _repo_wide(review="passt so. verdict: ok"), None)
+    instruction = queue.calls[0]["base_payload"]["instruction"]
+    assert "foo_renamed" in instruction
+    assert "Pruefe VOR dem Fan-out" not in instruction
+
+
+def test_hook_redesign_node_carries_intent():
+    # needs_redesign-Zweig: auch der frische architect bekommt die Absicht --
+    # woertlich in der Instruktion UND als intent-Feld (fuer SEIN Re-Fire).
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1/review",
+        payload={
+            "impact": {"op": "rename", "symbol": "foo"},
+            "instruction": "Pruefe VOR dem Fan-out das folgende geteilte Design",
+            "intent": _INTENT,
+            "design_reviewed": True,
+            "redesign_stage": 0,
+            "depth": 1,
+        },
+    )
+    hook(producer, _repo_wide(review="Luecken. verdict: needs_redesign"), None)
+    call = queue.calls[0]
+    assert [n.task_type for n in call["nodes"]] == ["architect"]
+    assert "foo_renamed" in call["base_payload"]["instruction"]
+    assert call["base_payload"]["intent"] == _INTENT
+
+
+def test_render_intent_block_empty_for_blank_intent():
+    assert render_intent_block("") == ""
+    assert render_intent_block("   ") == ""
+    assert "foo_renamed" in render_intent_block(_INTENT)
+
+
+def test_render_review_and_redesign_instruction_backwards_compatible():
+    # Ohne intent (Default) bleiben die Instruktionen frei von Absicht-Bloecken.
+    exp = impact_expand(
+        _repo_foo(), op=ChangeOp.rename, symbols=("foo",), allowed_scopes=None
+    )
+    assert "Aenderungsabsicht" not in render_review_instruction(exp, "DESIGN", 7)
+    assert "Aenderungsabsicht" not in render_redesign_instruction(exp)

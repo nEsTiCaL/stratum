@@ -154,6 +154,17 @@ def _outcome_from_rc(rc: int, out: str, cmd: tuple[str, ...]) -> TestOutcome:
             "keine Tests gesammelt (neutral)",
             ({"command": command, "status": "skipped", "exit_code": rc},),
         )
+    if "No module named pytest" in out:
+        # "python -m pytest" ohne installiertes pytest: python existiert -> KEIN
+        # FileNotFoundError, sondern rc=1 + diese stderr-Zeile (I-E.5, Befund
+        # E-5). Gleiche Klasse wie das fehlende Binary: neutral statt falscher
+        # roter Rueckkante mit unbrauchbarem Feedback.
+        return TestOutcome(
+            True,
+            True,
+            "pytest nicht installiert (neutral)",
+            ({"command": command, "status": "skipped", "exit_code": rc},),
+        )
     entry = {
         "command": command,
         "status": "failed",

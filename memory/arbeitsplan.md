@@ -356,6 +356,45 @@ Reihenfolge: Strang V zuerst KOMPLETT (REK.1-4, "messen vor optimieren" --
 test_gate ist das Messinstrument fuer alles Weitere), dann REK.5-6, dann 7-8
 parallel zu 9-10, zuletzt 11-12.
 
+## Haertung E-Befunde  (Quelle: `ops_rekursionstests` Grenzen-Liste; Nutzer-Entscheid 2026-07-16: ALLE E's implementieren, Ziel Testuser-Uebergabe)
+
+ID = E-Nummer (I-E.18 fixt E-18). Wellen = Reihenfolge; innerhalb einer Welle
+aufsteigend nach Aufwand. E-14 bereits fertig (I-7.6).
+
+```
+ID       Haeppchen                                Kl   dep        Welle  Detail
+-------  ---------------------------------------  ---  ---------  -----  ----------------
+I-E.18   User-Absicht det in Review-/Kinder-      det  -          1      E-18: intent-Block in render_review_
+         Prompts (impact-Kette)                                          instruction/-redesign + Kinder-instruction   fertig 2026-07-16
+I-E.5    pytest ins .[web]-Image + neutral-       det  -          1      E-5: Dockerfile + test_gate "No module
+         Erkennung haerten                                               named pytest" -> neutral   fertig 2026-07-16
+I-E.1    Gate-Kette + Apply hinter impact-        gem  I-E.18     1      E-1: lint je Kind + EIN Sammel-test_gate
+         Kindern (Sammel-Abschluss)                                      + atomarer Sammel-Apply (rename-Konsistenz!)
+I-E.17   No-op-Vertrag + engere Enumeration       gem  I-E.1      1      E-17: KEINE_AENDERUNG legal (done ohne
+                                                                         Patch) + det-Textvorfilter je Kind
+I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: git-apply-Toleranz, Fail-Feedback
+         Formatwechsel-Sprosse)                                          mit echten Umgebungszeilen, whole-file vor re_design
+I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen
+I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET
+I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar
+         DAG-Abbruch
+I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar
+I-E.4    Key-/Owner-Admin-Endpoint                gem  -          2      E-4: REST statt CLI (entsperrt auch agentische
+                                                                         Testlaeufe; Classifier blockt core.auth create)
+I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen
+I-E.2    test_gate-Entscheid zur Claim-Zeit       det  -          3      E-2: workspace_has_tests je Gate-Claim statt Enqueue
+I-E.9    shared_design fuer small plans           gem  -          3      E-9: Plan-Verstaendnis als Mini-Design an alle Goals
+I-E.16   debug-Template (Repro->Wirkkette->       det  -          3      E-16: eigener Systemprompt, Frage VOR Quelltext
+         Ursache->Fix-Ort)
+I-E.15   debug-Briefing: Dependency-Quelltexte    det  I-E.16     3      E-15: beide Graph-Richtungen, budget-gedeckelt
+I-E.6    put_artifact upsert (Index-Race)         det  -          4      E-6: supersede-or-skip statt UniqueViolation
+I-E.3    Settings-Feld review_radius              det  -          4      E-3: DEFAULT_REVIEW_RADIUS tunable via API
+```
+
+Nach Welle 1: G4 nachfahren (Key noetig, E-4/I-E.4 entsperrt das) + K5 + Q1,
+dann Testuser-Uebergabe vorbereiten. Grenzbefunde je Fix in
+`ops_rekursionstests` (E-Liste) nachziehen (Status BEHOBEN + Beleg).
+
 ## Status
 
 Die Tabellen oben sind die einzige Fortschritts-Wahrheit (rules P7); Details je
