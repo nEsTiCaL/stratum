@@ -144,3 +144,50 @@ class TestScopeCollisionSequenced:
         second = q.claim("phi4-mini")
         assert second is not None
         assert second.node_id != first.node_id
+
+
+class TestPayloadFor:
+    def test_per_node_payload_overrides_base(self, conn):
+        """I-E.1: payload_for gibt einzelnen Kindern ein EIGENES Payload (das
+        Sammel-test_gate traegt gate_scopes, keine instruction); None-Rueckgabe
+        -> base_payload wie bisher."""
+        q = Queue(conn)
+        q.enqueue(_producer_dag(), model="phi4-mini")
+        parent = q.claim("phi4-mini")
+        assert parent is not None
+        q.complete(parent.id)
+
+        proposal = [
+            DagNode("impact_0", "fix", "file:a.py", (), "pending", frozenset()),
+            DagNode(
+                "impact_test",
+                "test_gate",
+                "repo:",
+                ("impact_0",),
+                "pending",
+                frozenset(),
+            ),
+        ]
+        prepared = prepare_children(parent.node_id, proposal)
+        q.enqueue_children(
+            parent,
+            prepared.nodes,
+            base_payload={"depth": 1, "instruction": "Basis"},
+            payload_for=lambda n: (
+                {"depth": 1, "gate_scopes": ["file:a.py"]}
+                if n.task_type == "test_gate"
+                else None
+            ),
+        )
+        rows = dict(
+            conn.execute(
+                "SELECT node_id, payload FROM queue WHERE dag_id='d' "
+                "AND node_id LIKE %s",
+                (f"n1{NODE_ID_SEP}%",),
+            ).fetchall()
+        )
+        fix_payload = rows[f"n1{NODE_ID_SEP}impact_0"]
+        gate_payload = rows[f"n1{NODE_ID_SEP}impact_test"]
+        assert fix_payload["instruction"] == "Basis"  # None -> base_payload
+        assert gate_payload["gate_scopes"] == ["file:a.py"]
+        assert "instruction" not in gate_payload

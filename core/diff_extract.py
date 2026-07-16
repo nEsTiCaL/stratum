@@ -18,6 +18,17 @@ import re
 _FENCE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n```", re.DOTALL | re.MULTILINE)
 _HUNK = re.compile(r"^@@ .* @@", re.MULTILINE)
 _GIT = re.compile(r"^diff --git ", re.MULTILINE)
+
+# I-E.17 (Befund E-17): der No-op-Vertrag. Ein leerer Patch ist im Unified-Diff-
+# Format nicht ausdrueckbar -- Modelle erfanden Pseudo-Diffs (nackte Kopfzeile,
+# leerer Hunk) oder scheiterten am Validator (patch_parse_fail). Statt dessen
+# ist DIESE Marker-Zeile die legale "nichts zu tun"-Antwort. Sie gilt NUR fuer
+# Knoten, deren Instruktion sie anbietet (payload.no_change_ok, setzt der
+# impact-Hook) -- ein regulaerer implement/fix, der faelschlich so antwortet,
+# faellt weiter als patch_parse_fail (sonst waere "alles gruen, nichts passiert"
+# eine stille Nicht-Umsetzung).
+NO_CHANGE_MARKER = "KEINE_AENDERUNG"
+_NO_CHANGE_LINE = re.compile(rf"^[`*\s]*{NO_CHANGE_MARKER}[`*.\s]*$", re.IGNORECASE)
 # Fence-Reste an den Diff-Raendern: oeffnende ```-Zeile ohne (erkanntes)
 # Gegenstueck bzw. schliessende Fence, die das LLM als "+```" in den
 # Diff-Body geschrieben hat (systematisches Chatbot-Artefakt: die Zeile
@@ -133,3 +144,20 @@ def extract_diff(raw: str) -> str:
     if not (_HUNK.search(text) or _GIT.search(text)):
         raise ValueError("kein Unified-Diff (weder @@-Hunk noch 'diff --git')")
     return text
+
+
+def is_no_change(raw: str) -> bool:
+    """True, wenn die Antwort der No-op-Vertrag ist (I-E.17): eine Zeile traegt
+    den Marker `KEINE_AENDERUNG` (Backtick-/Stern-/Punkt-tolerant, wie die
+    Verdikt-Zeile des Design-Reviews) UND die Antwort enthaelt KEINEN parsebaren
+    Diff -- ein echter Diff gewinnt immer (das Modell hat dann doch geaendert)."""
+    text = (raw or "").strip()
+    if not text or NO_CHANGE_MARKER not in text.upper():
+        return False
+    if not any(_NO_CHANGE_LINE.match(line.strip()) for line in text.splitlines()):
+        return False
+    try:
+        extract_diff(raw)
+    except ValueError:
+        return True
+    return False

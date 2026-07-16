@@ -767,6 +767,106 @@ Re-Fire nutzt die ORIGINAL-Absicht statt der Review-Instruktion; ohne intent
 kein leerer Block). 1251 gruen (+8 inkl. I-E.5), ruff clean. Offen: Live-Beleg
 (F5-Wiederholung) nach Redeploy.
 
+## I-E.1: Gate-Kette + atomarer Sammel-Apply hinter impact-Kindern (2026-07-16, fertig)
+
+Befund E-1 (`ops_rekursionstests`): impact-Kinder endeten als nackte fix-Blaetter
+-- Patches ohne eigenen Report (wegen E-14 nicht einmal manuell anwendbar), kein
+Auto-Apply, kein Gate hinter dem Fan-out. Design (K4-Diskussion): lint je Kind,
+aber EIN Test-/Apply-Moment fuer den ganzen Fan-out -- eine koordinierte Op
+(rename ueber 9 Dateien) ist Kind-fuer-Kind angewandt zwischenzeitlich
+inkonsistent (Definition umbenannt, Nutzer noch nicht).
+
+- `build_impact_gates(children, anchor_scope)` (core/impact_expand.py): je Kind
+  ein lint_gate `impact_i_lint` (scope = Kind-Datei -- der LintGateWorker findet
+  den Patch scope-basiert; der gruene Report ist patch-gekoppelt = E-14-Wahrheit,
+  macht Kinder auch fuer /api/apply anwendbar) + EIN Sammel-test_gate
+  `impact_test` (scope = Erzeuger-Anker, depends_on = ALLE lint_gates).
+  `_materialize` haengt beide Schichten mit an; der Wirkradius fuer die
+  G3-Schwelle (gate_policy) zaehlt weiterhin NUR die fix-Kinder.
+- Payload-Kanal: `enqueue_children(payload_for=...)` (core/queue.py) -- ein
+  KOMPLETTES Payload je Kind (fix: instruction+plan_design+depth; lint_gate:
+  depth; test_gate: depth+gate_scopes=touched). None -> base_payload
+  (rueckwaerts-kompatibel).
+- TestGateWorker Sammel-Modus (core/test_gate.py): payload["gate_scopes"] ->
+  alle Kind-Patches als EIN konkatenierter Multi-File-Diff in EINER Sandbox
+  (Reihenfolge = touched -> deterministischer input_hash; Report unterm
+  Gate-scope). `apply_diff` gehaertet: zwei Sektionen derselben Datei ->
+  Fehler statt still-letzte-gewinnt (jede Sektion rechnet gegen den ORIGINAL-
+  Inhalt; deckt Kind-Patch-Kollisionen im E-10-Muster).
+- `apply_confirmed_patches` (core/apply_gate.py, atomar): je scope Patch +
+  patch-gekoppelter gruener lint_report, dann ALLE Diffs vorab gegen den Tree
+  gerechnet (die Kind-Patches entstehen gegen denselben Stand), Kollision/
+  Mismatch -> NICHTS geschrieben; erst dann schreiben + Re-Ingest (I-4.4).
+  serve: `_auto_apply` verzweigt bei gate_scopes nach `_auto_apply_fanout`
+  (is_applied-Filter je Kind-Hash vorab, mark_applied je Kind danach);
+  Einzelpfad byte-gleich.
+- Eskalation: re_act bleibt generisch (reopen_after_verify laeuft die Gate-
+  Kette hoch: rotes Kind-lint_gate reopent SEIN Kind, das rote Sammel-Gate
+  ALLE Kinder -- der Verursacher ist det nicht zuordenbar, gemeinsames
+  Attempt-Budget kappt bei 2 Vollrunden). Die REK.11-Leiter ist fuer
+  impact-Ketten AUS: `queue.escalation_stage` ignoriert architects mit
+  impact-Payload (reopen_for_redesign wuerde den Completion-Hook gegen die
+  enqueue_children-Idempotenz feuern; das Design-Eskalationsregime der Kette
+  ist das G3-Review/Redesign). Kind-Gates fallen nach Kappung terminal; das
+  Sammel-Gate haengt dann pending (KEIN Apply) -- der ehrliche Endzustand,
+  bis I-E.17 (No-op-Vertrag) die Hauptursache entfernt bzw. I-E.7 (Cancel)
+  aufraeumt.
+
+Akzeptanz: +20 Tests (impact_expand Gate-Struktur/Payloads/Radius-Zaehlung,
+test_gate Sammel-Modus inkl. Kollisionsfall, apply_gate Atomaritaet je
+Verletzungsart, patch_apply Doppel-Sektion, completion_hook payload_for,
+escalation Leiter-Guard; gate_policy-Asserts an die neue Knotenmenge
+angepasst). 1271 gruen, ruff check+format clean. Offen: Live-Beleg
+(F4-Wiederholung Ende-zu-Ende bis Apply) nach Redeploy. E-19 (Hook-Einmal-
+Ausfall nach Container-Start) bewusst NICHT hier: ein Startup-Reaper braucht
+eigenes Timing-Design (der naive Serve-Start-Nachholer unterlaege demselben
+Startup-Race) -- eigenes Haeppchen; I-E.1 verbaut ihm nichts (Hook bleibt
+einzige Kinder-Quelle, enqueue_children-Idempotenz traegt ein Re-Fire).
+
+## I-E.17: No-op-Vertrag + det-Textvorfilter (2026-07-16, fertig)
+
+Befund E-17 (`ops_rekursionstests`, F4+F5 reproduziert): die transitive
+Datei-Huelle ist ueberinklusiv (F4: 5 von 9 Kindern ohne jedes Symbol-
+Vorkommen), und "nichts zu tun" war nicht ausdrueckbar -- die Instruktion
+verlangte einen "leeren Patch", den es im Unified-Diff-Format nicht gibt ->
+Pseudo-Diffs (nackte Kopfzeile/leerer Hunk) oder patch_parse_fail. Beide
+Kandidaten des Befunds umgesetzt:
+
+- det-Textvorfilter (core/impact_expand.py): ``impact_expand(read_scope=...)``
+  filtert die users auf WOERTLICHE Symbol-Treffer (``\b``-Wortgrenze,
+  re.escape). ``_scope_reader(root)`` bindet den Key-Workspace (Hook); ohne
+  root (Tests) kein Filter. defs werden NIE gefiltert (Definitionsort immer
+  betroffen); unlesbare Dateien bleiben konservativ drin -- der Filter
+  entfernt nur nachweislich Treffer-Freies. Textsuche statt Graph faengt auch
+  Kommentar-/Doku-Referenzen (F4: plan_format). understanding/uncertain/
+  touched rechnen auf der GEFILTERTEN Menge -> auch der G3-Radius ist jetzt
+  der ehrliche Wirkradius.
+- No-op-Vertrag: die Kinder-Instruktion bietet die Marker-Zeile
+  ``KEINE_AENDERUNG`` an (``_NO_CHANGE_SENTENCE`` in allen vier Op-Templates).
+  ``diff_extract.is_no_change`` erkennt sie tolerant (Backticks/Stern/Punkt,
+  eigene Zeile; ein parsebarer Diff gewinnt IMMER). Der Vertrag ist
+  PAYLOAD-GEBUNDEN (``no_change_ok``, setzt nur der impact-Hook am
+  fix_payload): Validator (``allow_no_change`` durch EscalationLoop
+  gefaedelt) und LlmWorker akzeptieren die Marker-Antwort nur damit -- ein
+  regulaerer implement/fix, der faelschlich so antwortet, bleibt
+  patch_parse_fail ("gruen ohne Tun" waere eine stille Nicht-Umsetzung).
+- Artefakt-Fluss: legaler No-op -> patch ``{diff:"", no_op:true}``;
+  lint_gate neutral-gruen ohne Sandbox (Report stempelt diff_hash("") ->
+  patch-gekoppelt verified, E-14); Sammel-test_gate laesst no_op-Kinder aus
+  dem kombinierten Diff (ALLE no_op -> neutral ohne Sandbox-Lauf);
+  apply_confirmed_patches ueberspringt sie (alle no_op -> applied=true,
+  written=false), apply_confirmed_patch (Einzel) analog; ApplyResult.written
+  traegt die Ehrlichkeit bis /api/apply, /api/patches kennzeichnet no_op.
+
+Akzeptanz: +23 Tests (is_no_change-Toleranz/Diff-gewinnt, Validator mit/ohne
+Vertrag, LlmWorker no_op-Artefakt vs. unresolved, lint_gate neutral,
+test_gate Sammel-Ausschluss + alle-No-op, apply beide Pfade, Prefilter
+Wortgrenze/defs/unlesbar/Kommentar, Instruktions-Marker, Vertrag nur am
+fix-Kind). 1294 gruen, ruff check+format clean. Offen: Live-Beleg -- die
+F4-Wiederholung nach Redeploy belegt I-E.1+I-E.17 zusammen (erwartet:
+weniger/keine No-op-Kinder dank Vorfilter, Rest KEINE_AENDERUNG, Sammel-Gate
+gruen, atomarer Auto-Apply schreibt die echten Patches).
+
 ## Handoff-Konvention je Paket
 
 Abschluss = Suite gruen + ruff check/format gruen + arbeitsplan-Status +

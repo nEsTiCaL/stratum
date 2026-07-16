@@ -163,10 +163,22 @@ class LlmWorker:
             },
         )
 
-        outcome = self._local_phase(task_type, prompt, local)
+        # I-E.17: der No-op-Vertrag gilt nur, wo die Instruktion ihn anbietet
+        # (impact-Kinder; der Hook stempelt no_change_ok ins Payload).
+        allow_no_change = bool(item.payload.get("no_change_ok"))
+
+        outcome = self._local_phase(
+            task_type, prompt, local, allow_no_change=allow_no_change
+        )
         if self._should_escalate(outcome) and cloud and self.cloud_sender is not None:
             cloud_outcome = self._cloud_phase(
-                item, repo, task_type, sensitivity, cloud, prompt
+                item,
+                repo,
+                task_type,
+                sensitivity,
+                cloud,
+                prompt,
+                allow_no_change=allow_no_change,
             )
             if cloud_outcome is not None:
                 prior = outcome.attempts if outcome is not None else 0
@@ -188,7 +200,12 @@ class LlmWorker:
         return outcome
 
     def _local_phase(
-        self, task_type: TaskType, prompt: str, local: list
+        self,
+        task_type: TaskType,
+        prompt: str,
+        local: list,
+        *,
+        allow_no_change: bool = False,
     ) -> EscalationOutcome | None:
         """Lokale Kandidaten mit flachem Prompt. Leere Liste -> None (kein
         Loop-Aufruf: EscalationLoop.run wuerde bei leerer Liste asserten)."""
@@ -200,6 +217,7 @@ class LlmWorker:
             prompt=prompt,
             candidates=local,
             model_factory=self.model_factory,
+            allow_no_change=allow_no_change,
         )
 
     @staticmethod
@@ -219,6 +237,8 @@ class LlmWorker:
         sensitivity: Sensitivity,
         cloud: list,
         prompt: str,
+        *,
+        allow_no_change: bool = False,
     ) -> EscalationOutcome | None:
         """Bundle + Redaction-Gate, dann Cloud-Kandidaten mit dem Bundle-Tail.
         BLOCK -> None (Knoten bleibt eskaliert/unresolved). Trace schreibt der
@@ -255,6 +275,7 @@ class LlmWorker:
             prompt=egress.tail,
             candidates=cloud,
             model_factory=factory,
+            allow_no_change=allow_no_change,
         )
 
     def _read_source(self, scope: str) -> str:
@@ -288,16 +309,22 @@ class LlmWorker:
         )
 
         # patch (implement/fix, I-7.2): content = geparster Diff + Zielscope.
+        # I-E.17: unter dem No-op-Vertrag (payload.no_change_ok) ist die Marker-
+        # Antwort KEINE_AENDERUNG legal -> patch-Artefakt {diff:"", no_op:true}
+        # (lint_gate neutral-gruen, Sammel-test_gate/Apply ueberspringen es).
         # Sonst gemeinsames Format mit dem Human-Pfad: Markdown-Ueberschriften-
         # Split (1+2 -> text, 3 -> findings, 4 -> recommendations); kein Split
         # moeglich -> ganze Antwort als content.text (core.review_format).
         if artifact_type_str == "patch":
-            from core.diff_extract import extract_diff
+            from core.diff_extract import extract_diff, is_no_change
 
-            content = {
-                "diff": extract_diff(outcome.response),
-                "target_scope": item.scope,
-            }
+            if item.payload.get("no_change_ok") and is_no_change(outcome.response):
+                content = {"diff": "", "no_op": True, "target_scope": item.scope}
+            else:
+                content = {
+                    "diff": extract_diff(outcome.response),
+                    "target_scope": item.scope,
+                }
         else:
             content = build_content(outcome.response, item.task_type)
 

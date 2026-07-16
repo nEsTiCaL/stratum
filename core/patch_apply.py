@@ -270,7 +270,11 @@ def _apply_one(fd: _FileDiff, read_current: ReadCurrent) -> FileChange | str:
 def apply_diff(diff: str, read_current: ReadCurrent) -> ApplyResult:
     """Wendet einen Unified-Diff (ggf. Multi-File) an und gibt die resultierenden
     Datei-Inhalte zurueck, ohne zu schreiben. ok=False bei Parse-Fehler,
-    fehlender Zieldatei oder Kontext-Mismatch (reason nennt die Fundstelle)."""
+    fehlender Zieldatei oder Kontext-Mismatch (reason nennt die Fundstelle).
+
+    Zwei Sektionen desselben Pfads -> Fehler statt still-letzte-gewinnt: jede
+    Sektion wird gegen den ORIGINAL-Inhalt gerechnet, die zweite saehe die erste
+    nie (relevant fuer konkatenierte Kind-Patches im Sammel-test_gate, I-E.1)."""
     fdiffs = _parse(diff)
     if not fdiffs or all(not fd.hunks for fd in fdiffs):
         return ApplyResult(False, reason="kein anwendbarer Hunk im Diff")
@@ -280,4 +284,10 @@ def apply_diff(diff: str, read_current: ReadCurrent) -> ApplyResult:
         if isinstance(res, str):
             return ApplyResult(False, reason=res)
         changes.append(res)
+    paths = [c.path for c in changes]
+    dupes = sorted({p for p in paths if paths.count(p) > 1})
+    if dupes:
+        return ApplyResult(
+            False, reason=f"Diff aendert dieselbe Datei mehrfach: {', '.join(dupes)}"
+        )
     return ApplyResult(True, tuple(changes))

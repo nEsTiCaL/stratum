@@ -210,6 +210,12 @@ class LintGateWorker:
         if patch is None:
             outcome = LintOutcome(False, False, "kein patch-Artefakt fuer scope", ())
             diff = ""
+        elif patch.content.get("no_op"):
+            # I-E.17: legaler No-op (KEINE_AENDERUNG) -- nichts zu linten,
+            # neutral-gruen. Der Report stempelt diff_hash("") -> das Kind ist
+            # patch-gekoppelt verifiziert (E-14) und blockiert den Fan-out nicht.
+            outcome = LintOutcome(True, True, "keine Aenderung noetig (No-op)", ())
+            diff = ""
         else:
             diff = patch.content.get("diff", "")
             outcome = self.sandbox(

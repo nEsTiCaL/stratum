@@ -234,3 +234,25 @@ class TestLintGateWorker:
         assert called == []  # Sandbox gar nicht bemueht
         assert repo.artifacts[0].content["passed"] is False
         assert "kein patch" in repo.artifacts[0].content["summary"]
+
+    def test_no_op_patch_is_neutral_green_without_sandbox(self):
+        # I-E.17: legaler No-op (KEINE_AENDERUNG) -> nichts zu linten, neutral-
+        # gruen; der Report stempelt diff_hash("") -> patch-gekoppelt verifiziert.
+        repo = _FakeRepo({"diff": "", "no_op": True, "target_scope": "file:core/x.py"})
+        called = []
+        worker = LintGateWorker(
+            root=_ROOT,
+            sandbox=lambda *a, **k: (
+                called.append(1) or LintOutcome(False, False, "x", ())
+            ),
+        )
+        out = worker.run(_item(), repo)
+
+        assert out.passed and out.applied
+        assert "No-op" in out.summary
+        assert called == []  # Sandbox gar nicht bemueht
+        report = repo.artifacts[0]
+        assert report.content["passed"] is True
+        from core.patch_apply import diff_hash
+
+        assert report.provenance.input_hash == diff_hash("")

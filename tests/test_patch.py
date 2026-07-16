@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.diff_extract import build_patch_prompt, extract_diff
+from core.diff_extract import build_patch_prompt, extract_diff, is_no_change
 from core.queue import QueueItem
 from core.router import Router, TaskType
 from core.template_registry import decompose
@@ -199,6 +199,85 @@ class TestLlmWorkerPatch:
         outcome = worker.run(_item("implement"), repo)
         assert outcome.status == "unresolved"
         assert len(repo.artifacts) == 0
+
+
+class TestIsNoChange:
+    """I-E.17: die Marker-Zeile KEINE_AENDERUNG als legale No-op-Antwort."""
+
+    def test_bare_marker(self):
+        assert is_no_change("KEINE_AENDERUNG")
+
+    def test_tolerates_backticks_dot_case(self):
+        assert is_no_change("`keine_aenderung`.")
+
+    def test_marker_line_within_prose(self):
+        assert is_no_change("Das Symbol kommt hier nicht vor.\nKEINE_AENDERUNG\n")
+
+    def test_diff_wins_over_marker(self):
+        # Modell sagt No-op UND liefert einen Diff -> der Diff gewinnt.
+        assert not is_no_change(f"KEINE_AENDERUNG\n{_DIFF}")
+
+    def test_marker_as_substring_does_not_count(self):
+        assert not is_no_change("Ich schlage KEINE_AENDERUNG vor, weil ...")
+
+    def test_prose_and_empty_are_not_no_change(self):
+        assert not is_no_change("hier gibt es nichts zu tun")
+        assert not is_no_change("")
+
+
+class TestNoChangeValidation:
+    def test_marker_passes_with_contract(self):
+        r = Validator().validate(
+            "KEINE_AENDERUNG",
+            TaskType.fix,
+            producer_class="prob",
+            allow_no_change=True,
+        )
+        assert r.passed
+
+    def test_marker_fails_without_contract(self):
+        # Ohne Vertrag (regulaerer implement/fix) bleibt die Marker-Antwort ein
+        # patch_parse_fail -- "gruen ohne Tun" waere eine stille Nicht-Umsetzung.
+        r = Validator().validate("KEINE_AENDERUNG", TaskType.fix, producer_class="prob")
+        assert not r.passed
+        assert r.trigger == "patch_parse_fail"
+
+
+class TestLlmWorkerNoOp:
+    """I-E.17: unter dem Vertrag (payload.no_change_ok) wird die Marker-Antwort
+    ein no_op-patch-Artefakt; ohne Vertrag bleibt sie unresolved."""
+
+    def _run(self, responses: list[str], payload_extra: dict):
+        repo = _FakeRepo()
+        item = _item("fix")
+        item.payload.update(payload_extra)
+        worker = LlmWorker(
+            router=Router(),
+            model_factory=lambda name: FakeModel(responses=list(responses)),
+        )
+        return worker.run(item, repo), repo
+
+    def test_marker_with_contract_stores_no_op_patch(self):
+        outcome, repo = self._run(["KEINE_AENDERUNG"], {"no_change_ok": True})
+        assert outcome.status == "done"
+        art = repo.artifacts[0]
+        assert art.artifact_type.value == "patch"
+        assert art.content == {
+            "diff": "",
+            "no_op": True,
+            "target_scope": "file:core/foo.py",
+        }
+
+    def test_marker_without_contract_unresolved(self):
+        outcome, repo = self._run(["KEINE_AENDERUNG", "KEINE_AENDERUNG"], {})
+        assert outcome.status == "unresolved"
+        assert repo.artifacts == []
+
+    def test_real_diff_with_contract_stays_regular_patch(self):
+        _outcome, repo = self._run([_DIFF], {"no_change_ok": True})
+        art = repo.artifacts[0]
+        assert art.content["diff"].startswith("--- a/core/foo.py")
+        assert "no_op" not in art.content
 
 
 class TestImplementDecomposition:

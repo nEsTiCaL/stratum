@@ -347,9 +347,29 @@ Befunde im Abschnitt "Ergebnisse" festhalten (append-only).
 
 Kandidaten E-1..E-4 vorab, E-5..E-10 aus dem Smoke-Lauf 2026-07-16:
 ```
-E-1  impact-Kinder ohne Gate-Kette/Auto-Apply (code-verifiziert 2026-07-16):
-     Patches enden als Artefakte; Apply nur manuell. Kandidat: lint/test_gate
-     hinter jedes impact-Kind (decompose-analog) ODER Sammel-Gate + Apply.
+E-1  [BEHOBEN I-E.1, 2026-07-16] impact-Kinder ohne Gate-Kette/Auto-Apply:
+     Patches endeten als Artefakte ohne eigenen Report (wegen E-14 nicht mal
+     manuell anwendbar), kein Auto-Apply. FIX (Design K4-Diskussion: lint je
+     Kind, EIN Test-/Apply-Moment fuer den Fan-out -- Kind-fuer-Kind waere
+     bei einer koordinierten Op zwischenzeitlich inkonsistent):
+     build_impact_gates haengt je Kind ein lint_gate (scope=Kind-Datei ->
+     patch-gekoppelter gruener Report, macht Kinder auch fuer /api/apply
+     anwendbar) + EIN Sammel-test_gate hinter ALLE Kinder (payload.
+     gate_scopes=touched; TestGateWorker testet die Vereinigung der Patches
+     als EINEN Multi-File-Diff in EINER Sandbox). Auto-Apply am terminalen
+     Sammel-Gate ist ATOMAR (apply_confirmed_patches: je Kind gruener
+     patch-gekoppelter Report noetig, ALLE Diffs vorab gerechnet, Kollision/
+     Mismatch -> NICHTS geschrieben); is_applied/mark_applied je Kind-Hash.
+     Rueckkanten: rotes Kind-lint_gate reopent SEIN Kind (re_act), rotes
+     Sammel-Gate ALLE Kinder (Verursacher det nicht zuordenbar); REK.11-
+     Leiter fuer impact-Ketten AUS (escalation_stage ignoriert architects
+     mit impact-Payload -- das Design-Regime der Kette ist das G3-Review).
+     apply_diff gehaertet: Doppel-Sektionen derselben Datei -> Fehler statt
+     still-letzte-gewinnt. ERWARTET bis I-E.17: No-op-Kinder (E-17) machen
+     ihr lint_gate rot ("kein anwendbarer Hunk") -> nach re_act-Kappung
+     terminal failed -> Sammel-Gate haengt pending, KEIN Apply (ehrlich,
+     aber der F4-Fall schliesst erst mit dem No-op-Vertrag ab). Live ab
+     naechstem Image-Build.
 E-2  Greenfield ohne test_gate (has_tests zur Enqueue-Zeit=leer) -- BESTAETIGT
      im G2-Lauf (Endergebnis 4/6 Tests rot, alle Knoten "gruen"). Kandidat:
      test_gate-Entscheid zur Claim-Zeit des Gate-Knotens.
@@ -427,10 +447,10 @@ E-14 [BEHOBEN I-7.6, 2026-07-16] Apply-Integritaet (F3, kritisch):
      (F4): /api/patches zeigt verified=false fuer ungeprueft e Patches (vorher
      true aus fremdem Alt-Report); POST /api/apply auf frischen ungeprueften
      Diff -> HTTP 409 "kein gruener lint_report" statt stillem applied:true.
-     Der VERWANDTE E-1 (impact-Kinder ohne Gate-Kette) bleibt offen: sie haben
-     nie einen eigenen Report -> der Anwender kann auch KORREKTE impact-Patches
-     (F4: def+2 Nutzer perfekt) via REST nicht anwenden; Ende-zu-Ende-Abschluss
-     braucht E-1 (Gate hinter impact-Kinder).
+     Der VERWANDTE E-1 (impact-Kinder ohne Gate-Kette) blieb damals offen: sie
+     hatten nie einen eigenen Report -> der Anwender konnte auch KORREKTE
+     impact-Patches (F4: def+2 Nutzer perfekt) via REST nicht anwenden.
+     Inzwischen behoben (I-E.1, s. E-1).
 E-15 debug-Briefing traegt Symptomort-Quelle + DEPENDENTS ("Aufrufer/
      Dependents"), aber KEINE Dependency-Quelltexte -- fuer Ursachensuche
      ist die Richtung verkehrt (Verdaechtige eines Symptoms in X sind Xs
@@ -446,19 +466,44 @@ E-16 task_type debug laeuft auf dem woertlichen review-Systemprompt ("Du
      widersprechen -- Antworten bleiben Review-Raster. Kandidat: eigenes
      debug-Template (Repro -> Wirkkette -> Ursache mit Dateipfad ->
      Fix-Ort), Anwender-Instruktion VOR den Quelltext.
-E-17 impact-Fan-out ueberinklusiv + kein No-op-Vertrag (F4+F5, reproduziert):
-     users = repo.impact(def-Datei) ist die TRANSITIVE DATEI-Huelle -> Kinder
-     auch fuer Dateien ohne jedes Symbol-Vorkommen (F4: 5 von 9 ohne
-     build_content; tests/test_plan_format.py haengt nur ueber plan_format
-     drin). "Nichts zu tun" hat ZWEI inkonsistente Ausgaenge: (a) done mit
-     Pseudo-Diff (nackte "diff --git"-Kopfzeile ODER leerer Hunk
-     "@@ -0,0 +0,0 @@" -- Validator laesst beide durch), (b) terminal failed
-     escalated/patch_parse_fail nach 2 Versuchen -- BEIDE Laeufe exakt am
-     selben Kind impact_8. Kandidaten: users symbol-basiert (direkte
-     Referenzen statt Datei-transitiv), No-op-Antwort legalisieren
-     ("KEINE_AENDERUNG" -> done ohne Patch), det-Textvorfilter vor
-     Materialisierung (nur Dateien mit Symbol-Treffer werden Kinder).
-E-18 [BEHOBEN I-E.18, 2026-07-16; Live-Beleg nach Redeploy offen]
+E-19 Einmal-Ausfall des Completion-Hooks direkt nach Container-Start
+     (F5-Retry 2026-07-16 abends): architect 272 (payload impact+
+     instruction korrekt) wurde ~3 min nach Recreate done, aber KEIN
+     Review-/Kind-Knoten entstand; kein "[worker] Expansion-Hook
+     fehlgeschlagen"-Log (PYTHONUNBUFFERED=1 gesetzt). Hook-Kern +
+     Verdrahtung nachweislich intakt: manueller Hook-Aufruf auf dem
+     272-Nachbau reihte sofort 273 ein, und der LAUFENDE Worker feuerte
+     danach 3x korrekt hintereinander (273->274 redesign, 274->275
+     Review, 275->Fan-out 276-284). Nicht reproduziert; Verdacht
+     Startup-Race im Worker-Thread. Kandidaten: Hook-Nachholer (Reaper:
+     done-Erzeuger mit impact-Payload ohne nicht-superseded Kinder ->
+     Re-Fire) ODER Hook-Feuerung vor complete-Persistenz haengen.
+E-17 [BEHOBEN I-E.17, 2026-07-16] impact-Fan-out ueberinklusiv + kein
+     No-op-Vertrag (F4+F5, reproduziert): users = repo.impact(def-Datei) ist
+     die TRANSITIVE DATEI-Huelle -> Kinder auch fuer Dateien ohne jedes
+     Symbol-Vorkommen (F4: 5 von 9); "nichts zu tun" hatte ZWEI inkonsistente
+     Ausgaenge (done mit Pseudo-Diff -- nackte diff-Kopfzeile/leerer Hunk --
+     oder terminal failed patch_parse_fail, 2x exakt am selben Kind impact_8).
+     FIX (beide Kandidaten): (1) det-Textvorfilter -- impact_expand filtert
+     users auf WOERTLICHE Symbol-Treffer (Wortgrenze; read_scope-Seam, der
+     Hook bindet den Key-Workspace-root; defs nie gefiltert, Unlesbares
+     konservativ behalten; faengt auch Kommentar-/Doku-Referenzen wie
+     plan_format in F4). (2) No-op-Vertrag -- Kinder-Instruktion bietet die
+     Marker-Zeile KEINE_AENDERUNG an (statt "leerer Patch", der im
+     Diff-Format nicht ausdrueckbar ist = der Pseudo-Diff-Treiber);
+     payload.no_change_ok schaltet sie frei (NUR impact-Kinder -- ein
+     regulaerer implement/fix, der so antwortet, bleibt patch_parse_fail,
+     sonst waere "gruen ohne Tun" eine stille Nicht-Umsetzung). Legaler
+     No-op -> patch{diff:"",no_op:true}, lint_gate neutral-gruen (Report
+     diff_hash("") -> verified), Sammel-test_gate ueberspringt ihn (alle
+     No-op -> neutral ohne Sandbox), Apply ehrlich ohne Schreibzugriff
+     (written=false; /api/patches kennzeichnet no_op). Live ab naechstem
+     Image-Build.
+E-18 [BEHOBEN I-E.18, 2026-07-16; LIVE BELEGT gleicher Abend, F5-Retry
+     DAG impact-70cd1122: Review-Prompt 275 traegt Absicht-Block + BEIDE
+     Zielnamen + Abdeckungs-Leitfrage; Kinder-Prompts 276/284 Absicht +
+     beide Zielnamen; redesign-Zweig live (273 needs_redesign -> 274
+     redesign-architect mit intent -> 275 Review -> Fan-out 9 Kinder)]
      User-Absicht geht hinter dem Design verloren (F5): Review-
      und Kinder-Prompts tragen NUR das prob-Design + det-Instruktion (Alt-
      Symbole), NICHT die "Aenderungsabsicht des Nutzers" (liegt det am

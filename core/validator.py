@@ -93,6 +93,7 @@ class Validator:
         *,
         producer_class: str,
         context_exceeded: bool = False,
+        allow_no_change: bool = False,
     ) -> ValidationResult:
         if context_exceeded:
             return ValidationResult(
@@ -102,7 +103,7 @@ class Validator:
         if producer_class == "det":
             return self._validate_det(response)
         if task_type in (TaskType.implement, TaskType.fix):
-            return self._validate_patch(response)
+            return self._validate_patch(response, allow_no_change=allow_no_change)
         return self._validate_prob(response, task_type)
 
     def _validate_det(self, response: str) -> ValidationResult:
@@ -136,12 +137,20 @@ class Validator:
             )
         return ValidationResult(passed=True, trigger="pass")
 
-    def _validate_patch(self, response: str) -> ValidationResult:
+    def _validate_patch(
+        self, response: str, *, allow_no_change: bool = False
+    ) -> ValidationResult:
         # implement/fix: die Antwort muss einen parsebaren Unified-Diff
         # enthalten. Kein Diff -> may_escalate=True (Retry/naechster Kandidat
         # liefert vielleicht einen), NICHT det_schema_fail (kein Bug).
-        from core.diff_extract import extract_diff
+        # I-E.17: bietet die Instruktion den No-op-Vertrag an (allow_no_change,
+        # impact-Kinder), ist die Marker-Zeile KEINE_AENDERUNG eine legale
+        # Antwort; ohne Vertrag bleibt sie patch_parse_fail (eine stille
+        # Nicht-Umsetzung darf nicht "gruen" werden).
+        from core.diff_extract import extract_diff, is_no_change
 
+        if allow_no_change and is_no_change(response):
+            return ValidationResult(passed=True, trigger="pass")
         try:
             extract_diff(response)
         except ValueError as exc:
@@ -185,6 +194,7 @@ class EscalationLoop:
         prompt: str,
         candidates: list[Candidate],
         model_factory,
+        allow_no_change: bool = False,
     ) -> EscalationOutcome:
         attempts = 0
         last_result: ValidationResult | None = None
@@ -219,7 +229,10 @@ class EscalationLoop:
 
                 attempts += 1
                 result = self._validator.validate(
-                    response, task_type, producer_class=producer_class
+                    response,
+                    task_type,
+                    producer_class=producer_class,
+                    allow_no_change=allow_no_change,
                 )
                 last_result = result
                 last_response = response

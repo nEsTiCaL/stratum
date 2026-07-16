@@ -23,6 +23,7 @@ from core.impact_expand import (
     ImpactExpansion,
     UncertainCaller,
     build_impact_children,
+    build_impact_gates,
     impact_expand,
     make_impact_hook,
     render_intent_block,
@@ -96,13 +97,16 @@ class _FakeQueue:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def enqueue_children(self, parent, nodes, *, base_payload=None, model_for=None):
+    def enqueue_children(
+        self, parent, nodes, *, base_payload=None, model_for=None, payload_for=None
+    ):
         self.calls.append(
             {
                 "parent": parent,
                 "nodes": nodes,
                 "base_payload": base_payload,
                 "model_for": model_for,
+                "payload_for": payload_for,
             }
         )
         return list(range(len(nodes)))
@@ -260,11 +264,11 @@ def test_hook_enqueues_all_impacted_files_as_children():
     hook(producer, _repo_foo(), None)
     assert len(queue.calls) == 1
     call = queue.calls[0]
-    scopes = {n.scope for n in call["nodes"]}
-    assert scopes == {"file:a.py", "file:b.py", "file:c.py"}
-    # Kinder haengen unter dem Erzeuger (namespaced + depends_on -> Erzeuger).
+    fixes = [n for n in call["nodes"] if n.task_type == "fix"]
+    assert {n.scope for n in fixes} == {"file:a.py", "file:b.py", "file:c.py"}
+    # Alle Knoten namespaced; die fix-Kinder haengen unter dem Erzeuger.
     assert all(n.id.startswith("n1/") for n in call["nodes"])
-    assert all("n1" in n.depends_on for n in call["nodes"])
+    assert all("n1" in n.depends_on for n in fixes)
 
 
 def test_hook_threads_shared_design_and_instruction():
@@ -347,8 +351,8 @@ def test_hook_multi_symbol_payload_enumerates_union():
     )
     hook(producer, _repo_multi(), None)
     # Radius 3 (< Schwelle) -> direkte fix-Kinder ueber die Vereinigung.
-    scopes = {n.scope for n in queue.calls[0]["nodes"]}
-    assert scopes == {"file:a.py", "file:b.py", "file:c.py"}
+    fixes = [n for n in queue.calls[0]["nodes"] if n.task_type == "fix"]
+    assert {n.scope for n in fixes} == {"file:a.py", "file:b.py", "file:c.py"}
 
 
 # --------------------------------------------------------------------------- #
@@ -473,6 +477,217 @@ def test_render_intent_block_empty_for_blank_intent():
     assert render_intent_block("") == ""
     assert render_intent_block("   ") == ""
     assert "foo_renamed" in render_intent_block(_INTENT)
+
+
+# --------------------------------------------------------------------------- #
+# 5. I-E.1 (Befund E-1): Gate-Kette + Sammel-test_gate hinter dem Fan-out      #
+# --------------------------------------------------------------------------- #
+
+
+def test_build_impact_gates_one_lint_per_child_one_shared_test_gate():
+    exp = impact_expand(
+        _repo_foo(), op=ChangeOp.signature, symbol="foo", allowed_scopes=_ALLOWED
+    )
+    children = build_impact_children(exp)
+    gates = build_impact_gates(children, "repo:")
+    lints = [g for g in gates if g.task_type == "lint_gate"]
+    tests = [g for g in gates if g.task_type == "test_gate"]
+    # Je Kind ein lint_gate auf dem KIND-scope (der LintGateWorker findet den
+    # Patch scope-basiert), abhaengig genau von seinem Kind.
+    assert [g.scope for g in lints] == [c.scope for c in children]
+    assert [g.depends_on for g in lints] == [(c.id,) for c in children]
+    # EIN Sammel-test_gate auf dem Anker-scope, abhaengig von ALLEN lint_gates.
+    assert len(tests) == 1
+    assert tests[0].scope == "repo:"
+    assert set(tests[0].depends_on) == {g.id for g in lints}
+
+
+def test_hook_materializes_gate_chain_behind_children():
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1",
+        payload={"impact": {"op": "signature", "symbol": "foo"}, "depth": 0},
+    )
+    hook(producer, _repo_foo(), None)
+    nodes = {n.id: n for n in queue.calls[0]["nodes"]}
+    # 3 Dateien -> 3 fix + 3 lint + 1 Sammel-test_gate (namespaced).
+    assert len(nodes) == 7
+    for i in range(3):
+        fix = nodes[f"n1/impact_{i}"]
+        lint = nodes[f"n1/impact_{i}_lint"]
+        assert fix.depends_on == ("n1",)
+        assert lint.task_type == "lint_gate"
+        assert lint.scope == fix.scope  # Patch wird scope-basiert gefunden
+        assert lint.depends_on == (fix.id,)
+    test = nodes["n1/impact_test"]
+    assert test.task_type == "test_gate"
+    assert test.scope == "repo:"  # Erzeuger-Anker, nicht ein Kind-scope
+    assert set(test.depends_on) == {f"n1/impact_{i}_lint" for i in range(3)}
+
+
+def test_hook_gate_payloads_carry_scopes_not_instruction():
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1",
+        payload={
+            "impact": {"op": "signature", "symbol": "foo"},
+            "instruction": "Signatur anpassen.",
+            "depth": 0,
+        },
+    )
+    hook(producer, _repo_foo(), None)
+    call = queue.calls[0]
+    payload_for = call["payload_for"]
+    by_type = {}
+    for node in call["nodes"]:
+        by_type.setdefault(node.task_type, node)
+    fix_payload = payload_for(by_type["fix"])
+    lint_payload = payload_for(by_type["lint_gate"])
+    test_payload = payload_for(by_type["test_gate"])
+    # fix-Kinder wie bisher: Instruktion + geteiltes Design + Tiefe.
+    assert "instruction" in fix_payload and "plan_design" in fix_payload
+    assert fix_payload["depth"] == 1
+    # Gates schleppen keine Prompt-Felder; das Sammel-Gate traegt die Kind-Scopes
+    # in der touched-Reihenfolge (deterministischer Sammel-Diff).
+    assert "instruction" not in lint_payload
+    assert "gate_scopes" not in lint_payload
+    assert test_payload["gate_scopes"] == ["file:a.py", "file:b.py", "file:c.py"]
+    assert "instruction" not in test_payload
+
+
+def test_hook_radius_counts_files_not_gate_nodes():
+    # 4 betroffene Dateien -> 9 materialisierte Knoten (4 fix + 4 lint + 1 test),
+    # aber der Wirkradius bleibt 4 < DEFAULT_REVIEW_RADIUS -> KEIN Review-Zweig.
+    repo = _FakeRepo(
+        symbols={"foo": [("file:a.py", "function")]},
+        impact_map={"file:a.py": [f"file:u{i}.py" for i in range(3)]},
+    )
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1", payload={"impact": {"op": "signature", "symbol": "foo"}, "depth": 0}
+    )
+    hook(producer, repo, None)
+    nodes = queue.calls[0]["nodes"]
+    assert len(nodes) == 9
+    assert [n.task_type for n in nodes].count("fix") == 4
+    assert all(n.task_type != "review" for n in nodes)
+
+
+def test_hook_refire_materializes_gate_chain():
+    # Re-Fire nach verdict:ok (G3): auch der Review-Pfad materialisiert die
+    # volle Gate-Kette -- 6 fix + 6 lint + 1 Sammel-test_gate unterm Review.
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1/review",
+        payload={
+            "impact": {"op": "rename", "symbol": "foo"},
+            "intent": _INTENT,
+            "design_reviewed": True,
+            "depth": 1,
+        },
+    )
+    hook(producer, _repo_wide(review="verdict: ok"), None)
+    nodes = queue.calls[0]["nodes"]
+    types = [n.task_type for n in nodes]
+    assert types.count("fix") == 6
+    assert types.count("lint_gate") == 6
+    assert types.count("test_gate") == 1
+    test = next(n for n in nodes if n.task_type == "test_gate")
+    assert test.id == "n1/review/impact_test"
+    assert len(queue.calls[0]["payload_for"](test)["gate_scopes"]) == 6
+
+
+# --------------------------------------------------------------------------- #
+# 6. I-E.17 (Befund E-17): det-Textvorfilter + No-op-Vertrag                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_prefilter_drops_users_without_literal_mention():
+    # users kommen aus der TRANSITIVEN Datei-Huelle -- ohne woertliches Vorkommen
+    # gibt es in der Datei nichts anzupassen (F4: 5 von 9 Kindern sinnlos).
+    reader = {"file:b.py": "from a import foo\n", "file:c.py": "nichts hier\n"}.get
+    exp = impact_expand(
+        _repo_foo(),
+        op=ChangeOp.signature,
+        symbol="foo",
+        allowed_scopes=_ALLOWED,
+        read_scope=reader,
+    )
+    assert exp.users == ("file:b.py",)
+    assert exp.touched == ("file:a.py", "file:b.py")
+    assert "1 Aufrufer" in exp.understanding  # understanding zaehlt gefiltert
+
+
+def test_prefilter_requires_word_boundary():
+    # "foobar" ist KEIN Treffer fuer foo (Wortgrenze), "foo()" schon.
+    reader = {"file:b.py": "foobar()\n", "file:c.py": "x = foo()\n"}.get
+    exp = impact_expand(
+        _repo_foo(),
+        op=ChangeOp.signature,
+        symbol="foo",
+        allowed_scopes=_ALLOWED,
+        read_scope=reader,
+    )
+    assert exp.users == ("file:c.py",)
+
+
+def test_prefilter_keeps_defs_and_unreadable_users():
+    # defs werden NIE gefiltert; nicht lesbare users (read -> None) bleiben
+    # konservativ drin (der Filter entfernt nur nachweislich Treffer-Freies).
+    reader = {"file:c.py": "kein treffer\n"}.get  # b.py fehlt -> None
+    exp = impact_expand(
+        _repo_foo(),
+        op=ChangeOp.signature,
+        symbol="foo",
+        allowed_scopes=_ALLOWED,
+        read_scope=reader,
+    )
+    assert "file:a.py" in exp.touched  # def bleibt
+    assert "file:b.py" in exp.users  # unlesbar -> behalten
+    assert "file:c.py" not in exp.users
+
+
+def test_prefilter_comment_mention_is_kept():
+    # Textsuche (nicht Graph): auch eine Kommentar-/Doku-Referenz ist ein
+    # Treffer (F4: plan_format trug build_content nur im Kommentar -- legitim).
+    reader = {"file:b.py": "# nutzt intern foo\n", "file:c.py": "leer\n"}.get
+    exp = impact_expand(
+        _repo_foo(),
+        op=ChangeOp.signature,
+        symbol="foo",
+        allowed_scopes=_ALLOWED,
+        read_scope=reader,
+    )
+    assert exp.users == ("file:b.py",)
+
+
+def test_children_instruction_offers_no_change_marker():
+    exp = impact_expand(
+        _repo_foo(), op=ChangeOp.rename, symbol="foo", allowed_scopes=_ALLOWED
+    )
+    assert "KEINE_AENDERUNG" in exp.instruction
+    assert "leeren Patch" not in exp.instruction  # der alte Pseudo-Diff-Treiber
+
+
+def test_hook_fix_payload_carries_no_change_contract():
+    # Nur die fix-Kinder bekommen den Vertrag (no_change_ok) -- Gates nicht.
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1", payload={"impact": {"op": "signature", "symbol": "foo"}, "depth": 0}
+    )
+    hook(producer, _repo_foo(), None)
+    call = queue.calls[0]
+    by_type = {}
+    for node in call["nodes"]:
+        by_type.setdefault(node.task_type, node)
+    assert call["payload_for"](by_type["fix"])["no_change_ok"] is True
+    assert "no_change_ok" not in call["payload_for"](by_type["lint_gate"])
+    assert "no_change_ok" not in call["payload_for"](by_type["test_gate"])
 
 
 def test_render_review_and_redesign_instruction_backwards_compatible():

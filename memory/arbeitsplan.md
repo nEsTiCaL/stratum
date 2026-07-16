@@ -369,9 +369,9 @@ I-E.18   User-Absicht det in Review-/Kinder-      det  -          1      E-18: i
 I-E.5    pytest ins .[web]-Image + neutral-       det  -          1      E-5: Dockerfile + test_gate "No module
          Erkennung haerten                                               named pytest" -> neutral   fertig 2026-07-16
 I-E.1    Gate-Kette + Apply hinter impact-        gem  I-E.18     1      E-1: lint je Kind + EIN Sammel-test_gate
-         Kindern (Sammel-Abschluss)                                      + atomarer Sammel-Apply (rename-Konsistenz!)
+         Kindern (Sammel-Abschluss)                                      + atomarer Sammel-Apply (rename-Konsistenz!)   fertig 2026-07-16
 I-E.17   No-op-Vertrag + engere Enumeration       gem  I-E.1      1      E-17: KEINE_AENDERUNG legal (done ohne
-                                                                         Patch) + det-Textvorfilter je Kind
+                                                                         Patch) + det-Textvorfilter je Kind   fertig 2026-07-16
 I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: git-apply-Toleranz, Fail-Feedback
          Formatwechsel-Sprosse)                                          mit echten Umgebungszeilen, whole-file vor re_design
 I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen

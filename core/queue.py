@@ -352,9 +352,19 @@ class Queue:
     def escalation_stage(self, verify_item: QueueItem) -> int | None:
         """Aktuelle Eskalations-Stufe des Schreib-Sub-DAG, oder None wenn es keinen
         architect gibt (dann keine Leiter -> terminaler Fail wie bisher). Der
-        Zaehler steht im Payload des architect (escalation_stage, Default 0)."""
+        Zaehler steht im Payload des architect (escalation_stage, Default 0).
+
+        I-E.1: Ein architect MIT impact-Payload ist ein impact-ERZEUGER (bzw. der
+        redesign-architect der Kette), kein REK.11-Leiter-architect: die impact-
+        Kette hat ihr eigenes Design-Review-/Redesign-Regime (G3, make_impact_hook);
+        reopen_for_redesign wuerde den Completion-Hook erneut feuern und gegen die
+        enqueue_children-Idempotenz arbeiten. Kind-Gates der impact-Kette behalten
+        die re_act-Rueckkante (reopen_after_verify) und fallen nach der Kappung
+        terminal -- wie triviale Ketten ohne architect."""
         architect, impl, _gates, rows = self._write_chain(verify_item)
         if architect is None or not impl:
+            return None
+        if rows[architect]["payload"].get("impact"):
             return None
         return int(rows[architect]["payload"].get("escalation_stage", 0))
 
@@ -517,6 +527,7 @@ class Queue:
         *,
         base_payload: dict[str, Any] | None = None,
         model_for: Callable[[DagNode], str] | None = None,
+        payload_for: Callable[[DagNode], dict[str, Any] | None] | None = None,
         priority: int = 0,
     ) -> list[int]:
         """Reiht die (nach ihrem Erzeuger entstandenen) Kinder eines Knotens ein
@@ -537,6 +548,9 @@ class Queue:
         base_payload : je Kind in payload gemergt (der Hook stempelt hier die
                        Tiefe depth+1 -- die naechste Ebene liest sie zurueck).
         model_for    : Claim-Key je Kind (Worker-Routing); None -> parent.model.
+        payload_for  : optionales KOMPLETTES Payload je Kind (I-E.1: das Sammel-
+                       test_gate traegt gate_scopes, die Gates brauchen keine
+                       instruction); None-Rueckgabe -> base_payload wie bisher.
         done-Knoten (Cache-Treffer aus expand) werden wie in enqueue() ausgelassen.
         """
         payload_json = json.dumps(base_payload) if base_payload else None
@@ -553,6 +567,14 @@ class Queue:
                     if node.status == "done" or node.id in existing:
                         continue
                     model = model_for(node) if model_for is not None else parent.model
+                    node_payload = (
+                        payload_for(node) if payload_for is not None else None
+                    )
+                    node_payload_json = (
+                        json.dumps(node_payload)
+                        if node_payload is not None
+                        else payload_json
+                    )
                     cur.execute(
                         """
                         INSERT INTO queue
@@ -572,7 +594,7 @@ class Queue:
                             priority,
                             json.dumps(list(node.depends_on)),
                             json.dumps(sorted(node.flags)),
-                            payload_json,
+                            node_payload_json,
                             parent.owner,
                             parent.capability_id,
                         ),

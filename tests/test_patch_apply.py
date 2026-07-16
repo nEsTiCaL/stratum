@@ -81,6 +81,28 @@ class TestMultiFile:
         by_path = {c.path: c.new_content for c in r.changes}
         assert by_path == {"x.py": "A\n", "y.py": "P\n"}
 
+    def test_duplicate_file_sections_fail(self):
+        # Zwei Sektionen desselben Pfads: beide gegen den ORIGINAL-Inhalt gerechnet,
+        # die zweite saehe die erste nie -> ehrlicher Fehler statt still-letzte-
+        # gewinnt (I-E.1: konkatenierte Kind-Patches im Sammel-test_gate).
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+A\n"
+            "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+B\n"
+        )
+        r = apply_diff(diff, _reader({"x.py": "a\n"}))
+        assert not r.ok
+        assert "mehrfach" in r.reason and "x.py" in r.reason
+
+    def test_duplicate_create_sections_fail(self):
+        # Auch zwei create-Sektionen derselben Datei (beide sehen read_current=None)
+        # duerfen nicht still zu last-wins werden.
+        diff = (
+            "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1 @@\n+eins\n"
+            "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1 @@\n+zwei\n"
+        )
+        r = apply_diff(diff, _reader({}))
+        assert not r.ok and "mehrfach" in r.reason
+
 
 class TestGitHeaderTolerance:
     def test_git_metadata_lines_ignored(self):

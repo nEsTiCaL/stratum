@@ -125,6 +125,31 @@ class TestEscalationStage:
         gate = _gate_item(ids[1], node_id="n3", depends_on=("n2",))
         assert q.escalation_stage(gate) is None
 
+    def test_impact_producer_architect_is_no_ladder(self, conn):
+        # I-E.1: der impact-ERZEUGER ist zwar ein architect, traegt aber das
+        # impact-Payload -- fuer seine hook-erzeugten Kind-Gates gibt es KEINE
+        # REK.11-Leiter (die impact-Kette eskaliert ueber ihr eigenes G3-Review/
+        # Redesign-Regime; reopen_for_redesign wuerde den Completion-Hook erneut
+        # feuern). Kind-Gates fallen nach der re_act-Kappung terminal.
+        q = Queue(conn)
+        dag = TaskDag(
+            "d",
+            [
+                _node("n1", "architect"),
+                _node("n1/impact_0", "fix", depends_on=("n1",)),
+                _node("n1/impact_0_lint", "lint_gate", depends_on=("n1/impact_0",)),
+            ],
+        )
+        ids = q.enqueue(dag, model="m")
+        conn.execute(
+            "UPDATE queue SET payload = %s::jsonb WHERE id = %s",
+            ('{"impact": {"op": "rename", "symbol": "foo"}}', ids[0]),
+        )
+        gate = _gate_item(
+            ids[2], node_id="n1/impact_0_lint", depends_on=("n1/impact_0",)
+        )
+        assert q.escalation_stage(gate) is None
+
 
 class TestReopenForRedesign:
     def test_reopens_architect_and_chain_with_feedback(self, conn):

@@ -140,7 +140,9 @@ class _FakeQueue:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def enqueue_children(self, parent, nodes, *, base_payload=None, model_for=None):
+    def enqueue_children(
+        self, parent, nodes, *, base_payload=None, model_for=None, payload_for=None
+    ):
         self.calls.append(
             {"parent": parent, "nodes": nodes, "base_payload": base_payload}
         )
@@ -210,8 +212,11 @@ def test_review_done_materializes_children():
 
     assert len(queue.calls) == 1
     nodes = queue.calls[0]["nodes"]
-    assert len(nodes) == DEFAULT_REVIEW_RADIUS + 2  # def + (Schwelle+1) Aufrufer
-    assert all(n.task_type == "fix" for n in nodes)
+    fixes = [n for n in nodes if n.task_type == "fix"]
+    assert len(fixes) == DEFAULT_REVIEW_RADIUS + 2  # def + (Schwelle+1) Aufrufer
+    # I-E.1: dahinter die Gate-Kette (je Kind ein lint_gate + EIN Sammel-test_gate).
+    assert len([n for n in nodes if n.task_type == "lint_gate"]) == len(fixes)
+    assert len([n for n in nodes if n.task_type == "test_gate"]) == 1
     base = queue.calls[0]["base_payload"]
     assert base["plan_design"] == "GEPRUEFTES DESIGN"  # geprueftes Design gefaedelt
     assert "design_reviewed" not in base  # Kinder feuern den Hook nicht erneut
@@ -229,8 +234,9 @@ def test_small_fanout_materializes_directly():
     hook(producer, _small_repo(), None)
 
     nodes = queue.calls[0]["nodes"]
-    assert all(n.task_type == "fix" for n in nodes)
-    assert len(nodes) == 2  # def a.py + Aufrufer b.py, kein Review
+    assert all(n.task_type != "review" for n in nodes)
+    fixes = [n for n in nodes if n.task_type == "fix"]
+    assert len(fixes) == 2  # def a.py + Aufrufer b.py, kein Review
 
 
 def test_build_design_review_node_shape():
@@ -282,8 +288,8 @@ def test_review_verdict_ok_materializes():
     )
     hook(_reviewed_producer(repo._review), repo, None)
     nodes = queue.calls[0]["nodes"]
-    assert all(n.task_type == "fix" for n in nodes)
-    assert len(nodes) > 1  # der Fan-out, kein Review/Redesign
+    assert all(n.task_type not in ("review", "architect") for n in nodes)
+    assert len([n for n in nodes if n.task_type == "fix"]) > 1  # der Fan-out
 
 
 def test_review_verdict_needs_redesign_enqueues_redesign():
@@ -318,7 +324,9 @@ def test_redesign_budget_exhausted_materializes_anyway():
     hook(_reviewed_producer(review, stage=MAX_DESIGN_REVIEW_REDESIGNS), repo, None)
 
     nodes = queue.calls[0]["nodes"]
-    assert all(n.task_type == "fix" for n in nodes)  # Fan-out trotz needs_redesign
+    # Fan-out trotz needs_redesign (kein frischer architect mehr).
+    assert all(n.task_type not in ("review", "architect") for n in nodes)
+    assert [n.task_type for n in nodes].count("fix") > 1
 
 
 # --------------------------------------------------------------------------- #

@@ -46,10 +46,18 @@ async def list_patches(
     markiert ob GENAU dieser Patch einen gruenen lint_report hat (patch-gekoppelt,
     E-14 -- nur wirklich gepruefte sind anwendbar; ein Alt-Report des scope zaehlt
     nicht)."""
-    out = [
-        {"scope": scope, "verified": patch_verified(deps.repo, scope)}
-        for scope in deps.repo.list_current_scopes("patch")
-    ]
+    out = []
+    for scope in deps.repo.list_current_scopes("patch"):
+        entry: dict[str, Any] = {
+            "scope": scope,
+            "verified": patch_verified(deps.repo, scope),
+        }
+        patch = deps.repo.get_current(scope, "patch")
+        if patch is not None and patch.content.get("no_op"):
+            # I-E.17: legaler No-op (KEINE_AENDERUNG) -- als solcher gekennzeichnet,
+            # damit der Anwender weiss, dass es hier nichts anzuwenden gibt.
+            entry["no_op"] = True
+        out.append(entry)
     return {"patches": out}
 
 
@@ -91,7 +99,8 @@ async def apply_patch(
         deps.queue.mark_applied(owner=owner, scope=body.scope, diff_hash=dh)
     return {
         "applied": True,
-        "written": True,
+        # I-E.17: ein legaler No-op ist erfolgreich OHNE Schreibzugriff.
+        "written": result.written,
         "reason": result.reason,
         "scope": result.target_scope,
     }

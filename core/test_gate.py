@@ -258,7 +258,17 @@ def feedback_text(outcome: TestOutcome) -> str:
 class TestGateWorker:
     """Laedt das patch-Artefakt eines scope, prueft es in der Sandbox (run_tests)
     und schreibt ein test_report (det). sandbox ist injizierbar (Seam). Analog
-    LintGateWorker; kein reopen (Teil 2/I-REK.4)."""
+    LintGateWorker; kein reopen (Teil 2/I-REK.4).
+
+    Sammel-Modus (I-E.1, Befund E-1): traegt der Knoten payload["gate_scopes"]
+    (das Sammel-test_gate hinter einem impact-Fan-out), werden die patch-Artefakte
+    ALLER genannten Scopes geladen und als EIN konkatenierter Multi-File-Diff in
+    EINER Sandbox getestet -- eine koordinierte Graph-Op (z.B. rename ueber N
+    Dateien) ist nur als Ganzes konsistent testbar. Die Kind-Patches sind alle
+    gegen denselben Workspace-Stand erzeugt und die touched-Menge ist duplikatfrei;
+    fasst doch ein Kind die Datei eines anderen an, faellt apply_diff ehrlich
+    ("Diff aendert dieselbe Datei mehrfach"). Der Report landet unter dem scope
+    des Gate-Knotens (Erzeuger-Anker), input_hash = Hash des kombinierten Diffs."""
 
     # Kein pytest-Sammelziel trotz "Test"-Praefix (s. TestOutcome).
     __test__ = False
@@ -268,15 +278,54 @@ class TestGateWorker:
     timeout_s: int = DEFAULT_TIMEOUT_S
 
     def run(self, item: QueueItem, repo: Repository) -> TestOutcome:
-        patch = repo.get_current(item.scope, "patch")
-        if patch is None:
-            outcome = TestOutcome(False, False, "kein patch-Artefakt fuer scope", ())
-            diff = ""
+        scopes = [
+            str(s)
+            for s in ((getattr(item, "payload", {}) or {}).get("gate_scopes") or ())
+        ]
+        if scopes:
+            diff, missing = self._combined_diff(scopes, repo)
+            if missing is not None:
+                outcome = TestOutcome(
+                    False, False, f"kein patch-Artefakt fuer scope ({missing})", ()
+                )
+                diff = ""
+            elif not diff:
+                # I-E.17: alle Kinder legale No-ops (KEINE_AENDERUNG) -- nichts
+                # zu testen, neutral-gruen ohne Sandbox-Lauf.
+                outcome = TestOutcome(
+                    True, True, "keine Aenderung noetig (alle Kinder No-op)", ()
+                )
+            else:
+                outcome = self.sandbox(diff, root=self.root, timeout_s=self.timeout_s)
         else:
-            diff = patch.content.get("diff", "")
-            outcome = self.sandbox(diff, root=self.root, timeout_s=self.timeout_s)
+            patch = repo.get_current(item.scope, "patch")
+            if patch is None:
+                outcome = TestOutcome(
+                    False, False, "kein patch-Artefakt fuer scope", ()
+                )
+                diff = ""
+            else:
+                diff = patch.content.get("diff", "")
+                outcome = self.sandbox(diff, root=self.root, timeout_s=self.timeout_s)
         self._store_report(item.scope, diff, outcome, repo)
         return outcome
+
+    @staticmethod
+    def _combined_diff(scopes: list[str], repo: Repository) -> tuple[str, str | None]:
+        """(kombinierter Diff, fehlender scope | None): die patch-Artefakte aller
+        gate_scopes zu EINEM Multi-File-Diff verbunden (Reihenfolge = gate_scopes
+        = sortierte touched-Menge -> deterministischer input_hash). Fehlt eines,
+        wird der scope gemeldet (das Gate faellt ohne Sandbox-Lauf, applied=False).
+        Legale No-op-Kinder (content.no_op, I-E.17) tragen nichts bei."""
+        parts: list[str] = []
+        for scope in scopes:
+            patch = repo.get_current(scope, "patch")
+            if patch is None:
+                return "", scope
+            if patch.content.get("no_op"):
+                continue
+            parts.append(patch.content.get("diff", ""))
+        return "\n".join(p for p in parts if p.strip()), None
 
     def _store_report(
         self, scope: str, diff: str, outcome: TestOutcome, repo: Repository

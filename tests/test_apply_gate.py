@@ -3,6 +3,11 @@
 det-testbar ohne echtes Schreiben (apply_fn/ingest_fn injiziert):
 - kein Schreibzugriff ohne confirm / ohne gruenen Report
 - Erfolg: apply_fn schreibt, Re-Ingest je geaenderter Datei (invalidate=True)
+
+I-E.1 (apply_confirmed_patches, atomarer Sammel-Apply): gegen tmp_path-Dateien
+(die Funktion rechnet ALLE Diffs vor dem ersten Schreibzugriff) -- jede Luecke
+(fehlender/unpassender Report, Kontext-Mismatch, Datei-Kollision) laesst den
+Workspace byte-identisch.
 """
 
 from __future__ import annotations
@@ -10,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.apply_gate import apply_confirmed_patch
+from core.apply_gate import apply_confirmed_patch, apply_confirmed_patches
 from core.patch_apply import diff_hash
 
 _ROOT = Path(".")
@@ -20,14 +25,14 @@ class _Repo:
     """Liefert patch/lint_report je nach Verfuegbarkeit. Der Report stempelt seinen
     input_hash (wie lint_gate) auf report_diff -- Default = der Patch-Diff "D", also
     ein PASSENDER Report; ein abweichender report_diff modelliert den E-14-Fall
-    'gruener Alt-Report deckt einen anderen Diff'."""
+    'gruener Alt-Report deckt einen anderen Diff'. no_op=True modelliert den
+    legalen No-op-Patch (I-E.17: diff leer, content.no_op)."""
 
-    def __init__(self, *, patch=True, verified=True, report_diff="D"):
-        self._patch = (
-            SimpleNamespace(content={"diff": "D", "target_scope": "file:core/x.py"})
-            if patch
-            else None
-        )
+    def __init__(self, *, patch=True, verified=True, report_diff="D", no_op=False):
+        content = {"diff": "D", "target_scope": "file:core/x.py"}
+        if no_op:
+            content = {"diff": "", "no_op": True, "target_scope": "file:core/x.py"}
+        self._patch = SimpleNamespace(content=content) if patch else None
         self._report = (
             SimpleNamespace(
                 content={"passed": verified},
@@ -165,6 +170,190 @@ class TestApplySuccess:
         assert not r.applied
         assert acalls  # apply versucht
         assert icalls == []  # aber kein Re-Ingest nach Fehler
+
+
+# --------------------------------------------------------------------------
+# I-E.1: apply_confirmed_patches -- atomarer Sammel-Apply (alle oder keiner)
+# --------------------------------------------------------------------------
+
+
+def _mkdiff(name: str, old: str, new: str) -> str:
+    return f"--- a/{name}\n+++ b/{name}\n@@ -1 +1 @@\n-{old}\n+{new}\n"
+
+
+class _MultiRepo:
+    """patch + lint_report je scope. Wert je scope: Diff-String ODER kompletter
+    content-dict (no_op-Patches, I-E.17). report_for: scope -> Diff, den der
+    gruene Report deckt (None -> kein Report; fehlt der Eintrag -> Report deckt
+    den eigenen Patch-Diff = verifiziert)."""
+
+    def __init__(self, patches: dict, report_for: dict | None = None):
+        self._patches = patches
+        self._report_for = report_for or {}
+
+    def _content(self, scope):
+        val = self._patches[scope]
+        return val if isinstance(val, dict) else {"diff": val}
+
+    def get_current(self, scope, artifact_type, *, trustworthy=False):
+        if artifact_type == "patch" and scope in self._patches:
+            return SimpleNamespace(content=self._content(scope))
+        if artifact_type == "lint_report" and scope in self._patches:
+            covered = self._report_for.get(scope, self._content(scope)["diff"])
+            if covered is None:
+                return None
+            return SimpleNamespace(
+                content={"passed": True},
+                provenance=SimpleNamespace(input_hash=diff_hash(covered)),
+            )
+        return None
+
+
+def _fanout_root(tmp_path: Path) -> Path:
+    (tmp_path / "a.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("b\n", encoding="utf-8")
+    return tmp_path
+
+
+class TestApplyConfirmedPatches:
+    def test_applies_all_and_reingests_each(self, tmp_path):
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo(
+            {
+                "file:a.py": _mkdiff("a.py", "a", "a2"),
+                "file:b.py": _mkdiff("b.py", "b", "b2"),
+            }
+        )
+        ingest, icalls = _spy_ingest()
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:b.py"], confirmed=True, ingest_fn=ingest
+        )
+        assert r.applied
+        assert (root / "a.py").read_text(encoding="utf-8") == "a2\n"
+        assert (root / "b.py").read_text(encoding="utf-8") == "b2\n"
+        assert [c["rel"] for c in icalls] == ["a.py", "b.py"]
+        assert all(c["invalidate"] for c in icalls)
+
+    def test_not_confirmed_writes_nothing(self, tmp_path):
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo({"file:a.py": _mkdiff("a.py", "a", "a2")})
+        r = apply_confirmed_patches(repo, root, ["file:a.py"], confirmed=False)
+        assert not r.applied
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"
+
+    def test_empty_scopes_rejected(self, tmp_path):
+        r = apply_confirmed_patches(_MultiRepo({}), tmp_path, [], confirmed=True)
+        assert not r.applied
+
+    def test_one_missing_patch_blocks_all(self, tmp_path):
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo({"file:a.py": _mkdiff("a.py", "a", "a2")})  # b fehlt
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:b.py"], confirmed=True
+        )
+        assert not r.applied
+        assert "file:b.py" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"  # NICHT geschrieben
+
+    def test_one_unverified_patch_blocks_all(self, tmp_path):
+        # E-14 je Kind: b.py hat nur einen gruenen Report fuer einen ANDEREN Diff.
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo(
+            {
+                "file:a.py": _mkdiff("a.py", "a", "a2"),
+                "file:b.py": _mkdiff("b.py", "b", "b2"),
+            },
+            report_for={"file:b.py": "ein-anderer-diff"},
+        )
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:b.py"], confirmed=True
+        )
+        assert not r.applied
+        assert "file:b.py" in r.reason and "lint_report" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"
+
+    def test_one_context_mismatch_blocks_all(self, tmp_path):
+        # Atomaritaet: Patch b passt nicht (Workspace-Drift) -> auch der gueltige
+        # Patch a wird NICHT geschrieben (alle oder keiner).
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo(
+            {
+                "file:a.py": _mkdiff("a.py", "a", "a2"),
+                "file:b.py": _mkdiff("b.py", "WRONG", "b2"),
+            }
+        )
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:b.py"], confirmed=True
+        )
+        assert not r.applied
+        assert "file:b.py" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"
+        assert (root / "b.py").read_text(encoding="utf-8") == "b\n"
+
+    def test_cross_patch_file_collision_blocks_all(self, tmp_path):
+        # Zwei Kinder patchen DIESELBE Datei (E-10-Muster): beide Diffs sind gegen
+        # den Original-Inhalt gerechnet -> last-wins waere still falsch. Ehrlich
+        # abbrechen, nichts schreiben.
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo(
+            {
+                "file:a.py": _mkdiff("a.py", "a", "a2"),
+                "file:dup.py": _mkdiff("a.py", "a", "a3"),
+            }
+        )
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:dup.py"], confirmed=True
+        )
+        assert not r.applied
+        assert "Kollision" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"
+
+    def test_no_op_children_skipped_rest_applied(self, tmp_path):
+        # I-E.17: legale No-op-Kinder blockieren den Sammel-Apply nicht -- sie
+        # brauchen weder Report noch Schreibzugriff, der Rest laeuft atomar.
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo(
+            {
+                "file:a.py": _mkdiff("a.py", "a", "a2"),
+                "file:b.py": {"diff": "", "no_op": True},
+            }
+        )
+        ingest, icalls = _spy_ingest()
+        r = apply_confirmed_patches(
+            repo, root, ["file:a.py", "file:b.py"], confirmed=True, ingest_fn=ingest
+        )
+        assert r.applied and r.written
+        assert "No-op" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a2\n"
+        assert (root / "b.py").read_text(encoding="utf-8") == "b\n"  # unangetastet
+        assert [c["rel"] for c in icalls] == ["a.py"]
+
+    def test_all_no_op_succeeds_without_write(self, tmp_path):
+        root = _fanout_root(tmp_path)
+        repo = _MultiRepo({"file:a.py": {"diff": "", "no_op": True}})
+        r = apply_confirmed_patches(repo, root, ["file:a.py"], confirmed=True)
+        assert r.applied
+        assert r.written is False
+        assert "No-op" in r.reason
+        assert (root / "a.py").read_text(encoding="utf-8") == "a\n"
+
+
+class TestSingleNoOpApply:
+    def test_no_op_patch_applies_without_write_or_report(self):
+        # I-E.17 Einzelpfad (/api/apply auf ein No-op-Kind): ehrlich erfolgreich,
+        # written=False, kein Report-Zwang (es gibt nichts zu verifizieren).
+        apply_fn, acalls = _spy_apply()
+        r = apply_confirmed_patch(
+            _Repo(no_op=True, verified=None),
+            _ROOT,
+            "file:core/x.py",
+            confirmed=True,
+            apply_fn=apply_fn,
+        )
+        assert r.applied
+        assert r.written is False
+        assert "No-op" in r.reason
+        assert acalls == []  # kein Schreibversuch
 
 
 # --------------------------------------------------------------------------

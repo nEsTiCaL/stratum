@@ -27,7 +27,7 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
-from core.apply_gate import apply_confirmed_patch
+from core.apply_gate import apply_confirmed_patch, apply_confirmed_patches
 from core.architect_policy import needs_architect
 from core.db import apply_migrations
 from core.impact_expand import make_impact_hook
@@ -350,8 +350,16 @@ def _make_worker_loop(
         (settings.auto_apply) und wendet den verifizierten Patch ueber das Apply-
         Gate an (confirm=True + patch-gekoppelter gruener lint_report werden dort
         geprueft). root = Workspace des API-Keys (via _resolve_root); None -> kein
-        Schreibziel."""
+        Schreibziel. Traegt der Gate-Knoten gate_scopes (Sammel-test_gate eines
+        impact-Fan-outs, I-E.1), laeuft stattdessen der ATOMARE Sammel-Apply."""
         if not settings.get_auto_apply() or root is None:
+            return
+        gate_scopes = [
+            str(s)
+            for s in ((getattr(item, "payload", {}) or {}).get("gate_scopes") or ())
+        ]
+        if gate_scopes:
+            _auto_apply_fanout(item, root, gate_scopes)
             return
         # Symmetrie zu /api/apply (E-14): denselben Diff nicht zweimal schreiben.
         # Frueher pruefte nur der manuelle Pfad is_applied -> Auto-Apply feuerte auf
@@ -377,6 +385,48 @@ def _make_worker_loop(
                 )
         else:
             print(f"[worker] Auto-Apply uebersprungen ({item.scope}): {result.reason}")
+
+    def _auto_apply_fanout(item, root: Path, scopes: list[str]) -> None:
+        """Atomarer Sammel-Apply hinter dem Sammel-test_gate (I-E.1, Befund E-1):
+        ALLE Kind-Patches des impact-Fan-outs oder KEINER (apply_confirmed_patches
+        prueft je Kind den patch-gekoppelten gruenen lint_report, E-14). Bereits
+        angewandte Diffs (is_applied je Kind-Hash) werden vorab uebersprungen --
+        der Rest bleibt atomar; danach mark_applied je angewandtem Kind."""
+        pending: list[str] = []
+        hashes: dict[str, str] = {}
+        for scope in scopes:
+            patch = worker_repo.get_current(scope, "patch")
+            dh = diff_hash(patch.content.get("diff", "")) if patch is not None else None
+            if dh is not None and worker_queue.is_applied(
+                owner=item.owner, scope=scope, diff_hash=dh
+            ):
+                continue
+            pending.append(scope)
+            if dh is not None:
+                hashes[scope] = dh
+        if not pending:
+            print(
+                f"[worker] Auto-Apply uebersprungen ({item.scope}): "
+                f"alle {len(scopes)} Patches bereits angewendet"
+            )
+            return
+        result = apply_confirmed_patches(worker_repo, root, pending, confirmed=True)
+        if result.applied:
+            print(
+                f"[worker] Auto-Apply (Sammel, {item.scope}): "
+                f"{len(pending)} Scope(s) -> {result.reason}"
+            )
+            for scope in pending:
+                dh = hashes.get(scope)
+                if dh is not None:
+                    worker_queue.mark_applied(
+                        owner=item.owner, scope=scope, diff_hash=dh
+                    )
+        else:
+            print(
+                f"[worker] Auto-Apply uebersprungen (Sammel, {item.scope}): "
+                f"{result.reason}"
+            )
 
     worker_queue = Queue(worker_conn)
 

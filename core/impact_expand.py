@@ -48,6 +48,29 @@ Verdikt ``ok`` oder Budget erschoepft -> materialisieren. Das ist die re-design-
 Sprosse fuer die hook-erzeugte Kette (harter Reset mit frischer Knoten-Identitaet,
 wie in spec_rekursion I-REK.11 als Folge-Haeppchen skizziert), NICHT die
 template-gebundenen REK.11-Primitive (reopen_for_redesign/reexpand_write_subdag).
+
+I-E.1 (Befund E-1): Der Fan-out endet nicht mehr als nackte fix-Blaetter --
+``build_impact_gates`` haengt je Kind ein ``lint_gate`` (patch-gekoppelter
+lint_report, E-14: erst damit ist ein Kind anwendbar) und EIN Sammel-``test_gate``
+hinter ALLE Kinder (payload["gate_scopes"] = touched; der TestGateWorker testet
+die Vereinigung der Patches in EINER Sandbox). Der Auto-Apply-Nachlauf des
+terminalen Sammel-Gates wendet die Patches ATOMAR an (alle oder keiner --
+Kind-fuer-Kind-Apply waere bei einer koordinierten Op zwischenzeitlich
+inkonsistent). Rueckkante: rotes Kind-lint_gate reopent SEIN Kind (re_act,
+reopen_after_verify); das rote Sammel-test_gate reopent ALLE Kinder (der
+Verursacher ist det nicht zuordenbar). Die REK.11-Leiter greift fuer die
+impact-Kette NICHT (queue.escalation_stage ignoriert architects mit
+impact-Payload) -- ihr Design-Eskalationsregime ist das G3-Review oben.
+
+I-E.17 (Befund E-17): Gegen die Ueberinklusion der transitiven Datei-Huelle
+filtert ``impact_expand`` die users det auf WOERTLICHE Symbol-Treffer vor
+(``read_scope``-Seam, der Hook bindet den Key-Workspace; defs nie gefiltert,
+Unlesbares bleibt konservativ drin). Fuer die verbleibenden "hier doch nichts
+zu tun"-Faelle gilt der No-op-Vertrag: die Kinder-Instruktion bietet die
+Marker-Zeile ``KEINE_AENDERUNG`` an (statt des unausdrueckbaren "leeren
+Patches", der die E-17-Pseudo-Diffs erzeugte), ``fix_payload["no_change_ok"]``
+schaltet sie im Validator/Worker frei -> patch-Artefakt {diff:"", no_op:true};
+lint_gate neutral-gruen, Sammel-test_gate/Apply ueberspringen es ehrlich.
 """
 
 from __future__ import annotations
@@ -70,29 +93,34 @@ from core.template_registry import DagNode
 _CONF_THRESHOLD = 1.0
 
 # Op-spezifische per-Datei-Instruktion. Fuer alle betroffenen Dateien identisch
-# (wie rename_expand): jede Datei-lokale Anpassung; kommt das Symbol nicht vor,
-# leerer Patch. ``{symbol}`` wird eingesetzt.
+# (wie rename_expand): jede Datei-lokale Anpassung; ist nichts anzupassen, gilt
+# der No-op-Vertrag (I-E.17: Marker-Zeile KEINE_AENDERUNG statt "leerer Patch" --
+# ein leerer Patch ist im Diff-Format nicht ausdrueckbar und erzeugte die
+# E-17-Pseudo-Diffs). ``{symbol}`` wird eingesetzt.
+_NO_CHANGE_SENTENCE = (
+    "Ist in DIESER Datei nichts anzupassen, antworte NUR mit der Zeile "
+    "`KEINE_AENDERUNG` (kein Diff)."
+)
 _INSTRUCTION: dict[ChangeOp, str] = {
     ChangeOp.signature: (
         "Die Signatur von `{symbol}` aendert sich. Passe in DIESER Datei alle "
         "Definitionen UND Aufrufe von `{symbol}` an die neue Signatur an; aendere "
-        "nichts anderes. Kommt `{symbol}` hier nicht vor, gib einen leeren Patch "
-        "zurueck."
+        f"nichts anderes. {_NO_CHANGE_SENTENCE}"
     ),
     ChangeOp.delete: (
         "Das Symbol `{symbol}` wird entfernt. Entferne in DIESER Datei alle "
         "Importe/Aufrufe von `{symbol}` bzw. ersetze sie passend; aendere nichts "
-        "anderes. Kommt `{symbol}` hier nicht vor, gib einen leeren Patch zurueck."
+        f"anderes. {_NO_CHANGE_SENTENCE}"
     ),
     ChangeOp.move: (
         "Das Symbol `{symbol}` wird verschoben. Passe in DIESER Datei die Importe/"
         "Referenzen von `{symbol}` an den neuen Ort an; aendere nichts anderes. "
-        "Kommt `{symbol}` hier nicht vor, gib einen leeren Patch zurueck."
+        f"{_NO_CHANGE_SENTENCE}"
     ),
     ChangeOp.rename: (
         "Das Symbol `{symbol}` wird umbenannt. Passe in DIESER Datei jede "
         "Definition UND Verwendung (inkl. Importe) an; aendere nichts anderes. "
-        "Kommt `{symbol}` hier nicht vor, gib einen leeren Patch zurueck."
+        f"{_NO_CHANGE_SENTENCE}"
     ),
 }
 
@@ -127,6 +155,15 @@ class ImpactExpansion:
 
 def _restrict(scopes: set[str], allowed: frozenset[str] | None) -> set[str]:
     return scopes if allowed is None else scopes & allowed
+
+
+def _mentions_any(text: str | None, symbols: tuple[str, ...]) -> bool:
+    """Woertlicher Symbol-Treffer (Wortgrenze) im Quelltext. text None (Datei
+    nicht lesbar) -> True: konservativ BEHALTEN -- der Filter entfernt nur, was
+    nachweislich keinen Treffer hat (lieber ueberinklusiv als Luecke)."""
+    if text is None:
+        return True
+    return any(re.search(rf"\b{re.escape(s)}\b", text) for s in symbols)
 
 
 def _symbols_inline(symbols: tuple[str, ...]) -> str:
@@ -176,6 +213,7 @@ def impact_expand(
     symbols: tuple[str, ...] | None = None,
     allowed_scopes: frozenset[str] | None,
     kind: str | None = None,
+    read_scope: Callable[[str], str | None] | None = None,
 ) -> ImpactExpansion:
     """Enumeriert det die von einer Graph-Op betroffenen Dateien (defs + users).
 
@@ -185,7 +223,16 @@ def impact_expand(
     Symbolen ist ``touched`` die VEREINIGUNG (dedupliziert -> je Datei ein Kind, auch
     wenn sie mehrere der Symbole beruehrt). ``symbol`` (Einzahl) und ``symbols``
     (Mehrzahl) sind alternativ -- genau eins muss gesetzt sein. Leeres ``touched``
-    => kein Symbol im Workspace gefunden (der Aufrufer/Hook macht dann nichts)."""
+    => kein Symbol im Workspace gefunden (der Aufrufer/Hook macht dann nichts).
+
+    ``read_scope`` (I-E.17, Befund E-17): liefert den Quelltext eines file:-scopes
+    (der Hook bindet den Key-Workspace-root). Gesetzt, werden die users det auf
+    WOERTLICHE Symbol-Treffer vorgefiltert -- ``repo.impact`` liefert die
+    TRANSITIVE Datei-Huelle, in der Dateien ohne jedes Vorkommen haengen (F4: 5
+    von 9 Kindern; je Kind ein sinnloser prob-Lauf + Pseudo-Diff-Risiko). Die
+    Textsuche faengt auch Kommentar-/Doku-Referenzen. defs werden NIE gefiltert
+    (der Definitionsort ist immer betroffen); nicht lesbare Dateien bleiben
+    konservativ drin. None -> kein Filter (volle statische Huelle wie bisher)."""
     syms = symbols if symbols is not None else ((symbol,) if symbol is not None else ())
     if not syms:
         raise ValueError("impact_expand: symbol oder symbols noetig")
@@ -199,6 +246,8 @@ def impact_expand(
     for def_scope in defs:
         users |= _restrict(set(repo.impact(def_scope)), allowed_scopes)
     users -= defs
+    if read_scope is not None:
+        users = {u for u in users if _mentions_any(read_scope(u), tuple(syms))}
 
     users_sorted = sorted(users)
     uncertain = _uncertain_callers(repo, users_sorted, defs)
@@ -240,6 +289,47 @@ def build_impact_children(expansion: ImpactExpansion) -> list[DagNode]:
         )
         for i, scope in enumerate(expansion.touched)
     ]
+
+
+def build_impact_gates(children: list[DagNode], anchor_scope: str) -> list[DagNode]:
+    """Gate-Kette hinter dem Fan-out (I-E.1, Befund E-1): je Kind ein ``lint_gate``
+    + EIN Sammel-``test_gate`` fuer die ganze koordinierte Aenderung.
+
+    - lint_gate je Kind (scope = Kind-Datei): der LintGateWorker findet den Patch
+      scope-basiert (get_current(scope, "patch")) und stempelt den gruenen
+      lint_report patch-gekoppelt (E-14) -- erst damit ist das Kind ueberhaupt
+      anwendbar (/api/apply wie Auto-Pfad).
+    - EIN test_gate fuer ALLE Kinder (scope = anchor_scope des Erzeugers,
+      depends_on = alle lint_gates): eine koordinierte Graph-Op (z.B. rename ueber
+      N Dateien) ist nur als GANZES konsistent -- Kind-fuer-Kind-Testen/-Anwenden
+      waere zwischenzeitlich inkonsistent (Definition umbenannt, Nutzer noch
+      nicht). Der TestGateWorker liest die Kind-Scopes aus payload["gate_scopes"]
+      (setzt der Hook) und testet die VEREINIGUNG der Patches in EINER Sandbox.
+      Das Sammel-test_gate ist damit das terminale Gate (is_terminal_gate) --
+      der Auto-Apply-Nachlauf feuert genau einmal, fuer den ganzen Fan-out.
+    """
+    gates = [
+        DagNode(
+            id=f"{child.id}_lint",
+            task_type="lint_gate",
+            scope=child.scope,
+            depends_on=(child.id,),
+            status="pending",
+            flags=frozenset(),
+        )
+        for child in children
+    ]
+    gates.append(
+        DagNode(
+            id="impact_test",
+            task_type="test_gate",
+            scope=anchor_scope,
+            depends_on=tuple(g.id for g in gates),
+            status="pending",
+            flags=frozenset(),
+        )
+    )
+    return gates
 
 
 def build_design_review_node(scope: str) -> DagNode:
@@ -401,6 +491,24 @@ def _allowed_scopes(root: object) -> frozenset[str] | None:
     return frozenset(file_scope(rel) for rel in source_files(root))
 
 
+def _scope_reader(root: object) -> Callable[[str], str | None] | None:
+    """Quelltext-Zugriff fuer den Textvorfilter (I-E.17): liest den Inhalt eines
+    file:-scopes unter root. Kein root (Tests/kein Workspace) -> None = kein
+    Filter; unlesbare Dateien -> None je Datei (konservativ behalten)."""
+    if not isinstance(root, Path):
+        return None
+
+    def read(scope: str) -> str | None:
+        if not scope.startswith("file:"):
+            return None
+        try:
+            return (root / scope[len("file:") :]).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    return read
+
+
 def _existing_design(repo: Repository, scope: str) -> str:
     """Text des aktuellen design-Artefakts des Erzeuger-Scopes (leer wenn keins)."""
     getter = getattr(repo, "get_current", None)
@@ -466,11 +574,12 @@ def make_impact_hook(
             symbols=symbols,
             allowed_scopes=_allowed_scopes(root),
             kind=meta.get("kind"),
+            read_scope=_scope_reader(root),
         )
         if not expansion.touched:
             return
-        prepared = prepare_children(item.node_id, build_impact_children(expansion))
-        if not prepared.nodes:
+        children = build_impact_children(expansion)
+        if not children:
             return
         scope = getattr(item, "scope", "")
         # Auf dem Re-Fire (nach dem Review) traegt der Payload das gepruefte Design;
@@ -481,7 +590,10 @@ def make_impact_hook(
             or render_shared_design(expansion)
         )
         depth = int(payload.get("depth", 0))
-        radius = len(prepared.nodes)
+        # Wirkradius = Zahl der BETROFFENEN DATEIEN (fix-Kinder), nicht der
+        # materialisierten Knoten -- die Gate-Kette (I-E.1) darf die G3-Schwelle
+        # (gate_policy) nicht verschieben.
+        radius = len(children)
         stage = int(payload.get("redesign_stage", 0))
         # I-E.18: die woertliche Nutzer-Absicht. Beim Erzeuger IST sie dessen
         # instruction (enqueue_impact legt sie so ab); Review-/Redesign-Knoten
@@ -496,14 +608,42 @@ def make_impact_hook(
                 if block
                 else expansion.instruction
             )
+            # I-E.1 (Befund E-1): Fan-out + Gate-Kette in EINEM Zug -- je Kind ein
+            # lint_gate, dahinter EIN Sammel-test_gate mit den Kind-Scopes im
+            # Payload (gate_scopes); der Auto-Apply-Nachlauf des Gates wendet die
+            # Patches ATOMAR an (alle oder keiner, rename-Konsistenz).
+            prepared = prepare_children(
+                item.node_id, children + build_impact_gates(children, scope)
+            )
+            if not prepared.nodes:
+                return
+            fix_payload = {
+                "depth": depth + 1,
+                "instruction": instruction,
+                "plan_design": design,
+                # I-E.17: die Kinder-Instruktion bietet den No-op-Vertrag an
+                # (KEINE_AENDERUNG) -- nur mit diesem Flag akzeptieren Validator
+                # und Worker die Marker-Antwort (kein globales "gruen ohne Tun").
+                "no_change_ok": True,
+            }
+            gate_payload = {"depth": depth + 1}
+            test_payload = {
+                "depth": depth + 1,
+                "gate_scopes": list(expansion.touched),
+            }
+
+            def _payload_for(node: DagNode) -> dict:
+                if node.task_type == "test_gate":
+                    return test_payload
+                if node.task_type == "lint_gate":
+                    return gate_payload
+                return fix_payload
+
             queue.enqueue_children(  # type: ignore[attr-defined]
                 item,
                 prepared.nodes,
-                base_payload={
-                    "depth": depth + 1,
-                    "instruction": instruction,
-                    "plan_design": design,
-                },
+                base_payload=fix_payload,
+                payload_for=_payload_for,
                 model_for=model_for,
             )
 
@@ -582,6 +722,7 @@ __all__ = [
     "UncertainCaller",
     "build_design_review_node",
     "build_impact_children",
+    "build_impact_gates",
     "build_redesign_node",
     "impact_expand",
     "make_impact_hook",

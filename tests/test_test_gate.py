@@ -279,6 +279,159 @@ class TestTestGateWorker:
         assert "kein patch" in repo.artifacts[0].content["summary"]
 
 
+class _MultiRepo:
+    """patch-Artefakte je scope (Sammel-Modus I-E.1). Wert je scope: Diff-String
+    ODER kompletter content-dict (fuer no_op-Patches, I-E.17)."""
+
+    def __init__(self, patches: dict):
+        self._patches = patches
+        self.artifacts: list = []
+
+    def get_current(self, scope, artifact_type, *, trustworthy=False):
+        if artifact_type == "patch" and scope in self._patches:
+            val = self._patches[scope]
+            content = val if isinstance(val, dict) else {"diff": val}
+            return SimpleNamespace(content=content)
+        return None
+
+    def put_artifact(self, result) -> str:
+        self.artifacts.append(result)
+        return "id"
+
+
+def _fanout_item(scopes, scope="repo:anchor"):
+    return SimpleNamespace(
+        scope=scope,
+        dag_id="d1",
+        id=1,
+        depends_on=("n1/impact_0_lint",),
+        payload={"gate_scopes": list(scopes)},
+    )
+
+
+_DIFF_A = "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-a\n+a2\n"
+_DIFF_B = "--- a/b.py\n+++ b/b.py\n@@ -1 +1 @@\n-b\n+b2\n"
+
+
+class TestTestGateWorkerFanout:
+    """I-E.1: Sammel-test_gate -- payload["gate_scopes"] buendelt die Kind-Patches
+    zu EINEM Multi-File-Diff fuer EINEN Sandbox-Lauf."""
+
+    def test_combines_all_child_patches_into_one_sandbox_run(self):
+        repo = _MultiRepo({"file:a.py": _DIFF_A, "file:b.py": _DIFF_B})
+        captured: dict = {}
+
+        def fake_sandbox(diff, *, root, timeout_s):
+            captured["diff"] = diff
+            return TestOutcome(True, True, "Tests gruen", ())
+
+        worker = TestGateWorker(root=_ROOT, sandbox=fake_sandbox)
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+
+        assert out.passed
+        # Beide Kind-Diffs im kombinierten Diff, in gate_scopes-Reihenfolge.
+        assert captured["diff"].index("a.py") < captured["diff"].index("b.py")
+        assert "-a\n+a2" in captured["diff"] and "-b\n+b2" in captured["diff"]
+        # Report unter dem GATE-scope (Erzeuger-Anker), nicht einem Kind-scope.
+        report = repo.artifacts[0]
+        assert report.scope == "repo:anchor"
+        assert report.artifact_type.value == "test_report"
+
+    def test_combined_diff_applies_both_files(self):
+        # Der konkatenierte Diff ist ein regulaerer Multi-File-Diff: run_tests
+        # wendet BEIDE Kind-Patches in der Sandbox an.
+        repo = _MultiRepo({"file:a.py": _DIFF_A, "file:b.py": _DIFF_B})
+        written: dict = {}
+
+        def spy_copy(_src, dst):
+            written["root"] = Path(dst)
+            _plant(dst)
+
+        def spy_run(_cmd, cwd, _timeout):
+            written["a"] = (Path(cwd) / "a.py").read_text(encoding="utf-8")
+            written["b"] = (Path(cwd) / "b.py").read_text(encoding="utf-8")
+            return 0, "ok"
+
+        worker = TestGateWorker(
+            root=_ROOT,
+            sandbox=lambda diff, *, root, timeout_s: run_tests(
+                diff,
+                root=root,
+                read_current=_reader({"a.py": "a\n", "b.py": "b\n"}),
+                copy_tree=spy_copy,
+                run_cmd=spy_run,
+            ),
+        )
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+        assert out.passed and out.applied
+        assert written["a"] == "a2\n" and written["b"] == "b2\n"
+
+    def test_missing_child_patch_fails_without_sandbox(self):
+        repo = _MultiRepo({"file:a.py": _DIFF_A})  # b.py fehlt
+        called: list = []
+        worker = TestGateWorker(
+            root=_ROOT,
+            sandbox=lambda *a, **k: (
+                called.append(1) or TestOutcome(True, True, "x", ())
+            ),
+        )
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+        assert not out.passed and not out.applied
+        assert called == []
+        assert "file:b.py" in out.summary
+
+    def test_colliding_child_patches_fail_honestly(self):
+        # Zwei Kinder patchen DIESELBE Datei (E-10-Muster): der kombinierte Diff
+        # traegt zwei Sektionen desselben Pfads -> apply_diff bricht ehrlich ab
+        # (beide waeren gegen den ORIGINAL-Inhalt gerechnet, last-wins waere still).
+        repo = _MultiRepo({"file:a.py": _DIFF_A, "file:b.py": _DIFF_A})
+        worker = TestGateWorker(
+            root=_ROOT,
+            sandbox=lambda diff, *, root, timeout_s: run_tests(
+                diff,
+                root=root,
+                read_current=_reader({"a.py": "a\n"}),
+                copy_tree=_boom,
+                run_cmd=_boom,
+            ),
+        )
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+        assert not out.passed and not out.applied
+        assert "mehrfach" in out.summary
+
+    def test_no_op_children_excluded_from_combined_diff(self):
+        # I-E.17: legale No-op-Kinder (KEINE_AENDERUNG) tragen nichts zum
+        # Sammel-Diff bei -- getestet wird nur, was wirklich aendert.
+        repo = _MultiRepo(
+            {"file:a.py": _DIFF_A, "file:b.py": {"diff": "", "no_op": True}}
+        )
+        captured: dict = {}
+
+        def fake_sandbox(diff, *, root, timeout_s):
+            captured["diff"] = diff
+            return TestOutcome(True, True, "Tests gruen", ())
+
+        worker = TestGateWorker(root=_ROOT, sandbox=fake_sandbox)
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+        assert out.passed
+        assert "-a\n+a2" in captured["diff"]
+        assert "b.py" not in captured["diff"]
+
+    def test_all_no_op_children_neutral_without_sandbox(self):
+        repo = _MultiRepo(
+            {
+                "file:a.py": {"diff": "", "no_op": True},
+                "file:b.py": {"diff": "", "no_op": True},
+            }
+        )
+        worker = TestGateWorker(root=_ROOT, sandbox=_boom)
+        out = worker.run(_fanout_item(["file:a.py", "file:b.py"]), repo)
+        assert out.passed and out.applied
+        assert "No-op" in out.summary
+        # Report trotzdem geschrieben (Belegkette).
+        assert repo.artifacts[0].content["passed"] is True
+
+
 # --------------------------------------------------------------------------
 # WorkerLoop test_gate-Dispatch (Fakes) -- analog TestVerifyDispatch
 # --------------------------------------------------------------------------

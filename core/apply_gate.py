@@ -28,6 +28,9 @@ class ApplyResult:
     applied: bool
     reason: str
     target_scope: str | None = None
+    # False: erfolgreich, aber OHNE Schreibzugriff (legaler No-op, I-E.17) --
+    # /api/apply meldet das ehrlich als written=false (E-14-Geist).
+    written: bool = True
 
 
 def _report_matches(report, diff: str) -> bool:
@@ -56,15 +59,11 @@ def patch_verified(repo: Repository, scope: str) -> bool:
     return _report_matches(report, patch.content.get("diff", ""))
 
 
-def _default_apply(diff: str, root: Path) -> tuple[bool, str, list[str]]:
-    """Wendet den Diff git-frei an und schreibt die Dateien in root. Gibt
-    (ok, detail, geaenderte_pfade) zurueck; geloeschte Pfade sind nicht in der
-    Liste (kein Re-Ingest fuer weg)."""
-    result = apply_diff(diff, read_from_root(root))
-    if not result.ok:
-        return False, result.reason, []
+def _write_changes(changes, root: Path) -> list[str]:
+    """FileChange-Liste in root schreiben; gibt die geschriebenen (nicht die
+    geloeschten) Pfade zurueck -- geloescht braucht kein Re-Ingest."""
     changed: list[str] = []
-    for chg in result.changes:
+    for chg in changes:
         target = root / chg.path
         if chg.kind == "delete":
             target.unlink(missing_ok=True)
@@ -72,7 +71,17 @@ def _default_apply(diff: str, root: Path) -> tuple[bool, str, list[str]]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(chg.new_content or "", encoding="utf-8")
             changed.append(chg.path)
-    return True, "applied", changed
+    return changed
+
+
+def _default_apply(diff: str, root: Path) -> tuple[bool, str, list[str]]:
+    """Wendet den Diff git-frei an und schreibt die Dateien in root. Gibt
+    (ok, detail, geaenderte_pfade) zurueck; geloeschte Pfade sind nicht in der
+    Liste (kein Re-Ingest fuer weg)."""
+    result = apply_diff(diff, read_from_root(root))
+    if not result.ok:
+        return False, result.reason, []
+    return True, "applied", _write_changes(result.changes, root)
 
 
 def apply_confirmed_patch(
@@ -95,6 +104,16 @@ def apply_confirmed_patch(
     if patch is None:
         return ApplyResult(False, "kein patch-Artefakt fuer scope")
 
+    if patch.content.get("no_op"):
+        # I-E.17: legaler No-op (KEINE_AENDERUNG) -- nichts anzuwenden, ehrlich
+        # erfolgreich OHNE Schreibzugriff (der Aufrufer meldet written=false).
+        return ApplyResult(
+            True,
+            "keine Aenderung noetig (No-op)",
+            patch.content.get("target_scope", scope),
+            written=False,
+        )
+
     diff = patch.content.get("diff", "")
     report = repo.get_current(scope, "lint_report")
     if not _report_matches(report, diff):
@@ -113,3 +132,85 @@ def apply_confirmed_patch(
     for rel in changed:
         ingest_fn(repo, root, rel, invalidate=True)
     return ApplyResult(True, "angewandt + re-ingestiert", target)
+
+
+def apply_confirmed_patches(
+    repo: Repository,
+    root: Path,
+    scopes: list[str],
+    *,
+    confirmed: bool,
+    ingest_fn: Callable | None = None,
+) -> ApplyResult:
+    """Atomarer Sammel-Apply (I-E.1, Befund E-1): die Patches ALLER scopes oder
+    KEINER. Eine koordinierte Graph-Op (rename ueber N Dateien) ist Kind-fuer-Kind
+    angewandt zwischenzeitlich inkonsistent -- deshalb drei strikte Phasen:
+
+      1. Nachweis je scope: patch-Artefakt + patch-gekoppelter GRUENER lint_report
+         (dieselbe E-14-Wahrheit wie apply_confirmed_patch) -- eine Luecke bricht
+         VOR jedem Schreibzugriff ab.
+      2. ALLE Diffs gegen den aktuellen Tree rechnen (apply_diff schreibt nicht);
+         die Kind-Patches sind gegen denselben Workspace-Stand erzeugt, die
+         touched-Menge ist duplikatfrei. Ein Kontext-Mismatch ODER eine
+         Datei-Kollision ueber Patches hinweg -> Abbruch, NICHTS geschrieben.
+      3. Erst jetzt schreiben + Re-Ingest je geaenderter Datei (I-4.4).
+    """
+    if not confirmed:
+        return ApplyResult(False, "nicht bestaetigt")
+    if not scopes:
+        return ApplyResult(False, "keine scopes")
+
+    diffs: list[tuple[str, str]] = []
+    skipped_no_op = 0
+    for scope in scopes:
+        patch = repo.get_current(scope, "patch")
+        if patch is None:
+            return ApplyResult(
+                False, f"kein patch-Artefakt fuer scope ({scope})", scope
+            )
+        if patch.content.get("no_op"):
+            # I-E.17: legale No-op-Kinder (KEINE_AENDERUNG) blockieren den
+            # Sammel-Apply nicht -- es gibt fuer sie nichts zu schreiben.
+            skipped_no_op += 1
+            continue
+        diff = patch.content.get("diff", "")
+        if not _report_matches(repo.get_current(scope, "lint_report"), diff):
+            return ApplyResult(
+                False,
+                f"kein gruener lint_report fuer {scope} -- nur verifizierte Patches",
+                scope,
+            )
+        diffs.append((scope, diff))
+    if not diffs:
+        return ApplyResult(
+            True,
+            f"keine Aenderung noetig (alle {skipped_no_op} Kinder No-op)",
+            written=False,
+        )
+
+    read = read_from_root(root)
+    changes: list = []
+    for scope, diff in diffs:
+        result = apply_diff(diff, read)
+        if not result.ok:
+            return ApplyResult(
+                False, f"Apply fehlgeschlagen ({scope}): {result.reason}", scope
+            )
+        changes.extend(result.changes)
+    paths = [c.path for c in changes]
+    dupes = sorted({p for p in paths if paths.count(p) > 1})
+    if dupes:
+        return ApplyResult(
+            False,
+            f"Patch-Kollision: mehrere Patches aendern {', '.join(dupes)}",
+        )
+
+    changed = _write_changes(changes, root)
+    if ingest_fn is None:
+        from core.ingest import ingest_file as ingest_fn  # noqa: N813
+    for rel in changed:
+        ingest_fn(repo, root, rel, invalidate=True)
+    suffix = f" ({skipped_no_op} No-op uebersprungen)" if skipped_no_op else ""
+    return ApplyResult(
+        True, f"{len(diffs)} Patch(es) angewandt + re-ingestiert{suffix}"
+    )
