@@ -23,7 +23,6 @@ ruff/FS noetig).
 
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import tempfile
@@ -34,7 +33,7 @@ from pathlib import Path
 
 from core.models.provenance_schema import Provenance
 from core.models.result_det_schema import ResultDet
-from core.patch_apply import ReadCurrent, apply_diff
+from core.patch_apply import ReadCurrent, apply_diff, diff_hash
 from core.queue import QueueItem
 from core.repository import Repository
 
@@ -227,7 +226,7 @@ class LintGateWorker:
         prov = Provenance(
             schema_version="1",
             source_hash=resolve_source_hash(self.root),
-            input_hash=hashlib.sha256(diff.encode("utf-8")).hexdigest(),
+            input_hash=diff_hash(diff),
             producer="verify-worker",
             producer_version="1",
             producer_class="det",

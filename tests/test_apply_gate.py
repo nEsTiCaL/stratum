@@ -11,21 +11,28 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from core.apply_gate import apply_confirmed_patch
+from core.patch_apply import diff_hash
 
 _ROOT = Path(".")
 
 
 class _Repo:
-    """Liefert patch/lint_report je nach Verfuegbarkeit."""
+    """Liefert patch/lint_report je nach Verfuegbarkeit. Der Report stempelt seinen
+    input_hash (wie lint_gate) auf report_diff -- Default = der Patch-Diff "D", also
+    ein PASSENDER Report; ein abweichender report_diff modelliert den E-14-Fall
+    'gruener Alt-Report deckt einen anderen Diff'."""
 
-    def __init__(self, *, patch=True, verified=True):
+    def __init__(self, *, patch=True, verified=True, report_diff="D"):
         self._patch = (
             SimpleNamespace(content={"diff": "D", "target_scope": "file:core/x.py"})
             if patch
             else None
         )
         self._report = (
-            SimpleNamespace(content={"passed": verified})
+            SimpleNamespace(
+                content={"passed": verified},
+                provenance=SimpleNamespace(input_hash=diff_hash(report_diff)),
+            )
             if verified is not None
             else None
         )
@@ -99,6 +106,20 @@ class TestGate:
         )
         assert not r.applied and acalls == []
 
+    def test_report_for_other_diff_no_write(self):
+        # E-14-Kern: ein GRUENER lint_report, der aber einen anderen Diff geprueft
+        # hat (input_hash-Mismatch), darf den aktuellen Patch NICHT verifizieren.
+        apply_fn, acalls = _spy_apply()
+        r = apply_confirmed_patch(
+            _Repo(verified=True, report_diff="ein-anderer-diff"),
+            _ROOT,
+            "file:core/x.py",
+            confirmed=True,
+            apply_fn=apply_fn,
+        )
+        assert not r.applied and acalls == []
+        assert "lint_report" in r.reason
+
 
 class TestApplySuccess:
     def test_applies_and_reingests(self):
@@ -166,11 +187,11 @@ _AUTH = {"Authorization": f"Bearer {TEST_API_KEY}"}
 _SCOPE = "file:core/x.py"
 
 
-def _prov(artifact_type, producer_class):
+def _prov(artifact_type, producer_class, input_hash="i"):
     return Provenance(
         schema_version="1",
         source_hash="h",
-        input_hash="i",
+        input_hash=input_hash,
         producer="p",
         producer_version="1",
         producer_class=producer_class,
@@ -192,13 +213,15 @@ def _put_patch(repo):
     )
 
 
-def _put_report(repo, passed):
+def _put_report(repo, passed, *, diff="D"):
+    # Der Report stempelt seinen input_hash auf den geprueften Diff (wie lint_gate);
+    # Default = der Patch-Diff "D" aus _put_patch -> patch-gekoppelt gruen.
     repo.put_artifact(
         ResultDet(
             artifact_type="lint_report",
             scope=_SCOPE,
             content={"passed": passed, "applied": True, "summary": "x", "commands": []},
-            provenance=_prov("lint_report", "det"),
+            provenance=_prov("lint_report", "det", input_hash=diff_hash(diff)),
         )
     )
 
@@ -246,3 +269,13 @@ class TestApplyRest:
         assert r.status_code == 200
         patches = r.json()["patches"]
         assert {"scope": _SCOPE, "verified": True} in patches
+
+    def test_patches_verified_false_for_stale_report(self, apply_client):
+        # E-14: ein gruener lint_report zu einem FRUEHEREN Diff verifiziert den
+        # aktuellen Patch NICHT (patch-gekoppelt statt scope-weit).
+        client, repo = apply_client
+        _put_report(repo, passed=True, diff="alt-diff")  # gruen, aber fuer "alt-diff"
+        _put_patch(repo)  # aktueller Patch-Diff "D"
+        r = client.get("/api/patches", headers=_AUTH)
+        assert r.status_code == 200
+        assert {"scope": _SCOPE, "verified": False} in r.json()["patches"]

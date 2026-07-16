@@ -698,31 +698,37 @@ class Queue:
                     (json.dumps(payload), item_id),
                 )
 
-    def mark_applied(self, *, owner: str, scope: str) -> int:
-        """Markiert alle done-Tasks eines (owner, scope) als angewendet
-        (payload.applied=true). Nach (Auto-)Apply verschwindet die abgeschlossene,
-        angewandte Arbeit aus der Uebersicht (list_tasks(exclude_applied=True)) und
-        ein erneuter Apply desselben Patches wird zum No-Op statt zum
-        Kontext-Mismatch (409). Gibt die Zahl markierter Zeilen zurueck."""
+    def mark_applied(self, *, owner: str, scope: str, diff_hash: str) -> int:
+        """Markiert alle done-Tasks eines (owner, scope) als angewendet:
+        payload.applied=true (blendet sie via list_tasks(exclude_applied=True) aus)
+        UND payload.applied_diff_hash=diff_hash. Der Hash koppelt die
+        Idempotenz-Wache an den PATCH-INHALT (E-14): nur ein erneuter Apply GENAU
+        dieses Diffs wird zum No-Op statt zum Kontext-Mismatch (409); ein frischer
+        Diff auf demselben scope wird normal angewendet. Gibt die Zahl markierter
+        Zeilen zurueck."""
         with self._conn.transaction():
             with self._conn.cursor() as cur:
                 cur.execute(
                     "UPDATE queue "
                     "SET payload = COALESCE(payload, '{}'::jsonb) "
-                    "|| '{\"applied\": true}'::jsonb "
+                    "|| jsonb_build_object('applied', true, "
+                    "'applied_diff_hash', %s::text) "
                     "WHERE owner = %s AND scope = %s AND status = 'done'",
-                    (owner, scope),
+                    (diff_hash, owner, scope),
                 )
                 return cur.rowcount
 
-    def is_applied(self, *, owner: str, scope: str) -> bool:
-        """True, wenn fuer (owner, scope) bereits ein angewandter done-Task
-        vorliegt -- Idempotenz-Wache fuer /api/apply (Doppel-Apply -> No-Op)."""
+    def is_applied(self, *, owner: str, scope: str, diff_hash: str) -> bool:
+        """True, wenn fuer (owner, scope) bereits ein done-Task mit GENAU diesem
+        applied_diff_hash vorliegt -- die patch-gekoppelte Idempotenz-Wache fuer
+        /api/apply (E-14). Ein anderer (frischer) Diff auf demselben scope matcht
+        NICHT und wird darum nicht faelschlich als 'bereits angewendet'
+        verschluckt."""
         row = self._conn.execute(
             "SELECT 1 FROM queue "
             "WHERE owner = %s AND scope = %s AND status = 'done' "
-            "AND COALESCE((payload->>'applied')::boolean, false) LIMIT 1",
-            (owner, scope),
+            "AND payload->>'applied_diff_hash' = %s LIMIT 1",
+            (owner, scope, diff_hash),
         ).fetchone()
         return row is not None
 

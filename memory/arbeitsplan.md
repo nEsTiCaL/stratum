@@ -223,10 +223,18 @@ I-7.2   implement/fix -> Patch-Artef.  gem   I-7.1     S7, `spec_i-2-1-router`  
 I-7.3   VerifyWorker (ephem. Worktree) det   I-7.1     S7             fertig
 I-7.4   Rueckkante impl<-verify Queue  det   I-7.3     S7             fertig
 I-7.5   Apply-Gate + Re-Ingest         det   I-7.3     S7, R4   [HARTES GATE]   fertig
+I-7.6   Apply-Integritaet patch-gekoppelt det I-7.5    S7 (E-14)      fertig
 ```
 
 Realer Apply auf den Nutzer-Tree erst nach I-7.5 (analog "realer Egress erst
 nach I-3.4"). I-6.x und I-7.1..7.4 sind unabhaengig davon gefahrlos.
+
+I-7.6 (2026-07-16): E-14-Fix aus dem K3-REK-Lauf. verified/is_applied vom scope
+auf die Patch-Inhalts-Identitaet (diff_hash = sha256(diff) = lint_report.input_
+hash) umgekoppelt -> kein Erben fremder Alt-Reports, kein Verschlucken frischer
+Patches ("bereits angewendet"), /api/apply traegt `written`, Auto-Apply prueft
+is_applied symmetrisch. Kein Schema-Change. 1243 gruen (+4). Details:
+`spec_schritt-7` I-7.6. Live-Beleg offen bis Redeploy (K4-Wiederaufnahme).
 
 ## Schalen  (Spec: SCH)
 

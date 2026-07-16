@@ -497,12 +497,17 @@ class TestGetTaskInfoPayload:
 
 
 class TestMarkApplied:
-    """Betriebsschliff Schritt 7: angewendete done-Tasks ausblenden + Idempotenz.
+    """Betriebsschliff Schritt 7 + E-14: angewendete done-Tasks ausblenden +
+    patch-gekoppelte Idempotenz.
 
-    mark_applied setzt payload.applied auf allen done-Tasks eines (owner, scope);
-    is_applied fragt es ab (Idempotenz-Wache fuer /api/apply); list_tasks(
-    exclude_applied=True) blendet sie aus -> angewandte Arbeit verschwindet.
+    mark_applied setzt payload.applied=true (Ausblenden) UND
+    payload.applied_diff_hash (Idempotenz) auf allen done-Tasks eines
+    (owner, scope); is_applied fragt den HASH ab -> nur derselbe Diff ist ein
+    No-Op, ein frischer Diff auf demselben scope nicht; list_tasks(
+    exclude_applied=True) blendet die angewandte Arbeit aus.
     """
+
+    _H = "hash-a1"  # Platzhalter fuer einen Patch-Diff-Hash
 
     def _done(self, q: Queue, *, dag_id: str, scope: str, owner: str) -> int:
         (item_id,) = q.enqueue(
@@ -516,22 +521,39 @@ class TestMarkApplied:
     def test_is_applied_false_before_mark(self, conn):
         q = Queue(conn)
         self._done(q, dag_id="d", scope="file:x.py", owner="alice")
-        assert q.is_applied(owner="alice", scope="file:x.py") is False
+        assert (
+            q.is_applied(owner="alice", scope="file:x.py", diff_hash=self._H) is False
+        )
 
     def test_mark_applied_flips_is_applied(self, conn):
         q = Queue(conn)
         self._done(q, dag_id="d", scope="file:x.py", owner="alice")
-        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
-        assert q.is_applied(owner="alice", scope="file:x.py") is True
+        assert q.mark_applied(owner="alice", scope="file:x.py", diff_hash=self._H) == 1
+        assert q.is_applied(owner="alice", scope="file:x.py", diff_hash=self._H) is True
+
+    def test_is_applied_discriminates_by_diff_hash(self, conn):
+        # E-14-Kern: ein anderer (frischer) Diff auf demselben (owner, scope) gilt
+        # NICHT als angewendet -- die Wache ist an den Patch-Inhalt gekoppelt.
+        q = Queue(conn)
+        self._done(q, dag_id="d", scope="file:x.py", owner="alice")
+        q.mark_applied(owner="alice", scope="file:x.py", diff_hash="hash-A")
+        assert (
+            q.is_applied(owner="alice", scope="file:x.py", diff_hash="hash-A") is True
+        )
+        assert (
+            q.is_applied(owner="alice", scope="file:x.py", diff_hash="hash-B") is False
+        )
 
     def test_mark_applied_scoped_to_owner_and_scope(self, conn):
         q = Queue(conn)
         self._done(q, dag_id="d1", scope="file:x.py", owner="alice")
         keep_scope = self._done(q, dag_id="d2", scope="file:y.py", owner="alice")
         keep_owner = self._done(q, dag_id="d3", scope="file:x.py", owner="bob")
-        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
-        assert q.is_applied(owner="alice", scope="file:y.py") is False
-        assert q.is_applied(owner="bob", scope="file:x.py") is False
+        assert q.mark_applied(owner="alice", scope="file:x.py", diff_hash=self._H) == 1
+        assert (
+            q.is_applied(owner="alice", scope="file:y.py", diff_hash=self._H) is False
+        )
+        assert q.is_applied(owner="bob", scope="file:x.py", diff_hash=self._H) is False
         visible = {
             t["id"] for t in q.list_tasks(statuses=("done",), exclude_applied=True)
         }
@@ -546,13 +568,13 @@ class TestMarkApplied:
             owner="alice",
         )
         self._done(q, dag_id="dd", scope="file:x.py", owner="alice")
-        assert q.mark_applied(owner="alice", scope="file:x.py") == 1
+        assert q.mark_applied(owner="alice", scope="file:x.py", diff_hash=self._H) == 1
         assert pending_id in {t["id"] for t in q.list_tasks(owner="alice")}
 
     def test_exclude_applied_hides_only_marked(self, conn):
         q = Queue(conn)
         done_id = self._done(q, dag_id="d", scope="file:x.py", owner="alice")
-        q.mark_applied(owner="alice", scope="file:x.py")
+        q.mark_applied(owner="alice", scope="file:x.py", diff_hash=self._H)
         # Default (exclude_applied=False) zeigt den done-Task weiterhin ...
         shown = {t["id"] for t in q.list_tasks(owner="alice", statuses=("done",))}
         assert done_id in shown

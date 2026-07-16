@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.patch_apply import apply_diff, read_from_root
+from core.patch_apply import apply_diff, diff_hash, read_from_root
 from core.repository import Repository
 
 
@@ -28,6 +28,32 @@ class ApplyResult:
     applied: bool
     reason: str
     target_scope: str | None = None
+
+
+def _report_matches(report, diff: str) -> bool:
+    """Deckt der lint_report GENAU diesen Diff? Nur wenn er gruen ist UND seinen
+    input_hash auf dessen Inhalt gestempelt hat (lint_gate stempelt diff_hash(diff)).
+    Ein Report zu einem frueheren Diff desselben scope -- oder gar keiner -- zaehlt
+    NICHT: das ist der Kern von E-14. 'verified' war frueher scope- statt
+    patch-gekoppelt, sodass nie geprueft e Patches (z.B. nackte impact-fix-Kinder)
+    fremde gruene Alt-Reports erbten und still als anwendbar galten."""
+    return bool(
+        report is not None
+        and report.content.get("passed")
+        and report.provenance.input_hash == diff_hash(diff)
+    )
+
+
+def patch_verified(repo: Repository, scope: str) -> bool:
+    """True, wenn fuer scope ein aktuelles patch-Artefakt vorliegt UND der aktuelle
+    lint_report genau diesen Patch gruen geprueft hat (patch-gekoppelt, E-14).
+    EINE Wahrheit fuer das Apply-Gate (apply_confirmed_patch) und die
+    /api/patches-Anzeige (verified-Flag)."""
+    patch = repo.get_current(scope, "patch")
+    if patch is None:
+        return False
+    report = repo.get_current(scope, "lint_report")
+    return _report_matches(report, patch.content.get("diff", ""))
 
 
 def _default_apply(diff: str, root: Path) -> tuple[bool, str, list[str]]:
@@ -69,13 +95,13 @@ def apply_confirmed_patch(
     if patch is None:
         return ApplyResult(False, "kein patch-Artefakt fuer scope")
 
+    diff = patch.content.get("diff", "")
     report = repo.get_current(scope, "lint_report")
-    if report is None or not report.content.get("passed"):
+    if not _report_matches(report, diff):
         return ApplyResult(
             False, "kein gruener lint_report -- nur verifizierte Patches", scope
         )
 
-    diff = patch.content.get("diff", "")
     target = patch.content.get("target_scope", scope)
     ok, detail, changed = apply_fn(diff, root)
     if not ok:

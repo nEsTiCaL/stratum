@@ -13,7 +13,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from core.apply_gate import apply_confirmed_patch
+from core.apply_gate import apply_confirmed_patch, patch_verified
+from core.patch_apply import diff_hash
 from interfaces.webgui.deps import AppDeps, get_deps, require_capability, require_owner
 from interfaces.webgui.schemas import ApplyBody, WorkspaceFileBody
 
@@ -42,12 +43,13 @@ async def list_patches(
     owner: str = Depends(require_owner), deps: AppDeps = Depends(get_deps)
 ) -> dict[str, Any]:
     """Patches zur Bestaetigung (I-7.5): scopes mit aktuellem patch-Artefakt,
-    markiert ob ein gruener lint_report vorliegt (nur gruene sind anwendbar)."""
-    out = []
-    for scope in deps.repo.list_current_scopes("patch"):
-        report = deps.repo.get_current(scope, "lint_report")
-        verified = bool(report and report.content.get("passed"))
-        out.append({"scope": scope, "verified": verified})
+    markiert ob GENAU dieser Patch einen gruenen lint_report hat (patch-gekoppelt,
+    E-14 -- nur wirklich gepruefte sind anwendbar; ein Alt-Report des scope zaehlt
+    nicht)."""
+    out = [
+        {"scope": scope, "verified": patch_verified(deps.repo, scope)}
+        for scope in deps.repo.list_current_scopes("patch")
+    ]
     return {"patches": out}
 
 
@@ -64,12 +66,19 @@ async def apply_patch(
     root = deps.workspace_root_of(owner, capability_id)
     if root is None:
         raise HTTPException(status_code=503, detail="kein Schreibziel konfiguriert")
-    # Idempotenz: ist der Patch fuer diesen scope schon angewendet, waere ein
-    # zweiter Apply ein Kontext-Mismatch (409) auf der bereits geaenderten Datei ->
-    # als No-Op-Erfolg zurueckgeben (z.B. Klick nach Auto-Apply).
-    if deps.queue.is_applied(owner=owner, scope=body.scope):
+    # Idempotenz patch-gekoppelt (E-14): NUR ein erneuter Apply GENAU dieses Diffs
+    # ist ein No-Op (der Inhalt liegt schon im Workspace) -- ehrlich mit
+    # written=False. Ein FRISCHER Diff auf demselben scope faellt hier NICHT durch,
+    # sondern laeuft ins Apply-Gate, das ihn patch-gekoppelt prueft (sonst waere ein
+    # nie geprueft er Patch als "bereits angewendet" verschluckt worden).
+    patch = deps.repo.get_current(body.scope, "patch")
+    dh = diff_hash(patch.content.get("diff", "")) if patch is not None else None
+    if dh is not None and deps.queue.is_applied(
+        owner=owner, scope=body.scope, diff_hash=dh
+    ):
         return {
             "applied": True,
+            "written": False,
             "reason": "bereits angewendet",
             "scope": body.scope,
         }
@@ -77,9 +86,15 @@ async def apply_patch(
     if not result.applied:
         raise HTTPException(status_code=409, detail=result.reason)
     # Angewandte, abgeschlossene Arbeit aus der Uebersicht nehmen (verschwindet aus
-    # /api/tasks) und kuenftigen Doppel-Apply zum No-Op machen.
-    deps.queue.mark_applied(owner=owner, scope=body.scope)
-    return {"applied": True, "reason": result.reason, "scope": result.target_scope}
+    # /api/tasks) und kuenftigen Doppel-Apply DIESES Diffs zum No-Op machen.
+    if dh is not None:
+        deps.queue.mark_applied(owner=owner, scope=body.scope, diff_hash=dh)
+    return {
+        "applied": True,
+        "written": True,
+        "reason": result.reason,
+        "scope": result.target_scope,
+    }
 
 
 # ── Workspace lesen (Projekt anzeigen/herunterladen) ───────────────────────

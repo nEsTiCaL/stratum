@@ -35,6 +35,7 @@ from core.lint_gate import LintGateWorker
 from core.metrics import InferenceSample, MetricsStore
 from core.node_prep import materialize_prob_nodes
 from core.ollama_adapter import OllamaAdapter
+from core.patch_apply import diff_hash
 from core.plan_architect import make_plan_architect_hook
 from core.queue import Queue
 from core.repository import Repository
@@ -347,16 +348,33 @@ def _make_worker_loop(
     def _auto_apply(item, root: Path | None) -> None:
         """Auto-Apply nach gruenem verify (Schritt 7, opt-out). Liest den Schalter
         (settings.auto_apply) und wendet den verifizierten Patch ueber das Apply-
-        Gate an (confirm=True + gruener lint_report werden dort geprueft). root =
-        Workspace des API-Keys (via _resolve_root); None -> kein Schreibziel."""
+        Gate an (confirm=True + patch-gekoppelter gruener lint_report werden dort
+        geprueft). root = Workspace des API-Keys (via _resolve_root); None -> kein
+        Schreibziel."""
         if not settings.get_auto_apply() or root is None:
+            return
+        # Symmetrie zu /api/apply (E-14): denselben Diff nicht zweimal schreiben.
+        # Frueher pruefte nur der manuelle Pfad is_applied -> Auto-Apply feuerte auf
+        # bereits angewandten Scopes (Asymmetrie). Der Hash koppelt an den Inhalt:
+        # ein frischer Diff wird normal angewandt, derselbe uebersprungen.
+        patch = worker_repo.get_current(item.scope, "patch")
+        dh = diff_hash(patch.content.get("diff", "")) if patch is not None else None
+        if dh is not None and worker_queue.is_applied(
+            owner=item.owner, scope=item.scope, diff_hash=dh
+        ):
+            print(
+                f"[worker] Auto-Apply uebersprungen ({item.scope}): bereits angewendet"
+            )
             return
         result = apply_confirmed_patch(worker_repo, root, item.scope, confirmed=True)
         if result.applied:
             print(f"[worker] Auto-Apply: {item.scope} -> {result.reason}")
             # Angewandte, abgeschlossene Arbeit aus der Uebersicht nehmen und einen
-            # erneuten Apply zum No-Op machen (list_tasks(exclude_applied=True)).
-            worker_queue.mark_applied(owner=item.owner, scope=item.scope)
+            # erneuten Apply DIESES Diffs zum No-Op machen (exclude_applied=True).
+            if dh is not None:
+                worker_queue.mark_applied(
+                    owner=item.owner, scope=item.scope, diff_hash=dh
+                )
         else:
             print(f"[worker] Auto-Apply uebersprungen ({item.scope}): {result.reason}")
 

@@ -410,18 +410,24 @@ E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
      TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
      die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.
      Kandidat: Task-/DAG-History-Endpoint (supersede-Kette + Reasons).
-E-14 Apply-Integritaet (F3, kritisch): /api/patches koppelt verified an den
-     letzten lint_report des SCOPES statt an das Patch-Artefakt -> nie
-     geprueft e impact-Patches erben fremde gruene Alt-Reports (verified=
-     true). /api/apply-Idempotenzwache is_applied ist ebenfalls scope-weit:
-     je einmal applizierter Scope -> NEUER Patch wird als "bereits
-     angewendet" verschluckt, Response applied:true OHNE Schreibvorgang
-     (stille Erfolgsluege; strict-Signatur nachweislich nicht im WS).
-     Auto-Apply-Pfad prueft is_applied dagegen NICHT (B3-fix auf
-     json_extract feuerte trotz F1-Flag) -> Asymmetrie. impact-Fan-outs
-     sind damit Ende-zu-Ende NICHT abschliessbar, sobald ein Ziel-Scope je
-     einen Apply sah. Kandidaten: verified/applied an die Patch-Artefakt-ID
-     koppeln; /api/apply ehrlich (applied:false wenn nichts geschrieben).
+E-14 [BEHOBEN I-7.6, 2026-07-16] Apply-Integritaet (F3, kritisch):
+     /api/patches koppelte verified an den letzten lint_report des SCOPES statt
+     an das Patch-Artefakt -> nie geprueft e impact-Patches erbten fremde gruene
+     Alt-Reports (verified=true). /api/apply-Idempotenzwache is_applied war
+     ebenfalls scope-weit: je einmal applizierter Scope -> NEUER Patch wurde als
+     "bereits angewendet" verschluckt, Response applied:true OHNE Schreibvorgang
+     (stille Erfolgsluege). Auto-Apply-Pfad prueft e is_applied GAR NICHT ->
+     Asymmetrie. FIX: verified UND applied haengen jetzt am Patch-Diff-Hash
+     (diff_hash=sha256(diff), zentral in core/patch_apply; = der input_hash, den
+     der lint_report ohnehin stempelt -> kein Schema-Change). apply_gate.patch_
+     verified/_report_matches (Report deckt nur den passenden Diff), queue.is_
+     applied/mark_applied nehmen diff_hash, /api/apply traegt `written` (No-Op
+     ehrlich false), serve._auto_apply prueft is_applied symmetrisch. 1243 gruen
+     (+4). Details `spec_schritt-7` I-7.6. RESTOFFEN: Live-Beleg braucht Redeploy
+     (das laufende Image traegt den Fix noch nicht) -> mit K4 fahren. Der
+     VERWANDTE E-1 (impact-Kinder ohne Gate-Kette) bleibt offen: sie haben nie
+     einen eigenen Report -> jetzt ehrlich 409 statt still true, aber der
+     Ende-zu-Ende-Abschluss braucht E-1 (Gate hinter impact-Kinder).
 E-15 debug-Briefing traegt Symptomort-Quelle + DEPENDENTS ("Aufrufer/
      Dependents"), aber KEINE Dependency-Quelltexte -- fuer Ursachensuche
      ist die Richtung verkehrt (Verdaechtige eines Symptoms in X sind Xs

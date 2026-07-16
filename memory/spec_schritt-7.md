@@ -238,3 +238,56 @@ x2), lint+format gruen. Live-E2E im Container belegt: nach mark_applied ->
 Ops-Notiz: fastapi liegt inzwischen AUCH in der WSL-.venv (0.138.2) -> test_webgui
 ist lokal per pytest lauffaehig; die gegenteilige Notiz in `ops_docker-server`
 (".[web] nur im Image") ist damit fuer diesen Host veraltet.
+
+## I-7.6  Apply-Integritaet patch-gekoppelt (2026-07-16, E-14-Fix)
+
+Anlass: der K3-REK-Lauf (`ops_rekursionstests` F3) belegte live einen kritischen
+Fehler des Applied-Trackings von 2026-07-10 -- `verified` UND `is_applied` waren
+an den **scope** gekoppelt statt an den **Patch**:
+
+- `/api/patches` + `apply_gate` lasen `get_current(scope, "lint_report")` und
+  werteten nur `content.passed` -- ein nie geprueft er Patch (z.B. ein nacktes
+  impact-fix-Kind ohne Gate-Kette, E-1) erbte den gruenen Alt-Report eines
+  FRUEHEREN Patches desselben scope -> `verified=true`, obwohl ungeprueft.
+- `queue.is_applied(owner, scope)` war scope-weit -> ein NEUER Patch auf einem je
+  einmal applizierten scope wurde von `/api/apply` als "bereits angewendet"
+  verschluckt (`applied:true` OHNE Schreibvorgang = stille Erfolgsluege).
+- Der Auto-Apply-Pfad pruefte `is_applied` GAR NICHT -> Asymmetrie (feuerte, wo
+  der manuelle Pfad blockte).
+
+Fix -- Kopplung an die Patch-**Inhalts-Identitaet**, nicht an den scope. Der
+Schluessel existierte schon: der lint_report stempelt `provenance.input_hash =
+sha256(diff)`. Zentralisiert als `core.patch_apply.diff_hash(diff)`; **kein
+Schema-/Migrations-Change** (payload ist jsonb, input_hash war immer da).
+
+- **verified patch-gekoppelt.** `apply_gate.patch_verified(repo, scope)` +
+  `_report_matches(report, diff)`: gruener Report zaehlt NUR, wenn sein
+  `input_hash == diff_hash(patch.diff)`. `apply_confirmed_patch` und
+  `/api/patches` (list_patches) nutzen dieselbe Wahrheit. Fremder/fehlender
+  Report -> `verified=false` -> Apply-Gate 409.
+- **is_applied/mark_applied diff-gekoppelt.** `queue.mark_applied(owner, scope,
+  diff_hash)` setzt `payload.applied=true` (weiter fuer `exclude_applied`-
+  Ausblenden) UND `payload.applied_diff_hash`; `queue.is_applied(owner, scope,
+  diff_hash)` matcht nur denselben Hash. Ein frischer Diff auf demselben scope
+  matcht NICHT -> laeuft ins Gate statt verschluckt zu werden.
+- **/api/apply ehrlich.** No-Op (derselbe Diff schon angewandt) -> `applied:true,
+  written:false, "bereits angewendet"` (Inhalt liegt bereits im Workspace,
+  Zielzustand erreicht). Frischer Diff -> `written:true` nach echtem Schreiben,
+  ODER 409, wenn (noch) kein patch-gekoppelter gruener Report vorliegt.
+- **Auto-Apply symmetrisch.** `serve._auto_apply` prueft `is_applied` (mit dem
+  aktuellen Diff-Hash) VOR dem Apply und markiert danach mit demselben Hash --
+  gleiche Regel wie der manuelle Pfad, Asymmetrie behoben.
+
+Akzeptanz: test_apply_gate (Gate-Mismatch: gruener Report zu anderem Diff ->
+kein Write; /api/patches stale-Report -> verified=false), test_queue
+(is_applied diskriminiert nach diff_hash), test_webgui (frischer Patch auf
+appliziertem scope -> 409 statt stiller Erfolgsluege; Doppel-Apply desselben
+Diffs -> written:false). 1243 gruen (+4), ruff clean. Die TestClient-Faelle
+laufen gegen echtes Postgres (jsonb_build_object / payload->>'applied_diff_hash')
+-> Ende-zu-Ende auf API-Ebene belegt. Live gegen den deployten Container: offen
+bis Redeploy (Teil der K4-Wiederaufnahme; das laufende Image traegt den Fix noch
+nicht). Folge fuer die REK-Kampagne: F3/F4/F5 sind ab hier Ende-zu-Ende
+abschliessbar (anwendbare, ehrlich gepruefte Patches). Der VERWANDTE Befund E-1
+(impact-Kinder haben ueberhaupt keine Gate-Kette -> nie ein Report -> jetzt
+ehrlich 409 statt still true) bleibt offen: er ist die naechste Stufe (Gate hinter
+impact-Kinder), nicht Teil von I-7.6.

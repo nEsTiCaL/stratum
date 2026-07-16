@@ -12,6 +12,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core.ingest import ingest_content
+from core.models.provenance_schema import Provenance
+from core.models.result_prob_schema import ResultProb
+from core.patch_apply import diff_hash
 from core.queue import Queue
 from core.repository import Repository
 from core.router import Router
@@ -2172,18 +2175,46 @@ class TestAppliedTasks:
         q.complete(item_id)
         return item_id
 
+    def _put_patch(self, conn, diff: str) -> None:
+        Repository(conn).put_artifact(
+            ResultProb(
+                artifact_type="patch",
+                scope=self._SCOPE,
+                content={"diff": diff, "target_scope": self._SCOPE},
+                confidence=0.8,
+                provenance=Provenance(
+                    schema_version="1",
+                    source_hash="h",
+                    input_hash="i",
+                    producer="p",
+                    producer_version="1",
+                    producer_class="prob",
+                    timestamp="2026-07-16T00:00:00+00:00",
+                    artifact_type="patch",
+                    scope=self._SCOPE,
+                ),
+            )
+        )
+
     def test_tasks_hides_applied(self, conn, tmp_path):
         item_id = self._done_implement(conn)
         with self._client(conn, tmp_path) as c:
             shown = [t["id"] for t in c.get("/api/tasks", headers=AUTH).json()]
             assert item_id in shown  # done-Task zunaechst sichtbar
-            Queue(conn).mark_applied(owner=TEST_OWNER, scope=self._SCOPE)
+            Queue(conn).mark_applied(
+                owner=TEST_OWNER, scope=self._SCOPE, diff_hash="anyhash"
+            )
             after = [t["id"] for t in c.get("/api/tasks", headers=AUTH).json()]
         assert item_id not in after  # nach Apply ausgeblendet
 
-    def test_apply_noop_when_already_applied(self, conn, tmp_path):
+    def test_apply_noop_when_same_diff_applied(self, conn, tmp_path):
+        # Doppel-Apply DESSELBEN Diffs -> ehrlicher No-Op: written=False (der Inhalt
+        # liegt schon im Workspace), applied bleibt True (Zielzustand erreicht).
         self._done_implement(conn)
-        Queue(conn).mark_applied(owner=TEST_OWNER, scope=self._SCOPE)
+        self._put_patch(conn, "D")
+        Queue(conn).mark_applied(
+            owner=TEST_OWNER, scope=self._SCOPE, diff_hash=diff_hash("D")
+        )
         with self._client(conn, tmp_path) as c:
             r = c.post(
                 "/api/apply",
@@ -2191,7 +2222,32 @@ class TestAppliedTasks:
                 headers=AUTH,
             )
         assert r.status_code == 200
-        assert r.json()["reason"] == "bereits angewendet"
+        assert r.json() == {
+            "applied": True,
+            "written": False,
+            "reason": "bereits angewendet",
+            "scope": self._SCOPE,
+        }
+
+    def test_apply_new_patch_on_applied_scope_rejected(self, conn, tmp_path):
+        # E-14-Kern: ein FRISCHER, ungeprüfter Patch (Diff "D2") auf einem scope, der
+        # schon einen anderen Diff ("D1") angewandt sah, wird NICHT als "bereits
+        # angewendet" verschluckt -> er laeuft ins Apply-Gate und wird mangels
+        # patch-gekoppeltem gruenem Report mit 409 abgelehnt (statt stiller
+        # Erfolgsluege applied:true ohne Schreibvorgang).
+        self._done_implement(conn)
+        Queue(conn).mark_applied(
+            owner=TEST_OWNER, scope=self._SCOPE, diff_hash=diff_hash("D1")
+        )
+        self._put_patch(conn, "D2")  # neuer current patch, kein Report dazu
+        with self._client(conn, tmp_path) as c:
+            r = c.post(
+                "/api/apply",
+                json={"scope": self._SCOPE, "confirm": True},
+                headers=AUTH,
+            )
+        assert r.status_code == 409
+        assert "lint_report" in r.json()["detail"]
 
 
 class TestIntentSuggest:

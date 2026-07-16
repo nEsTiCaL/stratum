@@ -28,10 +28,21 @@ sie noch zum Hunk -- Inhalt schlaegt Zaehlung.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def diff_hash(diff: str) -> str:
+    """Inhalts-Identitaet eines Patch-Diffs (sha256-hex). DER Kopplungsschluessel
+    fuer die Apply-Integritaet (E-14): ein lint_report stempelt genau diesen Hash
+    als provenance.input_hash, und die Apply-/Idempotenz-Wachen vergleichen gegen
+    ihn. So haengt "geprueft"/"angewendet" am Patch-INHALT, nicht am scope -- ein
+    frischer Diff auf einem bereits geprueften/angewandten scope erbt nichts."""
+    return hashlib.sha256(diff.encode("utf-8")).hexdigest()
+
 
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 # Struktur-Zeilen, die einen Hunk IMMER beenden -- auch wenn die deklarierte
