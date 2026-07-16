@@ -423,11 +423,14 @@ E-14 [BEHOBEN I-7.6, 2026-07-16] Apply-Integritaet (F3, kritisch):
      verified/_report_matches (Report deckt nur den passenden Diff), queue.is_
      applied/mark_applied nehmen diff_hash, /api/apply traegt `written` (No-Op
      ehrlich false), serve._auto_apply prueft is_applied symmetrisch. 1243 gruen
-     (+4). Details `spec_schritt-7` I-7.6. RESTOFFEN: Live-Beleg braucht Redeploy
-     (das laufende Image traegt den Fix noch nicht) -> mit K4 fahren. Der
-     VERWANDTE E-1 (impact-Kinder ohne Gate-Kette) bleibt offen: sie haben nie
-     einen eigenen Report -> jetzt ehrlich 409 statt still true, aber der
-     Ende-zu-Ende-Abschluss braucht E-1 (Gate hinter impact-Kinder).
+     (+4). Details `spec_schritt-7` I-7.6. LIVE BELEGT im K4-Lauf 2026-07-16
+     (F4): /api/patches zeigt verified=false fuer ungeprueft e Patches (vorher
+     true aus fremdem Alt-Report); POST /api/apply auf frischen ungeprueften
+     Diff -> HTTP 409 "kein gruener lint_report" statt stillem applied:true.
+     Der VERWANDTE E-1 (impact-Kinder ohne Gate-Kette) bleibt offen: sie haben
+     nie einen eigenen Report -> der Anwender kann auch KORREKTE impact-Patches
+     (F4: def+2 Nutzer perfekt) via REST nicht anwenden; Ende-zu-Ende-Abschluss
+     braucht E-1 (Gate hinter impact-Kinder).
 E-15 debug-Briefing traegt Symptomort-Quelle + DEPENDENTS ("Aufrufer/
      Dependents"), aber KEINE Dependency-Quelltexte -- fuer Ursachensuche
      ist die Richtung verkehrt (Verdaechtige eines Symptoms in X sind Xs
@@ -443,6 +446,34 @@ E-16 task_type debug laeuft auf dem woertlichen review-Systemprompt ("Du
      widersprechen -- Antworten bleiben Review-Raster. Kandidat: eigenes
      debug-Template (Repro -> Wirkkette -> Ursache mit Dateipfad ->
      Fix-Ort), Anwender-Instruktion VOR den Quelltext.
+E-17 impact-Fan-out ueberinklusiv + kein No-op-Vertrag (F4+F5, reproduziert):
+     users = repo.impact(def-Datei) ist die TRANSITIVE DATEI-Huelle -> Kinder
+     auch fuer Dateien ohne jedes Symbol-Vorkommen (F4: 5 von 9 ohne
+     build_content; tests/test_plan_format.py haengt nur ueber plan_format
+     drin). "Nichts zu tun" hat ZWEI inkonsistente Ausgaenge: (a) done mit
+     Pseudo-Diff (nackte "diff --git"-Kopfzeile ODER leerer Hunk
+     "@@ -0,0 +0,0 @@" -- Validator laesst beide durch), (b) terminal failed
+     escalated/patch_parse_fail nach 2 Versuchen -- BEIDE Laeufe exakt am
+     selben Kind impact_8. Kandidaten: users symbol-basiert (direkte
+     Referenzen statt Datei-transitiv), No-op-Antwort legalisieren
+     ("KEINE_AENDERUNG" -> done ohne Patch), det-Textvorfilter vor
+     Materialisierung (nur Dateien mit Symbol-Treffer werden Kinder).
+E-18 [KRITISCH] User-Absicht geht hinter dem Design verloren (F5): Review-
+     und Kinder-Prompts tragen NUR das prob-Design + det-Instruktion (Alt-
+     Symbole), NICHT die "Aenderungsabsicht des Nutzers" (liegt det am
+     Erzeuger-Task vor, nur dessen Briefing traegt sie). Nennt das Design
+     die Rename-ZIELE nicht (F5/261: qwen liess beide aus, obwohl der
+     Erzeuger-Prompt sie trug), sind sie fuer ALLE Folgeknoten verloren:
+     Review 262 gab verdict:ok ohne die Ziele je zu sehen; die 3 echt
+     betroffenen Kinder halluzinierten DREI VERSCHIEDENE Zielnamen
+     (def->split_review, validator->build_review, worker ersetzte
+     build_content durch das ANDERE Altsymbol split_review_sections --
+     semantisch falsch). F4 gelang nur, weil das Design dort das Ziel
+     zufaellig zitierte. Schaden=0 NUR dank E-1 (kein Auto-Apply) + E-14-Fix
+     (Apply->409). Verletzt "det speist JEDEN prob-Prompt" (arch_pfadwahl).
+     Fix-Kandidat (billig): Absicht-Block det in render_review_instruction
+     + Kinder-Briefing durchreichen; Review-Instruktion explizit fragen
+     "deckt das Design die Nutzer-Absicht ab?".
 ```
 Erweiterungs-Protokoll nach jedem Lauf: (1) bestandene K-Stufe -> naechste
 fahren; (2) Grenzbefund -> hier listen + als Haeppchen-Kandidat an den Nutzer
@@ -615,3 +646,87 @@ verified=false->409, die 2 alten die "bereits angewendet"-Falle), dann
 E-12 (jeder groessere fix), E-16+E-15 als Kleinpaket, E-8/E-11 fuer
 messbare K4/K5-Laeufe. K4 als reine Mechanik-Messung (bis Patch-Erzeugung,
 ohne Apply) waere heute schon fahrbar.
+
+### K4-Lauf 2026-07-16 abends (Agent; F4/F5 gefahren, G4 blockiert)
+
+Vorbedingungen: Redeploy Image ed9ec6c (E-14-Fix drin, im Container
+verifiziert: serve.py 4x diff_hash); Recreate loeschte pytest erneut ->
+DRITTER E-5-Beleg, wieder pip install. TP-A minicore+ via REST erweitert
+(6 Dateien PUT + index 244-249, kein E-6-Race diesmal). Ground-Truth-
+KORREKTUR zur Fixture: transitive Huelle auf minicore/review_format.py =
+8 users + def = **9 Dateien** (tests/test_plan_format.py haengt transitiv
+ueber plan_format mit drin; Fixture sagte 8). Baseline 58 gruen; R9-Referenz
+als md5-Snapshot (25 Dateien).
+
+- **REK-F4 (impact-b1067b1e, 250-260): Mechanik REK.12 voll BESTANDEN;
+  E-14-Fix LIVE BELEGT; neuer Grenzbefund E-17.**
+  - Antwort traegt change_op=rename; payload impact={op,symbol} (kompakte
+    Ein-Symbol-Form) ✓. R6-Protokoll exakt 3 Phasen: (1) nur Erzeuger 250
+    (4 Snapshots), (2) nach dessen done NUR review 251 (KEINE Kinder --
+    Invariante 3+4 gemessen, 6 Snapshots), (3) nach verdict:ok GENAU 9
+    fix-Kinder 252-260 = n1/review/impact_0..8, Scopes exakt die sortierte
+    touched-Menge ✓. Review-Prompt: Architekten-Design (nennt alle 8
+    Dependents inkl. Testdatei) + Verdikt-Zeilen-Anforderung ✓ -- laeuft
+    aber im generischen Vier-Ueberschriften-Korsett (E-16-Muster auch hier).
+  - Patch-Qualitaet: die 3 echt betroffenen Dateien PERFEKT koordiniert
+    (257 def-Zeile, 258 validator Import+Aufruf, 259 worker Import+Aufruf);
+    256 (plan_format) liess den build_content-KOMMENTAR stehen (leerer
+    Hunk; vertretbar, Design nannte Doku-Refs aber explizit).
+  - E-17 NEU: 5 von 9 Kindern ohne echtes Symbol-Vorkommen (Textzaehlung:
+    nur review_format/validator/worker/plan_format-Kommentar tragen
+    build_content). Davon 4 done mit Pseudo-Diff (252/254/255 nackte
+    diff-Kopfzeile, 253 leerer Hunk), impact_8 (260,
+    tests/test_plan_format.py, 0 Vorkommen) terminal failed
+    escalated/patch_parse_fail attempts=2. Leiter greift bei nackten
+    impact-fix-Knoten nicht (kein Gate dahinter, E-1) -> direkt failed.
+  - E-14 LIVE: /api/patches verified=false fuer die frischen Diffs; POST
+    /api/apply (confirm=true) auf 257 -> HTTP 409 "kein gruener
+    lint_report -- nur verifizierte Patches". Vor dem Fix: stilles
+    applied:true (F3-Beleg). KEIN Schreibvorgang; R9: 25/25 md5 OK.
+  - Timing: create 18:54:13 -> Endzustand 18:57:22 (~3:10 fuer 11 Knoten).
+- **REK-F5 (impact-5df46b2e, 261-271): Mechanik REK.13 voll BESTANDEN;
+  Ergebnis-FAIL mit klar lokalisiertem Systemdefekt -> E-18 (KRITISCH,
+  wichtigster Befund des Laufs).**
+  - Weiche extrahiert+validiert BEIDE Symbole; payload impact.symbols=
+    [split_review_sections, build_content] (Mehrzahl-Form) ✓ -- Payload-
+    Vertrag beider Formen live belegt (250 vs. 261). EIN Erzeuger, EIN
+    Review 262, Fan-out = VEREINIGUNG mit Datei-Dedup: 9 Kinder (nicht 18;
+    review_format mit BEIDEN Symbolen bekommt EIN Kind 268) ✓. Shape/
+    Namespacing identisch F4; impact_8 wieder failed (E-17 reproduziert,
+    exakt dasselbe Kind).
+  - E-18: Erzeuger-Briefing 261 trug die User-Absicht MIT beiden
+    Zielnamen ("Aenderungsabsicht des Nutzers: ..."), das qwen-Design
+    liess die ZIELE aus (0 Nennungen; Nebenbefund: chinesische Tokens im
+    Design-Fliesstext). Review-Prompt 262 + alle Kinder-Prompts tragen
+    NUR Design + det-Instruktion (Altnamen) -> Zielnamen systemisch
+    VERLOREN: Review verdict:ok (konnte Vollstaendigkeit nie pruefen),
+    die 3 echten Betroffenen halluzinierten 3 VERSCHIEDENE Ziele
+    (268 split_review, 269 build_review, 270 build_content->
+    split_review_sections = semantisch falscher Funktionstausch).
+    Applizierbar waeren diese Patches Workspace-zerstoerend gewesen --
+    verhindert NUR durch E-1 (kein Auto-Apply) + E-14 (Apply->409).
+    Gates als letzte Verteidigungslinie: Invariante 3 haelt live.
+  - R9: 25/25 md5 OK (beide Laeufe zusammen: Workspace byte-identisch).
+- **REK-G4: NICHT GEFAHREN.** Setup-Blocker ausserhalb stratums: der
+  Permission-Classifier der Agent-Umgebung verweigert `python -m
+  core.auth create rgreen4` (Bash UND PowerShell; Credential-Muster).
+  Verschaerft E-4 (Key-Erzeugung nur per CLI): ein Admin-/Key-Endpoint
+  wuerde auch agentische Testlaeufe entsperren. Nachfahren, sobald der
+  Nutzer den Key erzeugt/freigibt.
+
+K4-Messlektionen: (a) /mnt/c-Pfade als wsl-Argument werden von Git-Bash
+gemangelt -> in `bash -c "..."` einbetten; (b) R6-Polling als Hintergrund-
+Skript mit jsonl-Snapshots + Stabilitaets-Ende bewaehrt (Phase-1-Fenster
+~16 s bei schnellem architect -- 4-s-Intervall reicht knapp).
+
+K4-Fazit: G3/REK.12/13-Mechanik traegt vollstaendig (beide Payload-Formen,
+Verifikation-vor-Multiplikation live, Dedup korrekt, Invarianten gemessen);
+E-14-Fix wirkt live. Die Grenze der Stufe ist INHALTLICH: (1) E-18 -- die
+Design-Review-Kette sichert die User-Absicht nicht det (F5-Ziele verloren,
+Raten der Kinder), (2) E-17 -- Ueberinklusion + fehlender No-op-Vertrag
+erzeugen Pseudo-Diffs und reproduzierbare Kind-Fails, (3) E-1 -- selbst
+perfekte impact-Patches (F4) sind fuer den Anwender nicht anwendbar.
+Empfehlung vor K5/Testusern: E-18 (det-Durchreichung, billig+kritisch) ->
+E-1 (Gate-Kette hinter impact-Kinder = macht E-17-Pseudo-Diffs auch
+sichtbar/filterbar) -> E-17 (symbol-basierte users ODER No-op-Vertrag) ->
+dann G4 nachfahren + K5.
