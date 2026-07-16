@@ -24,7 +24,10 @@ im Prompt; Intent-Pfad zerlegt automatisch).
    verifiziert ueber `provenance.producer` im Result.
 4. **Nur REST-API fuer den Test selbst** (Agent = Nutzer am Webfrontend, er
    beauftragt und beobachtet). Nicht-API-Schritte erlaubt NUR fuer: (a) Workspace
-   befuellen (docker cp, wie ein Nutzer, der sein Projekt ablegt), (b) Messung
+   befuellen (docker cp, wie ein Nutzer, der sein Projekt ablegt) -- NACHGEZOGEN
+   2026-07-16: seit I-UX.1 geht das via PUT /api/workspace/file + POST
+   /api/workspace/archive, docker cp nur noch Notbehelf (Regel 4' in
+   `ops_rekursionstests`), (b) Messung
    (grep ueber die Staging-Kopie), (c) Fehlersuche nach fehlgeschlagenem Test
    (volle Werkzeugkiste; danach Test sauber via API wiederholen).
 5. **Human-Rolle**: Tasks, die auf model:human routen, claimt der Agent via

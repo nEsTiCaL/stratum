@@ -78,6 +78,9 @@ ops_rest-curl.md         | Curl-Zugriff auf REST-API aus Windows und WSL: Erreic
 ops_abdeckungstests.md   | Abdeckungstests A1-A13 reproduzierbar: minicore-Testprojekt im       | abdeckungstest, minicore, workspace,
                          |   Key-Workspace, Testmatrix + Erwartungswerte, Routing-Erwartung,     |   erwartungswert, testmatrix, ground-truth,
                          |   det-Ground-Truth-Messung, Ergebnisse je Lauf                        |   scope-kollision, human-probe
+ops_rekursionstests.md   | REK-Live-Tests an realen Problemen (geplant 2026-07-16): Regeln       | rekursionstest, komplexitaetsmatrix, minicore+,
+                         |   R6-R10, Schwellen-Spickzettel, Fixtures, Matrix K1-K5 x             |   greenfield, bugfix, feature, g3-review,
+                         |   Greenfield/Bugfix/Feature + Erwartungswerte, Grenzen-Liste E-1..4   |   eskalationsleiter, grenzbefund, rest-only
 feedback_ps51-pitfalls.md | PS5.1-Fallstricke: UTF-8 ohne BOM (non-ASCII bricht Strings),        | ps51, encoding, em-dash, @{u},
                          |   @{u} als Hashtable-Literal in Double-Quoted-Strings                  |   utf8-bom, windows-1252, hashtable
 feedback_edit-duplikate.md | nach Insert-Edits auf doppelte Definitionen grepen (Python nimmt     | doppelte-def, insert-edit, redefinition,
