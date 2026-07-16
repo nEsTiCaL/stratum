@@ -25,6 +25,16 @@ mechanischer Rename) auf L2 (Graph-Op + EIN geteiltes Design):
   (der Erzeuger), DANN der Fan-out (Verifikation vor Multiplikation, Invariante 3);
   die Kinder erscheinen erst NACH dem Erzeuger (Invariante 4). ERSTER Nutzer von
   ``enqueue_children`` aus REK.7. Kein prob noetig -- die Dateien sind det bekannt.
+
+I-REK.12 (Gate-Policy, Haerte ~ Wirkradius): der Hook ist der erste grosse
+Fan-out-Konsument. Vor der Materialisierung fragt er ``gate_policy`` -- verlangt
+der Wirkradius (Kinderzahl) ein Design-Review (G3), reiht der Hook statt der N
+fix-Kinder EINEN ``review``-Knoten ein (``build_design_review_node``), der das
+geteilte Design prueft. Dieser Review-Knoten traegt selbst die impact-Metadaten +
+``design_reviewed`` im Payload; ist er ``done``, feuert dieser Hook erneut und
+materialisiert JETZT die Kinder (Verifikation vor Multiplikation: 1 Review statt N
+konsistent falscher Patches). Der Trivial-/Mittelfall (Radius unter der Schwelle)
+materialisiert direkt wie vor REK.12 -- keine Zaehigkeit.
 """
 
 from __future__ import annotations
@@ -34,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.change_classify import ChangeOp
+from core.gate_policy import requires_design_review
 from core.ingest import file_scope, source_files
 from core.repository import Repository
 from core.subtree import prepare_children
@@ -188,6 +199,39 @@ def build_impact_children(expansion: ImpactExpansion) -> list[DagNode]:
     ]
 
 
+def build_design_review_node(scope: str) -> DagNode:
+    """Ein einzelner prob-Review-Knoten (G3, I-REK.12): prueft das geteilte Design,
+    BEVOR ein grosser Fan-out materialisiert wird (Invariante 3, "Verifikation vor
+    Multiplikation"). ``scope`` ist der Erzeuger-Scope (Anker fuer den Graph-
+    Kontext). ``prepare_children`` haengt ihn unter den Erzeuger; ist er ``done``,
+    feuert ``make_impact_hook`` erneut und materialisiert die N Kinder."""
+    return DagNode(
+        id="review",
+        task_type="review",
+        scope=scope,
+        depends_on=(),
+        status="pending",
+        flags=frozenset(),
+    )
+
+
+def render_review_instruction(
+    expansion: ImpactExpansion, design: str, radius: int
+) -> str:
+    """Instruktion des Design-Review-Knotens (G3): das geteilte Design + der Auftrag,
+    es VOR dem Fan-out auf Luecken/Risiken zu pruefen. Das Design steht in der
+    Instruktion (nicht nur im plan_design), damit es der Review-Prompt traegt --
+    build_node_prompt reicht plan_design nur an implement/fix, der Review-Pfad
+    liest die instruction (build_review_prompt)."""
+    return (
+        f"Pruefe VOR dem Fan-out das folgende geteilte Design fuer die Aenderung "
+        f"`{expansion.op.value} {expansion.symbol}` ({radius} betroffene Datei(en)). "
+        f"Ist der Ansatz stimmig und vollstaendig? Nenne Luecken, Risiken und "
+        f"Inkonsistenzen, BEVOR die {radius} Patches erzeugt werden.\n\n"
+        f"Geteiltes Design:\n{design}"
+    )
+
+
 def render_shared_design(expansion: ImpactExpansion) -> str:
     """Der det Design-Seed = das geteilte Design, das jedes Kind traegt.
 
@@ -273,10 +317,40 @@ def make_impact_hook(
         prepared = prepare_children(item.node_id, build_impact_children(expansion))
         if not prepared.nodes:
             return
-        design = _existing_design(repo, getattr(item, "scope", "")) or (
-            render_shared_design(expansion)
+        scope = getattr(item, "scope", "")
+        # Auf dem Re-Fire (nach dem Review) traegt der Payload das gepruefte Design;
+        # sonst: Architekten-Artefakt bevorzugt, sonst der det-Seed.
+        design = (
+            payload.get("plan_design")
+            or _existing_design(repo, scope)
+            or render_shared_design(expansion)
         )
         depth = int(payload.get("depth", 0))
+        radius = len(prepared.nodes)
+
+        # I-REK.12: Gate-Haerte ~ Wirkradius. Verlangt der Fan-out ein Design-Review
+        # (G3) und ist es noch nicht gelaufen, wird statt der N Kinder EIN review-
+        # Knoten eingereiht. Er traegt die impact-Metadaten + design_reviewed; ist er
+        # done, feuert dieser Hook erneut und materialisiert die Kinder (Verifikation
+        # vor Multiplikation). Trivial-/Mittelfall -> direkt wie vor REK.12.
+        if requires_design_review(radius) and not payload.get("design_reviewed"):
+            review = prepare_children(item.node_id, [build_design_review_node(scope)])
+            if not review.nodes:
+                return
+            queue.enqueue_children(  # type: ignore[attr-defined]
+                item,
+                review.nodes,
+                base_payload={
+                    "depth": depth + 1,
+                    "instruction": render_review_instruction(expansion, design, radius),
+                    "plan_design": design,
+                    "impact": meta,
+                    "design_reviewed": True,
+                },
+                model_for=model_for,
+            )
+            return
+
         queue.enqueue_children(  # type: ignore[attr-defined]
             item,
             prepared.nodes,
@@ -294,8 +368,10 @@ def make_impact_hook(
 __all__ = [
     "ImpactExpansion",
     "UncertainCaller",
+    "build_design_review_node",
     "build_impact_children",
     "impact_expand",
     "make_impact_hook",
+    "render_review_instruction",
     "render_shared_design",
 ]

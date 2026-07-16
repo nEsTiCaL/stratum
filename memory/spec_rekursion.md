@@ -637,6 +637,47 @@ Akzeptanz: Policy-Tests je Radius; grosser Fan-out ohne Design-Review wird
 Klasse  : gem   dep: I-REK.8 oder I-REK.10 (erster grosser Fan-out-Konsument)
 ```
 
+**FERTIG 2026-07-16.** `core/gate_policy.py` (rein) macht Invariante 3 explizit:
+- `GateLevel` IntEnum G0..G4 (`form/lint/test/review/human`) -- geordnet, weil
+  "Mindest-Gate" `max()`/`>=` braucht (ein hoeheres Gate subsumiert die darunter).
+- `min_gate(radius, *, has_tests, structural, review_radius)` = HOECHSTES zutreffendes
+  Gate: Basis G1 (bzw. G2 wenn Tests, Blatt-Gate), gehoben auf G3 bei Radius >=
+  Schwelle (grosser Fan-out), auf G4 bei `structural` (Struktur-Erweiterung + Apply).
+  `requires_design_review(radius, structural)` = Praedikat (`>= G3`) fuer den Hook.
+- Schwelle `DEFAULT_REVIEW_RADIUS = 5`, Tunable (arch_rekursion Risiko 5). Bewusst > 3,
+  damit der REK.10-Trivial-/Mittelfall (Handvoll Dateien, `_repo_foo`=3) OHNE Review-
+  Zaehigkeit direkt materialisiert (Invariante 5, "Tod durch Umgehung"); REK.10-Tests
+  bleiben unveraendert gruen = minimale Regressionsflaeche.
+
+Verdrahtet in `make_impact_hook` (erster grosser Fan-out-Konsument): vor der
+Materialisierung `requires_design_review(len(children))`. Verlangt & noch nicht
+gereviewt -> statt der N `fix`-Kinder EIN `review`-Knoten (`build_design_review_node`,
+scope = Erzeuger-Scope; das geteilte Design steckt in der INSTRUKTION, weil
+`build_node_prompt` `plan_design` nur an implement/fix reicht, der Review-Pfad aber die
+`instruction` liest). Dieser Review-Knoten traegt `impact`-Metadaten + `design_reviewed`
+im Payload; ist er `done`, feuert derselbe Hook erneut (Re-Fire ueber den REK.7-Seam),
+`design_reviewed` ueberspringt jetzt das Review-Gate -> die N Kinder werden materialisiert
+(das gepruefte `plan_design` an sie gefaedelt; sie tragen `impact`/`design_reviewed`
+NICHT -> kein weiteres Feuern). = "erst das Design verifizieren, dann multiplizieren"
+(1 Review statt N konsistent falscher Patches). `plan_architect` (REK.8) sitzt strukturell
+bereits auf G4 (Cockpit-Confirm) -> die Policy bildet das als `structural`->human ab,
+keine Neuverdrahtung.
+
+Akzeptanz `test_gate_policy.py` (12): (1) Policy je Radius -- 1 Datei G1/+Tests G2,
+Radius < Schwelle bleibt Blatt-Gate & kein Review, >= Schwelle G3 (auch mit Tests),
+`structural` G4, Ordnung G0<..<G4, Schwelle als Parameter. (2) Hook mit Fake-Queue --
+grosser Fan-out reiht EINEN review-Knoten (nicht die Kinder), Re-Fire (design_reviewed
+im Payload) materialisiert die fix-Kinder mit geprueftem Design, kleiner Fan-out direkt.
+(3) E2E echtes Postgres: Erzeuger done -> nur `n1/review` sichtbar (kein fix-Kind),
+Review done -> die N `n1/review/…`-fix-Kinder. 1227 gruen (+12), ruff clean.
+Befunde/offen: (a) Das Review-Gate LAEUFT vor dem Fan-out, blockiert die Kinder aber
+nicht bei einem inhaltlich schlechten Review -- prob-Review hat (anders als lint/test)
+kein pass/fail; die Review-Ausgabe ist heute Feedback, die Kopplung an die
+Eskalationsleiter (schlechtes Design-Review -> re-design) waere ein Folge-Haeppchen.
+(b) `make_impact_hook` ist weiterhin NICHT an serve.py verdrahtet (wie REK.10) -- der
+REK-Strang ist als Bausatz komplett, die Live-Verdrahtung (Weiche REK.9 -> impact-
+Erzeuger einreihen, Hook mit dem plan_architect-Hook komponieren) ist der naechste Schritt.
+
 ## Handoff-Konvention je Paket
 
 Abschluss = Suite gruen + ruff check/format gruen + arbeitsplan-Status +

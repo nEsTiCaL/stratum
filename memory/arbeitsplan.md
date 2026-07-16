@@ -340,7 +340,7 @@ I-REK.8   Plan-Ebenen-Architect (=UX.4d)     gem  REK.7 FERTIG   `spec_rekursion
 I-REK.9   Aenderungsart + det-Validierung    gem  REK.5 FERTIG   `spec_rekursion`, `arch_pfadwahl`
 I-REK.10  impact-Skelett (L2-Muster)         gem  REK.7,9 FERTIG `spec_rekursion`
 I-REK.11  Eskalation re-design/re-expand     det  REK.4,7 FERTIG `spec_rekursion`
-I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10       `spec_rekursion`
+I-REK.12  Gate-Policy Haerte~Wirkradius      gem  REK.8|10 FERTIG `spec_rekursion`
 ```
 
 Reihenfolge: Strang V zuerst KOMPLETT (REK.1-4, "messen vor optimieren" --
@@ -456,6 +456,28 @@ Goal (jedes Kind eine Zelle; needs_architect nur ueber Datei-Groesse, kein Doppe
 1167 gruen (+24), ruff clean. NAECHSTER SCHRITT: Strang W (REK.9 Aenderungsart-
 Klassifikation + det-Validierung, unabh. vom Hook) ODER REK.10 (impact-Skelett, nutzt
 enqueue_children aus REK.7) ODER REK.12 (Gate-Policy, erster grosser Fan-out-Konsument).
+I-REK.12 FERTIG (2026-07-16): Gate-Policy Haerte~Wirkradius (+G3 Design-Review) --
+LETZTES REK-Haeppchen, REK-Strang damit komplett. Neu core/gate_policy.py (rein):
+GateLevel IntEnum G0..G4 (geordnet, "Mindest-Gate" braucht Ordnung) + min_gate(radius,
+has_tests, structural, review_radius) = HOECHSTES zutreffendes Gate (Basis G1/G2 Blatt,
+grosser Fan-out >= Schwelle -> G3 Review, Struktur-Erweiterung -> G4) + Praedikat
+requires_design_review. Schwelle DEFAULT_REVIEW_RADIUS=5 Tunable, bewusst >3 -> REK.10-
+Trivial-/Mittelfall (Handvoll Dateien) laeuft ohne Review-Zaehigkeit ("Tod durch
+Umgehung", Inv.5). Verdrahtet in make_impact_hook (erster grosser Fan-out-Konsument):
+vor der Materialisierung requires_design_review(radius) -- ja & noch nicht gereviewt ->
+statt der N fix-Kinder EIN review-Knoten (build_design_review_node, Design in der
+Instruktion damit build_review_prompt es traegt), der impact-Metadaten + design_reviewed
+im Payload traegt; ist er done, feuert derselbe Hook erneut und materialisiert JETZT die
+Kinder (Verifikation vor Multiplikation, Inv.3: 1 Review statt N falscher Patches). Re-
+Fire faedelt das gepruefte plan_design an die Kinder; die tragen impact/design_reviewed
+NICHT (kein weiteres Feuern). plan_architect (REK.8) sitzt strukturell bereits auf G4
+(Cockpit-Confirm) -> nicht neu verdrahtet, Policy bildet es ab. Akzeptanz test_gate_
+policy.py (12): Policy je Radius (G1/G2 klein, G3 ab Schwelle, G4 structural, Tunable),
+Hook grosser Fan-out->Review-Knoten / Re-Fire->fix-Kinder / kleiner Fan-out->direkt,
+E2E echtes Postgres (Erzeuger done -> nur review sichtbar, Review done -> N fix-Kinder).
+1227 gruen (+12), ruff clean. NAECHSTER SCHRITT: REK-Strang fertig -- offen ist nur die
+LIVE-Verdrahtung von impact in serve.py (Weiche REK.9 -> impact-Erzeuger einreihen, Hook
+mit plan_architect-Hook komponieren; impact ist bis heute nicht an serve.py verdrahtet).
 I-REK.11 FERTIG (2026-07-16): Eskalationsleiter Sprossen 2-3 (re-design, re-expand)
 -- volle Leiter in einem Paket (Nutzer-Entscheidung). Neu core/escalation.py (rein:
 next_rung 0->re_design/1->re_expand/>=2->unresolved, belegkette) + drei Queue-
