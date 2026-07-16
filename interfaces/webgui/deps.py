@@ -282,23 +282,25 @@ class AppDeps:
         self,
         *,
         op: str,
-        symbol: str,
+        symbols: tuple[str, ...],
         anchor_scope: str,
         prompt: str,
         owner: str,
         capability_id: int | None,
         kind: str | None = None,
     ) -> tuple[TaskDag, list[int]]:
-        """I-REK.10/12: validierte Graph-Op (rename/move/signature/delete) ->
+        """I-REK.10/12/13: validierte Graph-Op (rename/move/signature/delete) ->
         EIN impact-Erzeuger-Knoten statt der generischen Zerlegung.
 
         Der Knoten ist ein ``architect`` (er entwirft das geteilte Design fuer die
         Aenderung); sein Completion-Hook (core.impact_expand.make_impact_hook,
-        in serve.py verdrahtet) enumeriert det die betroffenen Dateien, laesst bei
-        grossem Fan-out erst das Design reviewen (G3, Gate-Policy REK.12) und
-        materialisiert dann je betroffener Datei ein fix-Kind. ``anchor_scope`` =
-        Definition des Symbols (Anker fuer Graph-Kontext + das design-Artefakt, das
-        der Hook faedelt). Die Op-Metadaten liegen im Payload (``impact``), die
+        in serve.py verdrahtet) enumeriert det die betroffenen Dateien (bei MEHREREN
+        koordinierten ``symbols`` die Vereinigung), laesst bei grossem Fan-out erst
+        das Design reviewen (G3, Gate-Policy REK.12) und materialisiert dann je
+        betroffener Datei ein fix-Kind. ``anchor_scope`` = Definition eines der
+        Symbole (Anker fuer Graph-Kontext + das design-Artefakt, das der Hook
+        faedelt). Die Op-Metadaten liegen im Payload (``impact``: ``symbol`` bei
+        genau einem, ``symbols`` bei mehreren -- der Hook liest beide), die
         natuerlichsprachige Absicht als ``instruction`` (der architect-Prompt).
         Gibt (dag, task_ids) zurueck -- analog enqueue_plan/enqueue_plan_architect."""
         from core.template_registry import DagNode
@@ -325,7 +327,13 @@ class AppDeps:
             capability_id=capability_id,
         )
         self.ensure_indexed(root, anchor_scope)
-        impact_meta: dict[str, str] = {"op": op, "symbol": symbol}
+        # Kompakt: ``symbol`` bei genau einem Ziel (stabiler Ein-Symbol-Vertrag),
+        # ``symbols`` bei mehreren koordinierten Zielen.
+        impact_meta: dict[str, object] = {"op": op}
+        if len(symbols) == 1:
+            impact_meta["symbol"] = symbols[0]
+        else:
+            impact_meta["symbols"] = list(symbols)
         if kind:
             impact_meta["kind"] = kind
         self.queue.update_payload(

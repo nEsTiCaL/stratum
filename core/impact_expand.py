@@ -107,12 +107,18 @@ class UncertainCaller:
 
 @dataclass(frozen=True)
 class ImpactExpansion:
-    """det-Enumeration einer Graph-Op: was ist betroffen, was ist unsicher."""
+    """det-Enumeration einer Graph-Op: was ist betroffen, was ist unsicher.
+
+    ``symbols`` sind die Zielsymbole der EINEN koordinierten Op (>=1). Mehrere
+    Symbole (z.B. zwei gemeinsam umbenannte Funktionen) teilen sich ein Design +
+    ein Review + EINEN Fan-out ueber die VEREINIGUNG der betroffenen Dateien (je
+    Datei ein Kind, dedupliziert) -- "erst das Design verifizieren, dann
+    multiplizieren" gilt fuer die ganze koordinierte Aenderung, nicht je Symbol."""
 
     op: ChangeOp
-    symbol: str
-    defs: tuple[str, ...]  # file-scopes, in denen das Symbol definiert ist
-    users: tuple[str, ...]  # file-scopes, die es (transitiv) nutzen
+    symbols: tuple[str, ...]  # Zielsymbole der Op (>=1), koordiniert
+    defs: tuple[str, ...]  # file-scopes, in denen die Symbole definiert sind
+    users: tuple[str, ...]  # file-scopes, die sie (transitiv) nutzen
     touched: tuple[str, ...]  # defs | users, sortiert -- je Datei ein Kind
     uncertain: tuple[UncertainCaller, ...]  # ueber unsichere Call-Kanten gefunden
     understanding: str
@@ -121,6 +127,19 @@ class ImpactExpansion:
 
 def _restrict(scopes: set[str], allowed: frozenset[str] | None) -> set[str]:
     return scopes if allowed is None else scopes & allowed
+
+
+def _symbols_inline(symbols: tuple[str, ...]) -> str:
+    """Fuer die {symbol}-Substitution in den _INSTRUCTION-Templates: die Namen mit
+    "`, `" verbunden (das Template setzt die aeusseren Backticks). Ein Symbol ->
+    der nackte Name (byte-identisch zum Ein-Symbol-Verhalten vor der Mehrfach-Op)."""
+    return "`, `".join(symbols)
+
+
+def _symbols_display(symbols: tuple[str, ...]) -> str:
+    """Fuer Prosa (understanding/design/review): jeder Name einzeln in Backticks,
+    komma-getrennt. Ein Symbol -> "`foo`"."""
+    return ", ".join(f"`{s}`" for s in symbols)
 
 
 def _uncertain_callers(
@@ -153,19 +172,29 @@ def impact_expand(
     repo: Repository,
     *,
     op: ChangeOp,
-    symbol: str,
+    symbol: str | None = None,
+    symbols: tuple[str, ...] | None = None,
     allowed_scopes: frozenset[str] | None,
     kind: str | None = None,
 ) -> ImpactExpansion:
     """Enumeriert det die von einer Graph-Op betroffenen Dateien (defs + users).
 
-    Generalisiert ``rename_expand.rename_plan``: Definition(en) via find_symbol,
-    Aufrufer via impact() je Definition, beide auf ``allowed_scopes`` eingegrenzt
-    (None = keine Grenze). Leeres ``touched`` => Symbol im Workspace nicht
-    gefunden (der Aufrufer/Hook macht dann nichts)."""
-    defs = _restrict(
-        {h.scope for h in repo.find_symbol(symbol, kind=kind)}, allowed_scopes
-    )
+    Generalisiert ``rename_expand.rename_plan`` auf EINE oder MEHRERE koordinierte
+    Zielsymbole: Definition(en) via find_symbol, Aufrufer via impact() je Definition,
+    beide auf ``allowed_scopes`` eingegrenzt (None = keine Grenze). Bei mehreren
+    Symbolen ist ``touched`` die VEREINIGUNG (dedupliziert -> je Datei ein Kind, auch
+    wenn sie mehrere der Symbole beruehrt). ``symbol`` (Einzahl) und ``symbols``
+    (Mehrzahl) sind alternativ -- genau eins muss gesetzt sein. Leeres ``touched``
+    => kein Symbol im Workspace gefunden (der Aufrufer/Hook macht dann nichts)."""
+    syms = symbols if symbols is not None else ((symbol,) if symbol is not None else ())
+    if not syms:
+        raise ValueError("impact_expand: symbol oder symbols noetig")
+
+    defs: set[str] = set()
+    for name in syms:
+        defs |= _restrict(
+            {h.scope for h in repo.find_symbol(name, kind=kind)}, allowed_scopes
+        )
     users: set[str] = set()
     for def_scope in defs:
         users |= _restrict(set(repo.impact(def_scope)), allowed_scopes)
@@ -175,17 +204,17 @@ def impact_expand(
     uncertain = _uncertain_callers(repo, users_sorted, defs)
     touched = tuple(sorted(defs | users))
     understanding = (
-        f"{op.value} an `{symbol}`: {len(defs)} Definition(en), "
+        f"{op.value} an {_symbols_display(syms)}: {len(defs)} Definition(en), "
         f"{len(users)} Aufrufer, {len(touched)} Datei(en) betroffen"
         + (f", davon {len(uncertain)} ueber unsichere Kante" if uncertain else "")
         + "."
     )
     instruction = _INSTRUCTION.get(op, _INSTRUCTION[ChangeOp.signature]).format(
-        symbol=symbol
+        symbol=_symbols_inline(syms)
     )
     return ImpactExpansion(
         op=op,
-        symbol=symbol,
+        symbols=tuple(syms),
         defs=tuple(sorted(defs)),
         users=tuple(users_sorted),
         touched=touched,
@@ -267,7 +296,8 @@ def render_review_instruction(
     (build_review_prompt)."""
     return (
         f"Pruefe VOR dem Fan-out das folgende geteilte Design fuer die Aenderung "
-        f"`{expansion.op.value} {expansion.symbol}` ({radius} betroffene Datei(en)). "
+        f"`{expansion.op.value}` an {_symbols_display(expansion.symbols)} "
+        f"({radius} betroffene Datei(en)). "
         f"Ist der Ansatz stimmig und vollstaendig? Nenne Luecken, Risiken und "
         f"Inkonsistenzen, BEVOR die {radius} Patches erzeugt werden.\n\n"
         f"Geteiltes Design:\n{design}\n\n"
@@ -298,10 +328,10 @@ def render_redesign_instruction(expansion: ImpactExpansion) -> str:
     entwerfen. Das konkrete Review-Feedback kommt separat als ``verify_feedback``
     ins Payload (build_node_prompt haengt es an den architect-Prompt)."""
     return (
-        f"Entwirf das Design fuer die Aenderung `{expansion.op.value} "
-        f"{expansion.symbol}` NEU -- das vorige Design wurde im Review als "
-        f"unzureichend bewertet (siehe Feedback). Adressiere die genannten "
-        f"Luecken/Risiken, bevor die betroffenen Dateien angepasst werden."
+        f"Entwirf das Design fuer die Aenderung `{expansion.op.value}` an "
+        f"{_symbols_display(expansion.symbols)} NEU -- das vorige Design wurde im "
+        f"Review als unzureichend bewertet (siehe Feedback). Adressiere die "
+        f"genannten Luecken/Risiken, bevor die betroffenen Dateien angepasst werden."
     )
 
 
@@ -313,7 +343,7 @@ def render_shared_design(expansion: ImpactExpansion) -> str:
     Call-Kanten werden einzeln benannt. Ist ein Architekten-Design vorhanden,
     faedelt der Hook stattdessen jenes (dies ist der det-Fallback)."""
     lines = [
-        f"Aenderung: {expansion.op.value} an `{expansion.symbol}`.",
+        f"Aenderung: {expansion.op.value} an {_symbols_display(expansion.symbols)}.",
         f"Definition(en): {', '.join(expansion.defs) or '(keine)'}.",
         f"Betroffene Aufrufer ({len(expansion.users)}): "
         f"{', '.join(expansion.users) or '(keine)'}.",
@@ -369,8 +399,10 @@ def make_impact_hook(
     """Completion-Hook (REK.7-Seam): Erzeuger done -> impact-Kinder einreihen.
 
     Feuert NUR, wenn der Erzeuger-Knoten Op-Metadaten traegt
-    (``payload["impact"] = {"op", "symbol", "kind"?}``) -- so laesst er alle anderen
-    Knoten unberuehrt und ist mit anderen expand_hooks komponierbar. Ablauf:
+    (``payload["impact"] = {"op", "symbol"|"symbols", "kind"?}`` -- ``symbol`` fuer
+    eine einzelne, ``symbols`` fuer mehrere koordinierte Graph-Ops) -- so laesst er
+    alle anderen Knoten unberuehrt und ist mit anderen expand_hooks komponierbar.
+    Ablauf:
       1. Metadaten lesen; allowed_scopes aus root ableiten (wie /api/rename).
       2. ``impact_expand`` enumeriert det die betroffenen Dateien (leer -> No-Op).
       3. ``build_impact_children`` + ``prepare_children`` (namespacen unter den
@@ -383,7 +415,15 @@ def make_impact_hook(
     def hook(item: object, repo: Repository, root: object) -> None:
         payload = getattr(item, "payload", {}) or {}
         meta = payload.get("impact")
-        if not meta or not meta.get("symbol"):
+        if not meta:
+            return
+        # Payload traegt entweder ``symbols`` (Mehrfach-Op) oder ``symbol`` (Einzel,
+        # rueckwaerts-kompatibel). Leer -> No-Op.
+        raw = meta.get("symbols")
+        symbols = (
+            tuple(raw) if raw else ((meta["symbol"],) if meta.get("symbol") else ())
+        )
+        if not symbols:
             return
         try:
             op = ChangeOp(meta["op"])
@@ -392,7 +432,7 @@ def make_impact_hook(
         expansion = impact_expand(
             repo,
             op=op,
-            symbol=meta["symbol"],
+            symbols=symbols,
             allowed_scopes=_allowed_scopes(root),
             kind=meta.get("kind"),
         )

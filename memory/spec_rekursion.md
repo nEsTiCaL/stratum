@@ -719,17 +719,27 @@ Klasse  : gem   dep: I-REK.9, 10, 12
    `worker._maybe_spawn_fix` ueberspringt review-Knoten mit `payload["impact"]` (ein
    Design-Review-Gate ist kein eigenstaendiges Code-Review -> kein Doppel-Spawn).
 
+4. **Mehrfach-Ziel-Ops**: `impact_expand` nimmt `symbols` (Mehrzahl, `symbol`
+   bleibt als Ein-Symbol-Alias) und enumeriert die **Vereinigung** der betroffenen
+   Dateien (dedupliziert -> je Datei EIN Kind, auch wenn es mehrere der Zielsymbole
+   beruehrt). Mehrere koordinierte Symbole (z.B. `foo` + `bar` gemeinsam umbenannt)
+   teilen sich EIN Design, EIN Review, EINEN Fan-out. `ImpactExpansion.symbol` ->
+   `symbols: tuple`. Payload kompakt: `{op, symbol}` bei genau einem Ziel (stabiler
+   Vertrag), `{op, symbols:[...]}` bei mehreren -- der Hook liest beide (REK.10/12-
+   Tests + Ein-Symbol-Payloads unveraendert). Die Weiche (`_detect_graph_op`)
+   akzeptiert `>=1` validierte Ziele; anchor = Definition des ersten.
+
 Akzeptanz: `test_gate_policy.py` erweitert (Verdikt-Parser; Hook ok->Fan-out /
 needs_redesign->re_design mit Feedback+Stufe / Budget erschoepft->Fan-out; E2E echtes
 Postgres: needs_redesign persistiert einen redesign-architect statt fix-Kinder) +
 `test_webgui.py::TestGraphOpWeiche` (validierte Op->impact-Erzeuger; open->Zerlegung;
-nicht-existentes Symbol->Zerlegung). 1235 gruen (+8), ruff clean.
-Befunde/offen: (a) Mehrfach-Ziel-Ops fallen bewusst auf die Zerlegung zurueck (der
-impact-Erzeuger traegt EIN Symbol) -- Mehrsymbol-Impact waere ein Folge-Haeppchen.
-(b) Die Weiche ruft das Klassifikationsmodell pro Schreib-Task (nur wenn eins da ist);
-auf Profil D ohne Cloud (decompose_model None) ist sie ein No-Op = null Overhead.
-(c) Noch kein Live-Beleg auf einem realen Projekt (Dogfooding: grosse Graph-Op ->
-Review-Gate -> Fan-out), nur Test-Ebene.
+nicht-existentes Symbol->Zerlegung; MEHRERE Ziele->impact mit symbols) +
+`test_impact_expand.py` (Vereinigung + Dedup + Mehrfach-Symbol-Payload). 1239 gruen
+(+12), ruff clean.
+Befunde/offen: (a) Die Weiche ruft das Klassifikationsmodell pro Schreib-Task (nur wenn
+eins da ist); auf Profil D ohne Cloud (decompose_model None) ist sie ein No-Op = null
+Overhead. (b) Noch kein Live-Beleg auf einem realen Projekt (Dogfooding: grosse Graph-Op
+-> Review-Gate -> Fan-out), nur Test-Ebene.
 
 ## Handoff-Konvention je Paket
 

@@ -294,3 +294,52 @@ def test_hook_noop_when_no_impact_found():
     )
     hook(producer, _repo_foo(), None)
     assert queue.calls == []  # nichts betroffen -> keine Kinder
+
+
+# --------------------------------------------------------------------------- #
+# 3. Mehrfach-Symbol-Op (I-REK.13): EIN Design/Fan-out ueber die Vereinigung   #
+# --------------------------------------------------------------------------- #
+
+
+# foo (a.py) + bar (c.py), beide von b.py genutzt -> Vereinigung {a,b,c}, b nur
+# EINMAL (dedupliziert, obwohl es beide Symbole nutzt).
+def _repo_multi() -> _FakeRepo:
+    return _FakeRepo(
+        symbols={
+            "foo": [("file:a.py", "function")],
+            "bar": [("file:c.py", "function")],
+        },
+        impact_map={"file:a.py": ["file:b.py"], "file:c.py": ["file:b.py"]},
+    )
+
+
+def test_impact_expand_unions_multiple_symbols():
+    exp = impact_expand(
+        _repo_multi(), op=ChangeOp.rename, symbols=("foo", "bar"), allowed_scopes=None
+    )
+    assert exp.symbols == ("foo", "bar")
+    assert exp.defs == ("file:a.py", "file:c.py")
+    assert exp.users == ("file:b.py",)  # dedupliziert (nutzt beide Symbole)
+    assert exp.touched == ("file:a.py", "file:b.py", "file:c.py")
+
+
+def test_render_shared_design_names_all_symbols():
+    exp = impact_expand(
+        _repo_multi(), op=ChangeOp.rename, symbols=("foo", "bar"), allowed_scopes=None
+    )
+    design = render_shared_design(exp)
+    assert "foo" in design and "bar" in design
+
+
+def test_hook_multi_symbol_payload_enumerates_union():
+    queue = _FakeQueue()
+    hook = make_impact_hook(queue)
+    producer = _Producer(
+        "n1",
+        payload={"impact": {"op": "rename", "symbols": ["foo", "bar"]}, "depth": 0},
+    )
+    hook(producer, _repo_multi(), None)
+    # Radius 3 (< Schwelle) -> direkte fix-Kinder ueber die Vereinigung.
+    scopes = {n.scope for n in queue.calls[0]["nodes"]}
+    assert scopes == {"file:a.py", "file:b.py", "file:c.py"}
+    assert all(n.task_type == "fix" for n in queue.calls[0]["nodes"])

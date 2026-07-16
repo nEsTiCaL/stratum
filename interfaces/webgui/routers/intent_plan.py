@@ -77,17 +77,18 @@ def _goals_from_bodies(items: list[PlanGoalBody]) -> tuple[GoalItem, ...]:
 def _detect_graph_op(
     deps: AppDeps, prompt: str, owner: str, capability_id: int | None
 ) -> tuple[Any, str] | None:
-    """I-REK.9/10-Weiche: ist der Schreib-Auftrag eine VALIDIERTE Graph-Op
-    (rename/move/signature/delete) auf GENAU EINEM existenten Symbol?
+    """I-REK.9/10/13-Weiche: ist der Schreib-Auftrag eine VALIDIERTE Graph-Op
+    (rename/move/signature/delete) auf EINEM ODER MEHREREN existenten Symbolen?
 
     Ja -> (ValidatedChange, anchor_scope) fuer den impact-Pfad (deterministische
-    Enumeration der betroffenen Dateien statt geratener Zerlegung). Sonst None ->
+    Enumeration der betroffenen Dateien statt geratener Zerlegung; mehrere
+    koordinierte Symbole teilen sich EIN Design/Review/Fan-out). Sonst None ->
     Fallback auf die generische enqueue_plan-Zerlegung. Braucht ein Klassifikations-
     modell (decompose_model) und einen aufloesbaren Workspace; fehlt eins, kein
     Shortcut (der generische Pfad ist immer korrekt, nur weniger praezise --
     arch_rekursion Risiko 2, "falsche Weiche = verlorener Shortcut, nie Korrektheit").
-    Mehr als ein Zielsymbol -> Fallback (der impact-Erzeuger traegt EIN Symbol;
-    Mehrfachziele sind ein Folge-Haeppchen)."""
+    ``validate_change`` garantiert, dass ALLE Ziele existieren; anchor_scope ist die
+    Definition des ersten Ziels (Kontext-/Design-Anker des Erzeugers)."""
     from core.change_classify import classify_and_validate
 
     model = deps.decompose_model
@@ -100,13 +101,13 @@ def _detect_graph_op(
     if not allowed:
         return None
     change = classify_and_validate(model, deps.repo, prompt, allowed_scopes=allowed)
-    if not change.validated or len(change.targets) != 1:
+    if not change.validated or not change.targets:
         return None
-    symbol = change.targets[0]
-    hits = [h for h in deps.repo.find_symbol(symbol) if h.scope in allowed]
-    if not hits:
-        return None
-    return change, hits[0].scope
+    for name in change.targets:
+        hits = [h for h in deps.repo.find_symbol(name) if h.scope in allowed]
+        if hits:
+            return change, hits[0].scope
+    return None
 
 
 @router.post("/api/task", status_code=201)
@@ -174,7 +175,7 @@ async def create_task(
             change, anchor_scope = detected
             dag, task_ids = deps.enqueue_impact(
                 op=change.op.value,
-                symbol=change.targets[0],
+                symbols=tuple(change.targets),
                 anchor_scope=anchor_scope,
                 prompt=body.prompt,
                 owner=owner,

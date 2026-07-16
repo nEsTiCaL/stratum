@@ -477,9 +477,13 @@ ueberspringt review-Knoten mit payload["impact"] (Design-Review-Gate != Code-Rev
 Doppel-Spawn). Akzeptanz: test_gate_policy.py erweitert (Verdikt-Parser, ok->Fan-out /
 needs_redesign->re_design / Budget erschoepft->Fan-out; E2E echtes Postgres re_design
 persistiert) + test_webgui.py TestGraphOpWeiche (validierte Op->impact / open->Zerlegung /
-nicht-existentes Symbol->Zerlegung). 1235 gruen (+8), ruff clean. NAECHSTER SCHRITT: REK-
-Strang inkl. Live-Verdrahtung komplett; offen nur Live-Beleg auf einem realen Projekt
-(Dogfooding: grosse Graph-Op -> Review-Gate -> Fan-out) sowie optional Mehrfach-Ziel-Ops.
+nicht-existentes Symbol->Zerlegung). PLUS Mehrfach-Ziel-Ops: impact_expand nimmt jetzt
+symbols (Mehrzahl) und enumeriert die VEREINIGUNG (dedupliziert je Datei); mehrere
+koordinierte Symbole teilen sich EIN Design/Review/Fan-out. Payload kompakt (symbol bei
+einem, symbols bei mehreren; Hook liest beide -> Ein-Symbol-Vertrag stabil, REK.10/12-
+Tests unveraendert). Weiche akzeptiert >=1 Ziele. 1239 gruen (+12), ruff clean. NAECHSTER
+SCHRITT: REK-Strang komplett; offen nur Live-Beleg auf einem realen Projekt (Dogfooding:
+grosse Graph-Op -> Review-Gate -> Fan-out) -- bisher nur Test-Ebene.
 I-REK.12 FERTIG (2026-07-16): Gate-Policy Haerte~Wirkradius (+G3 Design-Review) --
 LETZTES REK-Haeppchen, REK-Strang damit komplett. Neu core/gate_policy.py (rein):
 GateLevel IntEnum G0..G4 (geordnet, "Mindest-Gate" braucht Ordnung) + min_gate(radius,

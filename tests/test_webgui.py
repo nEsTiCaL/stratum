@@ -197,8 +197,8 @@ class _FakeChangeModel:
 
 def _graph_op_app(conn, tmp_path, response: str):
     """create_app mit Workspace (tmp_path) + Klassifikationsmodell, sodass die
-    I-REK.9/10-Weiche in create_task greifen kann. Symbol foo liegt indexiert."""
-    src = "def foo():\n    return 1\n"
+    I-REK.9/10-Weiche in create_task greifen kann. Symbole foo + bar indexiert."""
+    src = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
     (tmp_path / "mod.py").write_text(src, encoding="utf-8")
     repo = Repository(conn)
     ingest_content(repo, "mod.py", src, source_hash="h-foo")
@@ -261,6 +261,31 @@ class TestGraphOpWeiche:
             (body["dag_id"],),
         ).fetchall()
         assert [row[0] for row in rows] == ["index", "fix", "lint_gate"]
+
+    def test_multi_symbol_graph_op_routes_to_impact(self, conn, tmp_path):
+        # I-REK.13: zwei koordinierte Zielsymbole -> EIN impact-Erzeuger mit
+        # payload["symbols"] (nicht "symbol"), ein Fan-out ueber die Vereinigung.
+        app = _graph_op_app(conn, tmp_path, "change_op: rename\ntargets: foo, bar")
+        with TestClient(app) as c:
+            r = c.post(
+                "/api/task",
+                json={
+                    "task_type": "fix",
+                    "scope": "file:mod.py",
+                    "prompt": "benenne foo und bar um",
+                },
+                headers=AUTH,
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["change_op"] == "rename"
+        rows = conn.execute(
+            "SELECT task_type, payload FROM queue WHERE dag_id = %s",
+            (body["dag_id"],),
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "architect"
+        assert rows[0][1]["impact"] == {"op": "rename", "symbols": ["foo", "bar"]}
 
     def test_nonexistent_symbol_falls_back_to_plan(self, conn, tmp_path):
         # Modell raet rename eines Symbols, das der Graph NICHT kennt -> det-Gate
