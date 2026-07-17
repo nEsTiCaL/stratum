@@ -110,9 +110,15 @@ class AppDeps:
         feedback: str = "",
         *,
         root: Path | None = None,
+        plan_design: str = "",
     ) -> str:
         """core.node_prep.build_node_prompt an App-repo + source_root-Default
-        gebunden (root None -> source_root, Fallback fuer Anzeige ohne cap)."""
+        gebunden (root None -> source_root, Fallback fuer Anzeige ohne cap).
+
+        plan_design (I-REK.8, E-21a): das GETEILTE Design des Plan-Architekten muss
+        auch hier durchgereicht werden -- der LLM-Worker tut es, der Human-/Vorschau-
+        Pfad sonst nicht (Dashboard-Human saehe ein anderes Briefing als der Worker,
+        und der REK.8-Beleg waere via REST unmessbar)."""
         return build_node_prompt(
             self.repo,
             task_type,
@@ -120,6 +126,7 @@ class AppDeps:
             instruction,
             feedback,
             root=root if root is not None else self.source_root,
+            plan_design=plan_design,
         )
 
     def claim_model(self, task_type: str, requested: str) -> str:

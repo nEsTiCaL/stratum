@@ -154,6 +154,15 @@ class TestBuildPatchPrompt:
         p = build_patch_prompt("implement", "file:a.py", "")
         assert extract_diff(p).count("@@") >= 1
 
+    def test_scoped_to_target_only(self):
+        # E-21b: der Prompt schaerft explizit auf NUR die Zieldatei (Gegenstueck
+        # zum det Ziel-Scope-Filter E-10) -- kleine Modelle sollen keine
+        # Nachbardateien mit-generieren.
+        p = build_patch_prompt("implement", "file:kanban/models.py", "")
+        assert "NUR die Zieldatei" in p
+        assert "kanban/models.py" in p
+        assert "KEINE anderen Dateien" in p
+
 
 class TestPatchValidation:
     def test_valid_diff_passes(self):

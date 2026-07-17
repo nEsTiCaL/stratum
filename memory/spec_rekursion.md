@@ -1013,6 +1013,39 @@ ok=True, GENAU 3 Zeilen umbenannt (131/148/156), Datei sonst byte-gleich, beide
 Altnamen im Code weg. Live-Beleg Ende-zu-Ende (F5-Wdh bis Auto-Apply) nach dem
 naechsten Redeploy.
 
+## I-E.10 + I-E.21a/b: Plan-Pfad-Scope + Briefing-Durchstich (2026-07-17)
+
+Befunde aus dem G4-Lauf (`ops_rekursionstests` E-10/E-21): das Goal-0-Kind baute
+in JEDEM Versuch das GESAMTE Projekt in einen Multi-Datei-Patch (inkl. der vom
+plan_architect verworfenen Tests -> Lint-Rot), Folge-Goals kollidierten
+strukturell. Drei det Fixes, alle unit-belegt (LIVE nach Redeploy):
+
+- **I-E.10 -- Ziel-Scope-Filter** (`core/patch_apply.filter_diff_to_scope`, im
+  Worker `_store_if_done`): jeder implement/fix-Patch wird beim Speichern det auf
+  seine EINE Ziel-Scope-Datei gefiltert -- fremde Sektionen raus. Nur bei echten
+  Multi-Datei-Diffs aktiv (>1 Sektion); Ein-Datei-Diff bleibt byte-identisch
+  (diff_hash stabil, Bestandsverhalten unberuehrt). Segmentierung ueber denselben
+  `_parse` wie apply_diff (die '-- x' = '--- x'-Header-Falle ist damit
+  ausgeschlossen; git-Praeambel `diff --git`/`index`/mode zaehlt zur ihr folgenden
+  Datei via `_DIFF_META`-Ruecklauf). Kein Treffer -> leerer Diff -> Gate scheitert
+  ehrlich. Wirkt auf lint_gate UND apply_gate (beide lesen das gefilterte Artefakt).
+- **I-E.21a -- plan_design im Human-Pfad** (`deps.node_prompt` + `_human_prompt`):
+  der Human-/Vorschau-Pfad reicht `payload.plan_design` jetzt durch (der Worker tat
+  es laengst) -- claim + /api/prompt tragen den "Geteilten Entwurf des
+  Plan-Architekten" wie der LLM-Worker. Schliesst die Fehlmessungs-Falle (REK.8 war
+  via REST unmessbar) und die Inkonsistenz "Human saehe anderes Briefing als LLM".
+- **I-E.21b (Teil) -- Scope-Schaerfung im Patch-Prompt** (`build_patch_prompt`):
+  die Schluss-Instruktion nennt jetzt "NUR die Zieldatei `X` -- aendere/erzeuge
+  KEINE anderen Dateien". Gegenstueck zum E-10-Filter (der Filter erzwingt es det,
+  die Schaerfung laesst das Modell es gar nicht erst verletzen -> spart Runden).
+  OFFEN: per-Goal-Schritttext statt Gesamt-Intent (Plan-Format-Aenderung) -- durch
+  E-10 auf Briefing-Qualitaet entwertet, zurueckgestellt.
+
+Akzeptanz: +8 Tests (6 filter_diff_to_scope inkl. Header-Fallen-/Round-Trip, 1
+Human-plan_design, 1 Prompt-Schaerfung), 1341 gruen, ruff clean. LIVE Ende-zu-Ende
+(G4-Wiederholung: je Goal genau EINE Datei, keine Kollision) nach dem naechsten
+Redeploy.
+
 ## Handoff-Konvention je Paket
 
 Abschluss = Suite gruen + ruff check/format gruen + arbeitsplan-Status +

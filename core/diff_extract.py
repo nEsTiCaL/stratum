@@ -105,7 +105,14 @@ def build_patch_prompt(
         parts.append(f"\nEntwurf des Architekten (setze ihn um):\n{design}")
     if feedback:
         parts.append(f"\nVorheriger Verify-Fehler (bitte beheben):\n{feedback}")
-    parts.append(f"\n{verb} und gib ausschliesslich den Unified-Diff aus.")
+    # E-21b: der Knoten ist auf GENAU diese Datei skopiert -- kleine Modelle
+    # bauen sonst gern das ganze Projekt in EINEN Patch (Nachbardateien sind
+    # eigene Aufgaben). Explizit schaerfen; der Ziel-Scope-Filter (E-10) verwirft
+    # Fremdsektionen ohnehin det, aber gar nicht erst erzeugen spart Runden.
+    parts.append(
+        f"\n{verb} und gib ausschliesslich den Unified-Diff fuer NUR die Zieldatei "
+        f"`{target}` aus -- aendere oder erzeuge KEINE anderen Dateien."
+    )
     return "\n".join(parts)
 
 

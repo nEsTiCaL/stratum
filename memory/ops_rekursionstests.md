@@ -416,7 +416,8 @@ E-9  Kohaerenz gekoppelter Scopes bei SMALL plans: jedes Goal hat seinen
      large>=5) -> Tests (Goal 3) erwarten andere API als Impl (Goal 1)
      liefert; 4/6 rot bei "alles gruen". Kandidat: shared_design auch fuer
      small plans (Plan-Verstaendnis als Mini-Design an alle Goals).
-E-10 implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
+E-10 [BEHOBEN I-E.10, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
+     implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      kosten belegt): Goal 0 appliziert das GANZE Projekt (ungepruefte
      Nachbarn im Workspace, liefen durch kein eigenes Gate), Folge-Goals
      kollidieren strukturell ("create-Patch, aber ... existiert bereits")
@@ -431,6 +432,17 @@ E-10 implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      lint_gate 315 terminal, 12 Knoten ewig pending. Treiber ist das
      Briefing-Loch E-21b; der det-Ziel-Scope-Filter haette jeden Versuch
      auf models.py reduziert.
+     FIX (I-E.10, core/patch_apply.filter_diff_to_scope): der Worker filtert
+     jeden implement/fix-Patch beim Speichern (_store_if_done) det auf die
+     EINE Ziel-Scope-Datei -- fremde (Nachbar-)Sektionen werden verworfen,
+     die Folge-Goals erzeugen/editieren ihre Datei dann selbst. Nur bei
+     ECHTEN Multi-Datei-Diffs aktiv (>1 Sektion); Ein-Datei-Diff bleibt
+     byte-identisch (diff_hash stabil). Segmentierung ueber denselben
+     robusten _parse (eine geloeschte Quellzeile '-- x' = '--- x' im Diff
+     wird NICHT als Header fehlgelesen; git-Praeambel zaehlt zur folgenden
+     Datei). Trifft keine Sektion -> leer -> Gate scheitert ehrlich. Deckt
+     lint_gate UND apply_gate (beide via das gefilterte patch-Artefakt).
+     +6 Tests. Details `spec_rekursion` I-E.10.
 E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      frischen done-Tasks (34er-Mix, alte done bleiben drin); Query-Params
      dag_id/limit/status werden IGNORIERT (identische Antwort); kein GET
@@ -652,22 +664,30 @@ E-20 plan_architect verwirft test_gen-Goals im Greenfield (G4 2026-07-17):
      ungeprueft mit (E-10/E-21-Verzahnung). Kandidat: create-Semantik auch
      fuer test_gen (Reihenfolge via depends_on hinter den implements)
      ODER test_gen-an-implement-Kopplung. Verwandt: E-2.
-E-21 Plan-DAG-Briefings, zwei Teilbefunde (G4 2026-07-17): (a) human-Pfad
-     laesst plan_design AUS -- _human_prompt (claim + /api/prompt-
-     Vorschau, interfaces/webgui/routers/human.py) baut OHNE plan_design-
-     Param, waehrend der LLM-Worker ihn durchreicht (worker.py; Trace
-     stage='node_prompt' belegt "Geteilter Entwurf des Plan-Architekten"
-     in ALLEN 3 gesendeten 314-Prompts). Folgen: ein Dashboard-Human
-     saehe ein ANDERES Briefing als der LLM (verletzt "EIN Format fuer
-     human UND LLM"), und der REK.8-Messpunkt ist via REST nicht messbar
-     (Fehlmessungs-Falle -- heute getappt, via Trace aufgeklaert).
-     Kandidat: Einzeiler plan_design=payload.get(...) in _human_prompt.
-     (b) Goals tragen strukturell KEINEN Schritttext ({scope, task_type,
-     depends_on}) -> Aufgabe je Kind = ROHER Gesamt-Intent; zusammen mit
-     fehlender Ziel-Scope-Schaerfung baut das Kind das Gesamtprojekt
-     (G4-Fail-Treiber, s. E-10 Beleg #2). Kandidat: Goal-Beschreibung aus
-     der Zerlegung mitfuehren + "NUR diese Datei"-Schaerfung im
-     Patch-Briefing. Verwandt: E-9, E-10.
+E-21 Plan-DAG-Briefings, zwei Teilbefunde (G4 2026-07-17):
+     (a) [BEHOBEN I-E.21a, 2026-07-17] human-Pfad liess plan_design AUS --
+     _human_prompt (claim + /api/prompt-Vorschau,
+     interfaces/webgui/routers/human.py) baute OHNE plan_design-Param,
+     waehrend der LLM-Worker ihn durchreichte (worker.py; Trace
+     stage='node_prompt' belegte "Geteilter Entwurf des Plan-Architekten"
+     in ALLEN 3 gesendeten 314-Prompts). Folgen: ein Dashboard-Human saehe
+     ein ANDERES Briefing als der LLM (verletzt "EIN Format fuer human UND
+     LLM"), und der REK.8-Messpunkt war via REST nicht messbar. FIX:
+     deps.node_prompt nimmt plan_design (an build_node_prompt durch), und
+     _human_prompt reicht payload.plan_design; claim + Vorschau tragen den
+     Geteilten Entwurf jetzt wie der Worker. +1 Test (test_webgui).
+     (b) [TEILWEISE BEHOBEN I-E.21b, 2026-07-17] Goals tragen strukturell
+     KEINEN Schritttext ({scope, task_type, depends_on}) -> Aufgabe je
+     Kind = ROHER Gesamt-Intent; zusammen mit fehlender Ziel-Scope-
+     Schaerfung baute das Kind das Gesamtprojekt (G4-Fail-Treiber, s. E-10
+     Beleg #2). FIX-Teil: build_patch_prompt schaerft jetzt explizit "NUR
+     die Zieldatei `X` -- aendere/erzeuge KEINE anderen Dateien" (Gegenstueck
+     zum det E-10-Filter -- gar nicht erst erzeugen spart Runden). +1 Test.
+     OFFEN (entwertet durch E-10, daher zurueckgestellt): die Goal-
+     Beschreibung aus der Zerlegung mitfuehren (per-Goal-Schritttext statt
+     Gesamt-Intent) -- E-10 erzwingt die Scope-Korrektheit bereits, das
+     Threading ist nur noch Briefing-Qualitaet (Plan-Format-Aenderung).
+     Verwandt: E-9, E-10.
 ```
 Erweiterungs-Protokoll nach jedem Lauf: (1) bestandene K-Stufe -> naechste
 fahren; (2) Grenzbefund -> hier listen + als Haeppchen-Kandidat an den Nutzer

@@ -327,12 +327,18 @@ class LlmWorker:
         # moeglich -> ganze Antwort als content.text (core.review_format).
         if artifact_type_str == "patch":
             from core.diff_extract import extract_diff, is_no_change
+            from core.patch_apply import filter_diff_to_scope
 
             if item.payload.get("no_change_ok") and is_no_change(outcome.response):
                 content = {"diff": "", "no_op": True, "target_scope": item.scope}
             else:
+                # E-10: ein Knoten fuer file:X darf NUR X aendern -- fremde
+                # (Nachbar-)Sektionen det verwerfen, sonst kollidieren die Folge-
+                # Goals eines Plans mit dem "ganzes Projekt in EINEM Patch"-Muster.
                 content = {
-                    "diff": extract_diff(outcome.response),
+                    "diff": filter_diff_to_scope(
+                        extract_diff(outcome.response), item.scope
+                    ),
                     "target_scope": item.scope,
                 }
         else:

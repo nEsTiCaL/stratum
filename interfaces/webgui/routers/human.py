@@ -149,6 +149,7 @@ def _human_prompt(
             payload.get("instruction", ""),
             payload.get("verify_feedback", "") or "",
             root=root,
+            plan_design=payload.get("plan_design", "") or "",
         )
     return f"{base}\n\n{_output_hint(task_type)}"
 

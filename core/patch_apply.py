@@ -102,6 +102,7 @@ class _FileDiff:
     old_path: str | None  # None = /dev/null (create)
     new_path: str | None  # None = /dev/null (delete)
     hunks: list[_Hunk] = field(default_factory=list)
+    header_line: int = -1  # Index der '--- '-Zeile im Diff (fuer Scope-Filter)
 
 
 def _strip(raw: str) -> str | None:
@@ -123,6 +124,7 @@ def _parse(diff: str) -> list[_FileDiff]:
     while i < n:
         line = lines[i]
         if line.startswith("--- "):
+            hdr = i
             old = _strip(line[4:])
             new: str | None = None
             if i + 1 < n and lines[i + 1].startswith("+++ "):
@@ -130,7 +132,7 @@ def _parse(diff: str) -> list[_FileDiff]:
                 i += 2
             else:
                 i += 1
-            cur = _FileDiff(old, new)
+            cur = _FileDiff(old, new, header_line=hdr)
             files.append(cur)
             continue
         m = _HUNK.match(line) if line.startswith("@@") else None
@@ -348,6 +350,62 @@ def _apply_one(fd: _FileDiff, read_current: ReadCurrent) -> FileChange | str:
     return FileChange(
         path=path, kind="create" if create else "modify", new_content=body
     )
+
+
+# git-Metadaten-Zeilen, die einer Datei-Sektion VORAUSgehen (vor '--- '). Beim
+# Segmentieren gehoeren sie zu IHRER Sektion, nicht zur vorigen -- ein Hunk-Body
+# traegt sie nie ohne fuehrenden Marker, die Erkennung ist also eindeutig.
+_DIFF_META = (
+    "diff --git ",
+    "index ",
+    "old mode ",
+    "new mode ",
+    "new file mode ",
+    "deleted file mode ",
+    "similarity ",
+    "rename ",
+    "copy ",
+    "Binary files ",
+)
+
+
+def filter_diff_to_scope(diff: str, scope: str) -> str:
+    """E-10: behaelt nur die Datei-Sektion(en), die den Ziel-Scope treffen. Ein
+    implement/fix-Knoten fuer ``file:X`` darf NUR X aendern -- kleine Modelle
+    generieren aber gern Nachbardateien mit (ganzes Projekt in EINEM Patch), deren
+    create-Bloecke dann mit den Folge-Goals strukturell kollidieren (Goal N: "create,
+    aber existiert bereits" -> volle Eskalationsleiter). Fremde Sektionen werden det
+    verworfen; die Folge-Goals editieren/erzeugen ihre Datei dann selbst.
+
+    Nur bei ECHTEN Multi-Datei-Diffs aktiv (>1 Sektion) -- ein Ein-Datei-Diff bleibt
+    BYTE-IDENTISCH (kein Re-Serialisieren, diff_hash/Bestandsverhalten unveraendert).
+    Nicht-``file:``-Scope -> unveraendert. Segmentiert ueber denselben robusten
+    Parser wie apply_diff (eine entfernte Quellzeile ``-- x`` = ``--- x`` im Diff wird
+    NICHT faelschlich als Datei-Header gelesen -- Header werden nur ausserhalb eines
+    Hunk-Bodys erkannt); die git-Praeambel (``diff --git``/``index``/mode) zaehlt zur
+    IHR folgenden Datei. Trifft KEINE Sektion den Scope, ist das Ergebnis leer (das
+    nachgelagerte Gate scheitert dann ehrlich "kein anwendbarer Hunk")."""
+    if not scope.startswith("file:"):
+        return diff
+    fdiffs = _parse(diff)
+    if len(fdiffs) <= 1:
+        return diff
+    target = scope[len("file:") :]
+    lines = diff.split("\n")
+
+    def _sec_start(header: int) -> int:
+        s = header
+        while s > 0 and lines[s - 1].startswith(_DIFF_META):
+            s -= 1
+        return s
+
+    bounds = [_sec_start(fd.header_line) for fd in fdiffs] + [len(lines)]
+    kept: list[str] = []
+    for k, fd in enumerate(fdiffs):
+        tgt = fd.new_path if fd.new_path is not None else fd.old_path
+        if tgt == target:
+            kept.extend(lines[bounds[k] : bounds[k + 1]])
+    return "\n".join(kept)
 
 
 def apply_diff(diff: str, read_current: ReadCurrent) -> ApplyResult:

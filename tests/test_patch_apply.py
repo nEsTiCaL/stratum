@@ -8,7 +8,7 @@ fehlende Zieldatei, Trailing-Newline.
 
 from __future__ import annotations
 
-from core.patch_apply import apply_diff
+from core.patch_apply import apply_diff, filter_diff_to_scope
 
 
 def _reader(files: dict[str, str]):
@@ -333,3 +333,82 @@ class TestFuzzContext:
         # Das Feedback zeigt die echten Zeilen um Zeile 3 (mit Nummer).
         assert "GESUCHT" in r.reason
         assert "3:" in r.reason
+
+
+class TestScopeFilter:
+    """I-E.10: ein implement/fix-Knoten fuer file:X darf NUR X aendern. Kleine
+    Modelle bauen gern das ganze Projekt in EINEN Patch -> fremde Sektionen det
+    verwerfen, damit Folge-Goals nicht strukturell kollidieren."""
+
+    _MULTI = (
+        "diff --git a/kanban/models.py b/kanban/models.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/kanban/models.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+class Task:\n"
+        "+    pass\n"
+        "diff --git a/kanban/storage.py b/kanban/storage.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/kanban/storage.py\n"
+        "@@ -0,0 +1,1 @@\n"
+        "+import json\n"
+    )
+
+    def test_keeps_only_target_section(self):
+        out = filter_diff_to_scope(self._MULTI, "file:kanban/models.py")
+        assert "kanban/models.py" in out
+        assert "class Task:" in out
+        assert "kanban/storage.py" not in out
+        assert "import json" not in out
+        # Gefilterte Sektion appliziert sauber als EINE Create.
+        r = apply_diff(out, _reader({}))
+        assert r.ok and len(r.changes) == 1
+        assert r.changes[0].path == "kanban/models.py"
+        assert r.changes[0].new_content == "class Task:\n    pass\n"
+
+    def test_target_is_middle_section(self):
+        three = self._MULTI + (
+            "diff --git a/kanban/cli.py b/kanban/cli.py\n"
+            "new file mode 100644\n"
+            "--- /dev/null\n"
+            "+++ b/kanban/cli.py\n"
+            "@@ -0,0 +1,1 @@\n"
+            "+import argparse\n"
+        )
+        out = filter_diff_to_scope(three, "file:kanban/storage.py")
+        r = apply_diff(out, _reader({}))
+        assert r.ok and len(r.changes) == 1
+        assert r.changes[0].path == "kanban/storage.py"
+        assert "models.py" not in out and "cli.py" not in out
+
+    def test_single_file_diff_unchanged_byte_identical(self):
+        # Ein-Datei-Diff: KEIN Filtern, byte-identisch (diff_hash stabil).
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+A\n"
+        assert filter_diff_to_scope(diff, "file:x.py") == diff
+        # Auch wenn der Scope NICHT die Datei ist -> Ein-Datei bleibt unangetastet.
+        assert filter_diff_to_scope(diff, "file:anders.py") == diff
+
+    def test_non_file_scope_unchanged(self):
+        assert filter_diff_to_scope(self._MULTI, "repo:") == self._MULTI
+
+    def test_no_matching_section_yields_empty(self):
+        # Keine Sektion trifft den Scope -> leer -> Gate scheitert ehrlich.
+        out = filter_diff_to_scope(self._MULTI, "file:kanban/render.py")
+        assert out == ""
+        assert not apply_diff(out, _reader({})).ok
+
+    def test_removed_line_looking_like_header_not_missplit(self):
+        # Falle: eine ENTFERNTE Quellzeile '-- x' erscheint im Diff als '--- x' --
+        # sie darf NICHT als Datei-Header (neue Sektion) fehlgelesen werden.
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,1 @@\n keep\n--- weg\n"
+            "--- a/y.py\n+++ b/y.py\n@@ -1 +1 @@\n-p\n+P\n"
+        )
+        out = filter_diff_to_scope(diff, "file:x.py")
+        # y.py-Sektion verworfen, aber die '--- weg'-Loeschzeile von x bleibt drin.
+        assert "y.py" not in out
+        assert "--- weg" in out
+        r = apply_diff(out, _reader({"x.py": "keep\n-- weg\n"}))
+        assert r.ok and r.changes[0].new_content == "keep\n"

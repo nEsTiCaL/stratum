@@ -383,7 +383,9 @@ I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DA
 I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar
 I-E.4    Key-/Owner-Admin-Endpoint                gem  -          2      E-4: REST statt CLI (entsperrt auch agentische
                                                                          Testlaeufe; Classifier blockt core.auth create)
-I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen
+I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen   fertig 2026-07-17 (unit; LIVE offen)
+I-E.21a  plan_design im Human-/Vorschau-Pfad      det  -          3      E-21a: _human_prompt reicht payload.plan_design   fertig 2026-07-17
+I-E.21b  Patch-Prompt "NUR Zieldatei"-Schaerfung  det  I-E.10     3      E-21b: build_patch_prompt scoped; Goal-Schritttext offen (E-10 entwertet)   fertig 2026-07-17 (Teil)
 I-E.2    test_gate-Entscheid zur Claim-Zeit       det  -          3      E-2: workspace_has_tests je Gate-Claim statt Enqueue
 I-E.9    shared_design fuer small plans           gem  -          3      E-9: Plan-Verstaendnis als Mini-Design an alle Goals
 I-E.16   debug-Template (Repro->Wirkkette->       det  -          3      E-16: eigener Systemprompt, Frage VOR Quelltext
@@ -398,12 +400,15 @@ Nach Welle 1 (Stand 2026-07-17 nachmittags): G4 + Q1 GEFAHREN -- Q1 bestanden
 (neu: Briefing-Scope im Plan-Pfad), test_gen-Verlust = E-20 (neu). F5-Wdh
 2x an E-12 -> I-E.12-KERN (Kontext-Fuzz + Feedback) FERTIG + real belegt (der
 2x gescheiterte 305-Diff appliziert jetzt), Welle 1 damit vollstaendig bis auf
-die evidenzgetrieben zurueckgestellte whole-file-Sprosse. NAECHSTES (unit-
-schliessbar, kein Redeploy noetig): E-21a (Einzeiler human-Pfad plan_design) +
-E-10/E-21b (Ziel-Scope-Filter + Goal-Schritttext). Dann Redeploy -> F5-Wdh +
-G4-Wdh live nachweisen, dann K5 (B4; G5 im rgreen4-Workspace, ist leer). Danach
-Testuser-Uebergabe vorbereiten. Grenzbefunde je Fix in `ops_rekursionstests`
-(E-Liste) nachziehen (Status BEHOBEN + Beleg).
+die evidenzgetrieben zurueckgestellte whole-file-Sprosse. Danach die G4-Blocker
+unit-geschlossen: I-E.10 (Ziel-Scope-Filter), I-E.21a (plan_design im Human-Pfad),
+I-E.21b-Teil (Patch-Prompt-Schaerfung "NUR Zieldatei"); offen nur der per-Goal-
+Schritttext (durch E-10 auf Briefing-Qualitaet entwertet) + E-20 (test_gen im
+leeren WS). NAECHSTES: Redeploy -> live nachweisen (F5-Wdh Ende-zu-Ende bis
+Auto-Apply / I-E.12; G4-Wdh: je Goal genau EINE Datei, keine Kollision / I-E.10;
+Human-Prompt traegt plan_design / I-E.21a). Dann K5 (B4; G5 im rgreen4-Workspace,
+ist leer), danach Testuser-Uebergabe vorbereiten. Grenzbefunde je Fix in
+`ops_rekursionstests` (E-Liste) nachziehen (Status BEHOBEN + Beleg).
 
 ## Status
 

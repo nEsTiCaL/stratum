@@ -836,6 +836,35 @@ class TestClaimEndpoint:
         assert "Ueberblick" in body["prompt"]
         assert "## 1. Struktur & Verantwortlichkeiten" not in body["prompt"]
 
+    def test_prompt_and_claim_carry_plan_design(self, conn):
+        """E-21a: der Human-/Vorschau-Pfad reicht payload.plan_design durch -- der
+        geteilte Plan-Architekt-Entwurf steht im Briefing wie beim LLM-Worker
+        (sonst saehe ein Dashboard-Human ein anderes Briefing, und REK.8 waere via
+        REST unmessbar). Gilt fuer claim UND die statusfreie prompt-Vorschau."""
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="implement"), model="human", owner=TEST_OWNER
+        )
+        conn.execute(
+            "UPDATE queue SET payload = %s WHERE id = %s",
+            (
+                json.dumps(
+                    {
+                        "instruction": "Baue Modul X",
+                        "plan_design": "GETEILTES-DESIGN-MARKER-4711",
+                    }
+                ),
+                item_id,
+            ),
+        )
+        with TestClient(create_app(queue, repo)) as c:
+            preview = c.get(f"/api/prompt/{item_id}", headers=AUTH).json()["prompt"]
+            claimed = c.post(f"/api/claim/{item_id}", headers=AUTH).json()["prompt"]
+        for prompt in (preview, claimed):
+            assert "Geteilter Entwurf des Plan-Architekten" in prompt
+            assert "GETEILTES-DESIGN-MARKER-4711" in prompt
+
     def test_claim_requires_auth(self, client_with_task):
         c, item_id = client_with_task
         r = c.post(f"/api/claim/{item_id}")
