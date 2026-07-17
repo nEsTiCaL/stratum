@@ -400,11 +400,17 @@ E-6  Race ensure_indexed (create_task, synchron) <-> DetWorker-index-Knoten:
 E-7  Kein Task-/DAG-Abbruch-Endpoint: DAG 177-180 (E-6-Opfer) haengt fuer
      immer pending (depends_on auf failed). Anwender kann via REST nicht
      aufraeumen. Kandidat: POST /api/task/{id}/cancel bzw. DAG-Abbruch.
+     Belege #2/#3 (2026-07-17): F5-Wdh-Sammel-Gates 303/311 haengen nach
+     lint_gate-Terminal-Fail ewig pending (303 nach 3 h gemessen); G4
+     laesst 12 von 15 Knoten ewig pending (g1-g4 komplett), weil Goal 0
+     terminal failte -- ohne Cancel sammelt sich toter Queue-Bestand.
 E-8  GET /api/result/{id} fuer done-Gate-Knoten -> 404 "Kein Ergebnis
      verfuegbar", obwohl lint_report/test_report als current in der DB
      liegen -> Endpoint mappt task_type lint_gate/test_gate nicht auf ihren
      Report-Typ. Anwender sieht NIE, warum ein Gate gruen/rot war.
      (Verallgemeinert den A-Lauf-Altbefund "failed-verify ohne Report".)
+     Weitere Belege 2026-07-17: Fail-Gruende der Gates 300/308/315 nur via
+     docker logs lesbar (Diagnose erneut ausserhalb der Anwender-API).
 E-9  Kohaerenz gekoppelter Scopes bei SMALL plans: jedes Goal hat seinen
      eigenen architect, KEIN geteiltes Design (REK.8-Mechanik greift erst ab
      large>=5) -> Tests (Goal 3) erwarten andere API als Impl (Goal 1)
@@ -418,6 +424,13 @@ E-10 implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      verbrannt). Leiter kann strukturelle Ursache nicht heilen (korrekt,
      aber teuer). Kandidat: Patch det auf den Ziel-Scope filtern (fremde
      create-Bloecke verwerfen) -> Folge-Goals EDITIEREN dann Bestand.
+     Beleg #2 (2026-07-17, G4): Goal-0-Kind (Zieldatei kanban/models.py)
+     baute in JEDEM der 3 Versuche das GESAMTE Projekt in einen Multi-
+     File-Patch (inkl. der vom plan_architect verworfenen Tests --
+     Lint-Rot F401 in kanban/tests/test_storage.py) -> att-Kappung ->
+     lint_gate 315 terminal, 12 Knoten ewig pending. Treiber ist das
+     Briefing-Loch E-21b; der det-Ziel-Scope-Filter haette jeden Versuch
+     auf models.py reduziert.
 E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      frischen done-Tasks (34er-Mix, alte done bleiben drin); Query-Params
      dag_id/limit/status werden IGNORIERT (identische Antwort); kein GET
@@ -436,6 +449,12 @@ E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      Queue-Zustand (node_id, depends_on, payload, Zeitstempel); ohne
      Params Dashboard-Verhalten unveraendert. Kuenftige R6-Polls laufen
      auf ?dag_id=. Details `spec_rekursion` I-E.11.
+     LIVE BELEGT 2026-07-17 (Redeploy 122fd68): ?dag_id= trug ALLE
+     Messungen des Tages (F5-Wdh Lauf 1+2, G4) ohne einen blinden Poll --
+     Endzustaende done/failed + applied je Zeile inklusive; GET
+     /api/task/{id} lieferte payload-Detail (impact.symbols, no_change_ok,
+     verify_feedback) fuer jede Diagnose; ?status=quatsch -> 400. Der
+     K4-Mess-Engpass (Endzustand nur via DB) ist zu.
 E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      auf die 10k-Datei plan_format.py reproduzierbar applied=false
      ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
@@ -446,6 +465,19 @@ E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      Apply (fuzzy/difflib bzw. git apply -C1), Feedback mit den ECHTEN
      Umgebungszeilen der Fail-Stelle, Formatwechsel-Sprosse (whole-file-
      Rewrite) VOR re_design.
+     VERSCHAERFT 2026-07-17 (F5-Wiederholung, 2x reproduziert -- JETZT DER
+     BLOCKER der impact-Kette): beide Laeufe terminal am review_format-
+     Kind, obwohl dessen FINALER Patch semantisch perfekt war (3 Hunks
+     exakt an den 3 Rename-Stellen, beide Zielnamen, keine Fremdaenderung):
+     qwen fabriziert Kontextzeilen/Positionen (Hunk @132 erwartet 'def
+     _normalize_heading', real steht dort anderes), der strikte Apply
+     lehnt ab, das Rueckkanten-Feedback nennt irrefuehrend 'bei Zeile 1'
+     + Modul-Docstring -> Modell konvergiert nie, att-Kappung, lint_gate
+     'verify erschoepft', Sammel-Gate haengt (E-7). Ein inhalts-
+     verankerter Apply haette beide Laeufe trivial gerettet (die
+     Minus-Zeilen sind im File EINDEUTIG). Kleine Kinder (validator/
+     worker, je 2 Zeilen) applizieren nach 0-1 Retries. I-E.12 ist das
+     LETZTE offene Welle-1-Haeppchen und rueckt VOR K5.
 E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
      TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
      die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.
@@ -516,6 +548,20 @@ E-19 [BEHOBEN I-E.19, 2026-07-17] Einmal-Ausfall des Completion-Hooks
      Live-Erwartung nach Redeploy: erster Tick re-fired Task 285
      (Log-Zeile; Symbol nach F4-Apply weg -> legaler No-Op ohne Kinder).
      Details `spec_rekursion` I-E.19.
+     LIVE BELEGT 2026-07-17 (Redeploy 122fd68), BEIDE Faelle: (a) No-Op --
+     Ticks 1-3 nach Start (06:49:18/06:50:18/06:51:18Z) re-firen 285,
+     0 Kinder (Symbol weg), Kappung stoppt, danach Ruhe; 272 korrekt
+     NICHT gefeuert (hat Baum 273-284). (b) HEILUNG mit ms-Beweis:
+     F5-Wdh-Erzeuger 296 = ERSTER impact-Erzeuger nach Recreate verlor
+     den synchronen Hook erneut (Startup-Race Beleg #3) -- Reaper-Zeile
+     07:09:33.615Z, Kinder-Rows 07:09:33.634Z (+19 ms): Heilung so
+     nahtlos, dass sie im Polling wie synchrone Feuerung aussah; KEINE
+     Duplikate (enqueue_children-Idempotenz live), DAG lief normal (ohne
+     Reaper waere es der 3. verlorene Lauf gewesen). Erzeuger 304 spaeter:
+     keine Reaper-Zeile (Hook echt synchron). Messnotiz: Versuchs-Zaehler
+     offenbar im Prozess-Speicher (payload traegt keinen) -> ewige
+     Orphans im 48h-Fenster bekommen nach JEDEM Restart erneut bis zu 3
+     Re-Fires (bei No-Op harmlos, beobachten).
 E-17 [BEHOBEN I-E.17, 2026-07-16; LIVE BELEGT 2026-07-17 F4-Wiederholung]
      impact-Fan-out ueberinklusiv + kein
      No-op-Vertrag (F4+F5, reproduziert): users = repo.impact(def-Datei) ist
@@ -567,6 +613,40 @@ E-18 [BEHOBEN I-E.18, 2026-07-16; LIVE BELEGT gleicher Abend, F5-Retry
      Kinder-/Review-/Redesign-Instruktionen (intent-Payload-Feld fuers
      Re-Fire; Review mit Abdeckungs-Leitfrage -> needs_redesign bei
      fehlenden Zielnamen). Details `spec_rekursion` I-E.18.
+     ZWEITER LIVE-BELEG 2026-07-17 (F5-Wdh, beide Laeufe): qwen-Design
+     liess die Zielnamen in Lauf 1 ERNEUT aus (0 Nennungen + Drift zu
+     ungefragten Optimierungen) -- aber alle Kinder-Briefings trugen die
+     Absicht det, und ALLE finalen Patches verwendeten EXAKT die
+     bestellten Zielnamen (kein Halluzinieren mehr; das K4-Fehlerbild ist
+     weg). Rest-Luecke: bei Fan-out < 5 feuert KEIN G3-Review -> die
+     Abdeckungs-Leitfrage prueft das Design dort nie (Lauf-1-Drift blieb
+     ungeprueft; abgefedert allein durch die det-Absicht in den Kindern).
+E-20 plan_architect verwirft test_gen-Goals im Greenfield (G4 2026-07-17):
+     det-validate_goals prueft test_gen-Ziele via scope_exists gegen den
+     LEEREN Workspace -> beide bestellten Test-Goals landen in not_covered
+     ("Symbol/Datei nicht im Workspace gefunden"), waehrend implement-
+     Goals auf ebenso nicht-existente Dateien (create-Semantik)
+     ueberleben. Ehrlich (G4-Vertrag erfuellt), aber der Nutzer verliert
+     bestellte Tests systematisch -- und die Kinder bauen sie dann doch
+     ungeprueft mit (E-10/E-21-Verzahnung). Kandidat: create-Semantik auch
+     fuer test_gen (Reihenfolge via depends_on hinter den implements)
+     ODER test_gen-an-implement-Kopplung. Verwandt: E-2.
+E-21 Plan-DAG-Briefings, zwei Teilbefunde (G4 2026-07-17): (a) human-Pfad
+     laesst plan_design AUS -- _human_prompt (claim + /api/prompt-
+     Vorschau, interfaces/webgui/routers/human.py) baut OHNE plan_design-
+     Param, waehrend der LLM-Worker ihn durchreicht (worker.py; Trace
+     stage='node_prompt' belegt "Geteilter Entwurf des Plan-Architekten"
+     in ALLEN 3 gesendeten 314-Prompts). Folgen: ein Dashboard-Human
+     saehe ein ANDERES Briefing als der LLM (verletzt "EIN Format fuer
+     human UND LLM"), und der REK.8-Messpunkt ist via REST nicht messbar
+     (Fehlmessungs-Falle -- heute getappt, via Trace aufgeklaert).
+     Kandidat: Einzeiler plan_design=payload.get(...) in _human_prompt.
+     (b) Goals tragen strukturell KEINEN Schritttext ({scope, task_type,
+     depends_on}) -> Aufgabe je Kind = ROHER Gesamt-Intent; zusammen mit
+     fehlender Ziel-Scope-Schaerfung baut das Kind das Gesamtprojekt
+     (G4-Fail-Treiber, s. E-10 Beleg #2). Kandidat: Goal-Beschreibung aus
+     der Zerlegung mitfuehren + "NUR diese Datei"-Schaerfung im
+     Patch-Briefing. Verwandt: E-9, E-10.
 ```
 Erweiterungs-Protokoll nach jedem Lauf: (1) bestandene K-Stufe -> naechste
 fahren; (2) Grenzbefund -> hier listen + als Haeppchen-Kandidat an den Nutzer
@@ -889,3 +969,109 @@ anwenderfaehig (Design -> gefilterter Fan-out -> Gates -> atomarer Apply
 Robustheit). Dringlichster Neubefund: E-19 (Beleg #2, trifft verlaesslich
 den ersten impact-Erzeuger nach jedem Recreate) -> Reaper als Haeppchen-
 Kandidat VOR G4/K5 empfohlen; E-11 bleibt der Mess-Engpass.
+
+### Redeploy 122fd68 + F5-Wiederholung + REK-G4 + REK-Q1, 2026-07-17
+### mittags (Agent; K4 damit komplett vermessen)
+
+Vorbedingungen: Image 06:49:14Z = 9 s nach Commit 122fd68 gebaut; Reaper +
+E-11 im Container verifiziert (worker.reap_missed_expansions; ?dag_id=,
+/api/task/{id}, ?status=quatsch -> 400 live); pytest 9.1.1 + ruff 0.15.22
+im Image (I-E.5 uebersteht Recreate erneut); Settings unveraendert
+(auto_apply/test_gate/architect an, min_chars 240). R9-Referenz: md5-
+Snapshot test/1 = 27 Dateien vor den Laeufen.
+
+- **I-E.19 LIVE (beide Faelle) + I-E.11 LIVE:** Details in der E-Liste
+  (E-19: 285-No-Op 3x + Kappung, 296-HEILUNG +19 ms nach Hook-Ausfall
+  Beleg #3, keine Duplikate; E-11: dag_id-Polling trug alle Messungen
+  ohne blinden Poll). Beide Redeploy-Belege kamen "gratis" wie geplant.
+- **REK-F5-Wiederholung (2 Laeufe): REK.13-Mechanik + I-E.18 VOLL
+  BESTANDEN; Ergebnis-FAIL 2x reproduzierbar an E-12 -- der
+  Ende-zu-Ende-Apply der Mehrfach-Ziel-Op steht weiter aus.**
+  Paar an die Realitaet nach F4-Apply angepasst (build_content existiert
+  nicht mehr): split_review_sections -> split_result_sections UND
+  build_result_content -> render_result_content. Ground-Truth vorab
+  (grep -rnw): Union woertlich = 3 Dateien (review_format traegt BEIDE
+  Symbole, validator, worker); Zielnamen kollisionsfrei; keine Testdatei
+  betroffen. R6-Erwartung vorab notiert (Scratchpad, inkl. "kein
+  G3-Review, 3 < 5" und E-19-Risikopfad).
+  - Lauf 1 (296, impact-f25b18a2, POST 07:09:04Z): Weiche change_op=
+    rename, payload impact.symbols=[beide] (Mehrzahl-Form) ✓. Shape
+    exakt: 3 fix-Kinder (Scopes sortiert; review_format bekommt EIN Kind
+    fuer BEIDE Symbole = Dedup-Kern REK.13) + 3 lint_gates + EIN
+    Sammel-test_gate (scope=Anker, gate_scopes=touched), KEIN Review,
+    alle no_change_ok=true. E-18: Erzeuger-Prompt traegt
+    "Aenderungsabsicht des Nutzers" woertlich; qwen-DESIGN liess die
+    Ziele aus (0 Nennungen; Drift zu ungefragten Optimierungen --
+    maketrans/Join-Strategie/Guards); Kinder-Briefings trugen die
+    Absicht det -> finale Patches EXAKT die Zielnamen (297: +3/-3 mit
+    beiden Symbolen; 298/299: je +2/-2). Ergebnis-FAIL: 297-Patch mit
+    fabrizierten Kontexten -> submit-Retries bis att=2 -> lint_gate 300
+    "verify erschoepft" (Kontext passt nicht, Hunk @162) -> terminal;
+    Sammel-Gate 303 haengt ewig (E-7). Timing 07:09:04 -> 07:13:07.
+  - Lauf 2 (304, impact-91cd8254, POST 10:10:46Z, umformulierte
+    Instruktion = frischer Design-Wurf): Design traegt diesmal BEIDE
+    Zielnamen, keine Drift (R8: Lauf-1-Drift war Modellvarianz). Fail
+    trotzdem identisch: 305-Patch final semantisch PERFEKT (3 Hunks
+    exakt an den 3 Stellen), Kontexte fabriziert ("erwartet def
+    _normalize_heading", real Modul-Docstring; Feedback irrefuehrend
+    "bei Zeile 1") -> 308 terminal, 311 haengt. worker-Kind att=0 (!),
+    validator att=1 -- kleine Diffs applizieren, der grosse nicht: E-12.
+  - R9 nach BEIDEN Laeufen: 27/27 byte-identisch (E-1-Atomik: nichts
+    angewandt, kein Schaden). Invariante 4 gemessen (Lauf 1: Snapshot
+    07:09:32 nur Erzeuger, 07:09:36 alle 7 Kinder auf einmal).
+  - Fazit: I-E.12 (fuzzy Apply / echte Umgebungszeilen im Feedback /
+    whole-file-Sprosse) ist der EINZIGE Blocker der impact-Kette.
+- **REK-G4 (Intent 2208 -> plan_architect 312 -> Plan 2210 -> confirm ->
+  DAG ad68778b, 15 Knoten): REK.8-MECHANIK BESTANDEN; Ausfuehrung FAIL
+  an Goal 0 (E-10 + E-21); not_covered-Ehrlichkeit belegt (E-20 neu).**
+  - Zerlegung: 7 Goals (5 implement + 2 test_gen), large=true,
+    architecting=true ✓. confirm auf 2208 -> HTTP 409, aber als
+    stale-Variante ("Plan veraltet -- neu laden"): der plan_architect
+    war in < 35 s durch und hatte supersedet; der architecting-409-Zweig
+    blieb unbeobachtet (Fenster zu kurz, R8; architecting-Fassung selbst
+    via Intent-Response belegt).
+  - Plan 2210 (ueberarbeitet): 5 implement-Goals MIT Dependency-
+    Topologie (models <- storage <- board_ops; render <- models; cli <-
+    alle), shared_design 2,1k; BEIDE test_gen-Goals det verworfen ->
+    not_covered "Symbol/Datei nicht im Workspace gefunden" (= E-20).
+  - confirm 2210 -> DAG 15 Knoten (je Goal index -> implement ->
+    lint_gate; KEINE test_gates = E-2-Muster; keine Detail-architects).
+    Briefings: payload.plan_design korrekt eingereiht; Trace beweist
+    "Geteilter Entwurf des Plan-Architekten" in ALLEN 3 gesendeten
+    314-Prompts (Worker-Pfad ok) -- /api/prompt+claim lassen ihn aus
+    (= E-21a, Fehlmessungs-Falle).
+  - Ausfuehrung: Goal-0-Kind 314 baute in jedem Versuch das GESAMTE
+    Projekt (inkl. der verworfenen Tests; Lint-Rot F401 in
+    kanban/tests/test_storage.py) -> att-Kappung -> lint_gate 315
+    "verify erschoepft" terminal (10:21:32, ~3 min nach confirm), 12
+    Knoten ewig pending (E-7 Beleg #3). Treiber: Aufgabe je Kind =
+    ROHER Gesamt-Intent ohne Goal-Schritttext (E-21b); det-Ziel-Scope-
+    Filter (E-10) haette jeden Versuch auf models.py reduziert.
+  - R9: rgreen4-Workspace leer (kein Teil-Apply) ✓.
+- **REK-Q1 (Frische-Invariante REK.2): BESTANDEN.** Blocker 328
+  (summarize router.py, phi4-mini) running; explain 329 (scope.py)
+  dahinter enqueued; Marker "# FRISCHE-MARKER-20260717T102330Z" via PUT
+  NACH Enqueue (10:23:48Z), VOR Claim. Nach Claim: Prompt-Vorschau
+  traegt den Marker ✓ UND der Trace (exakt gesendeter Prompt, attempt 0,
+  briefing_source_hash gestempelt) traegt ihn ✓ = Re-Ingest-Delta vor
+  Briefing live. scope.py danach restauriert; Tages-End-R9: 27/27
+  byte-identisch zur Morgen-Baseline.
+
+Messlektionen: (a) /api/prompt ist eine VORSCHAU (on-demand gebaut, ohne
+plan_design, E-21a) -- fuer "was sah das Modell" IMMER trace(stage=
+'node_prompt') lesen (traegt prompt+attempt+briefing_source_hash je
+Versuch); (b) Gate-Fail-Gruende weiter nur via docker logs (E-8);
+(c) wsl-Aufrufe OHNE bash -c re-parsen Quotes/Pipes (psql -F'|' zerlegt,
+Pipe-Exitcodes verfaelscht) -> Messbefehle in bash -c mit escapten
+Quotes einbetten; Pipe ans Ende gestellte head/grep -v ueberschreiben
+den Exit-Code der eigentlichen Messung.
+
+K4-Abschluss-Fazit: Mit F5-Wdh + G4 + Q1 ist K4 komplett vermessen. Die
+REK-Mechanik traegt durchgaengig (Weiche, Payload-Vertrag beider Formen,
+Dedup, Verifikation-vor-Multiplikation, Gate-Kette, atomarer Apply-
+Schutz, Reaper-Heilung, Frische); ALLE heutigen Fails liegen in det
+schliessbaren Luecken: E-12 (Apply-Toleranz + Feedback; blockiert
+F5-Ende-zu-Ende), E-21a (Einzeiler human-Pfad), E-21b + E-10 (Briefing-
+Scope im Plan-Pfad; blockiert G4-Ausfuehrung), E-20 (test_gen im
+Greenfield). Empfehlung: I-E.12 -> E-21a -> E-10/E-21b -> dann K5
+(B4; G5 sobald rgreen5-Key liegt) + G4-Wiederholung.

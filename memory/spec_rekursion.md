@@ -918,6 +918,16 @@ Ausfall vom 2026-07-17 vormittags) liegt im 48h-Fenster -> der erste
 Reaper-Tick muss ihn re-firen (Log-Zeile; find_symbol('build_content')
 findet nach dem F4-Apply nichts mehr -> legaler No-Op, keine Kinder).
 
+LIVE BELEGT 2026-07-17 (Redeploy 122fd68), beide Faelle: No-Op exakt wie
+erwartet (Ticks 06:49:18/06:50:18/06:51:18Z re-firen 285, 0 Kinder, Kappung
+stoppt; 272 mit Kinder-Baum korrekt kein Kandidat) UND Heilung mit ms-Beweis:
+der ERSTE impact-Erzeuger nach dem Recreate (296, F5-Wdh) verlor den
+synchronen Hook erneut (Startup-Race Beleg #3); Reaper-Zeile 07:09:33.615Z,
+Kinder-Rows .634Z (+19 ms), keine Duplikate, DAG lief normal weiter -- ohne
+Reaper der dritte verlorene Lauf. Konsequenz der prozess-lokalen Kappung:
+ewige Orphans im 48h-Fenster werden nach jedem Restart erneut bis zu 3x
+re-gefeuert (bei No-Op harmlos). Timeline `ops_rekursionstests`.
+
 ## I-E.11: /api/tasks-Filter + GET /api/task/{id} (2026-07-17, fertig)
 
 Befund E-11 (`ops_rekursionstests`, verschaerft im F4-Wiederholungslauf): das
@@ -950,6 +960,11 @@ Owner-Scoping, status-Kombis+limit, 400-Faelle, Einzel-GET 200/403/404/401;
 Bestandsverhalten ohne Params durch TestTasksEndpoint unveraendert gedeckt).
 R6-Polling kuenftiger REK-Laeufe kann damit auf `?dag_id=` laufen (E-11-
 Messluecke zu); Belegketten-Detail (Task-History) bleibt E-13.
+
+LIVE BELEGT 2026-07-17: ?dag_id= trug saemtliche R6-Polls des Tages (F5-Wdh
+Lauf 1+2, G4) ohne einen blinden Poll; /api/task/{id} lieferte die Diagnose-
+Payloads (impact.symbols, no_change_ok, verify_feedback) je Knoten;
+?status=quatsch -> 400 live. Details `ops_rekursionstests`.
 
 ## Handoff-Konvention je Paket
 
