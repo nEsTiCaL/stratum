@@ -373,7 +373,7 @@ I-E.1    Gate-Kette + Apply hinter impact-        gem  I-E.18     1      E-1: li
 I-E.17   No-op-Vertrag + engere Enumeration       gem  I-E.1      1      E-17: KEINE_AENDERUNG legal (done ohne
                                                                          Patch) + det-Textvorfilter je Kind   fertig 2026-07-16 + LIVE 2026-07-17
 I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: Kontext-Fuzz + Fail-Feedback mit echten
-         Formatwechsel-Sprosse)                                          Umgebungszeilen   fertig 2026-07-17 (305-Diff appliziert real); whole-file-Sprosse evidenzgetrieben offen
+         Formatwechsel-Sprosse)                                          Umgebungszeilen   fertig+LIVE 2026-07-17 (F5-Wdh Ende-zu-Ende bis Auto-Apply); whole-file-Sprosse evidenzgetrieben offen
 I-E.19   Expansion-Reaper (Hook-Nachholer)        det  I-E.1      2      E-19: missed_expansions + Re-Fire im Worker-
                                                                          Tick (60s, Kappung 3; Startup-Race 2x belegt)   fertig 2026-07-17 + LIVE gleicher Tag (No-Op 285 + Heilung 296 in +19 ms)
 I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen
@@ -383,8 +383,8 @@ I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DA
 I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar
 I-E.4    Key-/Owner-Admin-Endpoint                gem  -          2      E-4: REST statt CLI (entsperrt auch agentische
                                                                          Testlaeufe; Classifier blockt core.auth create)
-I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen   fertig 2026-07-17 (unit; LIVE offen)
-I-E.21a  plan_design im Human-/Vorschau-Pfad      det  -          3      E-21a: _human_prompt reicht payload.plan_design   fertig 2026-07-17
+I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen   fertig+LIVE 2026-07-17 (G4-Wdh: 9-Datei-Diff -> 1 Sektion, kein Kollaps)
+I-E.21a  plan_design im Human-/Vorschau-Pfad      det  -          3      E-21a: _human_prompt reicht payload.plan_design   fertig+LIVE 2026-07-17 (G4-Wdh: /api/prompt traegt Entwurf)
 I-E.21b  Patch-Prompt "NUR Zieldatei"-Schaerfung  det  I-E.10     3      E-21b: build_patch_prompt scoped; Goal-Schritttext offen (E-10 entwertet)   fertig 2026-07-17 (Teil)
 I-E.2    test_gate-Entscheid zur Claim-Zeit       det  -          3      E-2: workspace_has_tests je Gate-Claim statt Enqueue
 I-E.9    shared_design fuer small plans           gem  -          3      E-9: Plan-Verstaendnis als Mini-Design an alle Goals
@@ -395,20 +395,25 @@ I-E.6    put_artifact upsert (Index-Race)         det  -          4      E-6: su
 I-E.3    Settings-Feld review_radius              det  -          4      E-3: DEFAULT_REVIEW_RADIUS tunable via API
 ```
 
-Nach Welle 1 (Stand 2026-07-17 nachmittags): G4 + Q1 GEFAHREN -- Q1 bestanden
-(REK.2 live); G4 REK.8-Mechanik bestanden, Ausfuehrung failt an E-10 + E-21
-(neu: Briefing-Scope im Plan-Pfad), test_gen-Verlust = E-20 (neu). F5-Wdh
-2x an E-12 -> I-E.12-KERN (Kontext-Fuzz + Feedback) FERTIG + real belegt (der
-2x gescheiterte 305-Diff appliziert jetzt), Welle 1 damit vollstaendig bis auf
-die evidenzgetrieben zurueckgestellte whole-file-Sprosse. Danach die G4-Blocker
-unit-geschlossen: I-E.10 (Ziel-Scope-Filter), I-E.21a (plan_design im Human-Pfad),
-I-E.21b-Teil (Patch-Prompt-Schaerfung "NUR Zieldatei"); offen nur der per-Goal-
-Schritttext (durch E-10 auf Briefing-Qualitaet entwertet) + E-20 (test_gen im
-leeren WS). NAECHSTES: Redeploy -> live nachweisen (F5-Wdh Ende-zu-Ende bis
-Auto-Apply / I-E.12; G4-Wdh: je Goal genau EINE Datei, keine Kollision / I-E.10;
-Human-Prompt traegt plan_design / I-E.21a). Dann K5 (B4; G5 im rgreen4-Workspace,
-ist leer), danach Testuser-Uebergabe vorbereiten. Grenzbefunde je Fix in
-`ops_rekursionstests` (E-Liste) nachziehen (Status BEHOBEN + Beleg).
+Welle 1 (Stand 2026-07-17 nachmittags): KOMPLETT LIVE. Redeploy c31accc ->
+F5-Wdh + G4-Wdh Ende-zu-Ende belegt: I-E.12 (F5-Wdh, der 2x gescheiterte
+305-Diff appliziert bei att=0, Auto-Apply atomar "3 Scope(s) -> 3 Patch(es)",
+R9 genau 3 Dateien, 58 gruen), I-E.10 (G4-Wdh, models.py-Kind emittiert WEITER
+den 9-Datei-Gesamtprojekt-Diff/identischer input_hash, der Filter trimmt den
+gespeicherten Patch auf 1 Sektion -> alle 5 implement-Goals att=0, kein
+Kaskadenkollaps), I-E.21a (G4-Wdh, /api/prompt-Vorschau traegt den Geteilten
+Entwurf); I-E.19 + I-E.11 waren am 122fd68-Redeploy bereits live. Einzig die
+evidenzgetrieben zurueckgestellte whole-file-Sprosse von I-E.12 bleibt offen
+(kein Live-Fall ueberlebte den Fuzz). G4-Anwender-Ergebnis ehrlich TEILWEISE:
+strukturell kohaerentes 5-Modul-Projekt (import OK, shared_design bindet alle
+auf kanban.models), ABER Laufzeit-Vertrag-Bugs zwischen Goals (E-9-Klasse)
+ungefangen, weil E-2 (kein test_gate im Greenfield) + test_gen-Goals lieferten
+keine Tests (E-20 zweite Auspraegung: Modul-Scope -> I-E.10-Filter -> No-op).
+Das Rest-Delta ist damit praezise auf Testdeckung/Kohaerenz (E-2/E-9/E-20)
+isoliert, NICHT mehr auf Scope-Verschmutzung. NAECHSTES: I-E.8 (Gate-Reports
+via /api/result, unit-schliessbar -- behebt, dass Gate-Fail-Gruende nur via
+docker logs sichtbar sind; Welle 2), dann K5 (B4; G5 sobald rgreen5-Key liegt),
+danach Testuser-Uebergabe vorbereiten.
 
 ## Status
 

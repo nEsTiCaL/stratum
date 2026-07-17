@@ -416,7 +416,16 @@ E-9  Kohaerenz gekoppelter Scopes bei SMALL plans: jedes Goal hat seinen
      large>=5) -> Tests (Goal 3) erwarten andere API als Impl (Goal 1)
      liefert; 4/6 rot bei "alles gruen". Kandidat: shared_design auch fuer
      small plans (Plan-Verstaendnis als Mini-Design an alle Goals).
-E-10 [BEHOBEN I-E.10, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
+     NEU 2026-07-17 (G4-Wdh, LARGE plan MIT shared_design): das geteilte
+     Design (via I-E.21a an alle Goals) REDUZIERT die Luecke (alle 5 Module
+     binden konsistent auf kanban.models), ELIMINIERT sie aber NICHT --
+     board_ops.add_task ruft Task(title=,status=) ohne das im Design
+     genannte Pflichtfeld id, storage.load_board gibt list[Task] statt Board
+     -> CLI-Laufzeit-TypeError bei "alles gruen" (E-2: kein test_gate im
+     Greenfield faengt es). Kandidat bleibt: engere Vertrags-Verankerung
+     (Signaturen im shared_design verbindlicher) ODER test_gate zur
+     Claim-Zeit (E-2), das die Inkohaerenz sichtbar machte.
+E-10 [BEHOBEN I-E.10, 2026-07-17; LIVE BELEGT 2026-07-17 (G4-Wiederholung)]
      implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      kosten belegt): Goal 0 appliziert das GANZE Projekt (ungepruefte
      Nachbarn im Workspace, liefen durch kein eigenes Gate), Folge-Goals
@@ -443,6 +452,17 @@ E-10 [BEHOBEN I-E.10, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
      Datei). Trifft keine Sektion -> leer -> Gate scheitert ehrlich. Deckt
      lint_gate UND apply_gate (beide via das gefilterte patch-Artefakt).
      +6 Tests. Details `spec_rekursion` I-E.10.
+     LIVE BELEGT 2026-07-17 (G4-Wdh, DAG e6275d73): das models.py-implement
+     (Task 340, att=0) emittierte WEITER den 9-Datei-Gesamtprojekt-Diff
+     (input_hash 63e989f9 IDENTISCH zu den 3 Vormittags-Fehlversuchen
+     2230/2232/2234), der Filter trimmte den gespeicherten Patch (2297) auf
+     1 Sektion (nur models.py) -> gleiche Modell-Ausgabe, anderer Patch. Alle
+     5 implement-Goals done att=0, je 1 Scope-Datei, KEINE Kollision, alle 21
+     Knoten done (Vormittag: Goal 0 baute alles -> 12 Knoten ewig pending).
+     Nebenbefund (E-20/E-10-Verzahnung): scopt plan_architect ein test_gen-
+     Goal auf eine Modul-Datei und schreibt das Modell separate tests/*.py,
+     strickt der Filter die scope-fremden Sektionen zu leer -> No-op (keine
+     Tests); der Filter tut korrekt seinen Job, die Ursache ist upstream.
 E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      frischen done-Tasks (34er-Mix, alte done bleiben drin); Query-Params
      dag_id/limit/status werden IGNORIERT (identische Antwort); kein GET
@@ -467,9 +487,9 @@ E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      /api/task/{id} lieferte payload-Detail (impact.symbols, no_change_ok,
      verify_feedback) fuer jede Diagnose; ?status=quatsch -> 400. Der
      K4-Mess-Engpass (Endzustand nur via DB) ist zu.
-E-12 [KERN BEHOBEN I-E.12, 2026-07-17; REAL BELEGT (305-Diff appliziert),
-     LIVE Ende-zu-Ende offen bis Redeploy; whole-file-Sprosse
-     evidenzgetrieben zurueckgestellt]
+E-12 [KERN BEHOBEN I-E.12, 2026-07-17; LIVE BELEGT Ende-zu-Ende 2026-07-17
+     (F5-Wiederholung, Auto-Apply); whole-file-Sprosse evidenzgetrieben
+     zurueckgestellt]
      Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      auf die 10k-Datei plan_format.py reproduzierbar applied=false
      ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
@@ -511,6 +531,15 @@ E-12 [KERN BEHOBEN I-E.12, 2026-07-17; REAL BELEGT (305-Diff appliziert),
      Details `spec_rekursion` I-E.12. OFFEN: die whole-file-Rewrite-Sprosse
      VOR re_design (3. Kandidat) -- Fuzz loest alle bekannten E-12-Faelle;
      Sprosse erst nachziehen, wenn ein Live-Fall den Fuzz ueberlebt.
+     LIVE BELEGT 2026-07-17 (F5-Wdh, impact-64b0aae6, dasselbe Symbolpaar +
+     Workspace wie die 2 Vormittags-Fehllaeufe): review_format-Kind
+     (impact_0, die 305-Multi-Hunk-Klasse) appliziert bei att=0; DB-Artefakt
+     2251 traegt fabrizierte Hunk-Header (@146 "def _normalize_heading",
+     @162, @169 -- real split_review_sections@131), der Fuzz verankerte an
+     den verbatim Minus-Zeilen. Auto-Apply atomar "3 Scope(s) -> 3 Patch(es)
+     angewandt" (kein No-op), R9 GENAU 3 Dateien geaendert (review_format-
+     Zeilen 131/148/156 = exakte Offline-Vorhersage), 58 Tests real gruen.
+     Kein Fall ueberlebte den Fuzz -> whole-file-Sprosse bleibt offen.
 E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
      TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
      die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.
@@ -595,6 +624,12 @@ E-19 [BEHOBEN I-E.19, 2026-07-17] Einmal-Ausfall des Completion-Hooks
      offenbar im Prozess-Speicher (payload traegt keinen) -> ewige
      Orphans im 48h-Fenster bekommen nach JEDEM Restart erneut bis zu 3
      Re-Fires (bei No-Op harmlos, beobachten).
+     BELEG #4 (2026-07-17, Redeploy c31accc): F5-Wdh-Erzeuger 330 = erster
+     impact-Erzeuger nach Recreate verlor den synchronen Hook erneut
+     (Startup-Race Beleg #4); Reaper-Log "Expansion-Re-Fire Task 330 ...
+     Versuch 1" holte den Fan-out nach, Kinder idempotent, DAG lief normal.
+     Race trifft damit 4x verlaesslich den ersten Erzeuger nach Start; der
+     Reaper heilt ihn 4x -> Redeploy-Test verbrennt keinen Lauf mehr.
 E-17 [BEHOBEN I-E.17, 2026-07-16; LIVE BELEGT 2026-07-17 F4-Wiederholung]
      impact-Fan-out ueberinklusiv + kein
      No-op-Vertrag (F4+F5, reproduziert): users = repo.impact(def-Datei) ist
@@ -664,8 +699,18 @@ E-20 plan_architect verwirft test_gen-Goals im Greenfield (G4 2026-07-17):
      ungeprueft mit (E-10/E-21-Verzahnung). Kandidat: create-Semantik auch
      fuer test_gen (Reihenfolge via depends_on hinter den implements)
      ODER test_gen-an-implement-Kopplung. Verwandt: E-2.
+     ZWEITE AUSPRAEGUNG 2026-07-17 (G4-Wdh): scopt plan_architect die
+     test_gen-Goals stattdessen auf die MODUL-Dateien (kanban/board_ops.py,
+     kanban/storage.py) -- dann ueberleben sie die Validierung (not_covered
+     leer), aber das Modell schreibt separate tests/*.py, und der I-E.10-
+     Filter strickt die scope-fremden Sektionen zu leer -> No-op (Knoten
+     done att=0, KEIN Test). Der Filter arbeitet korrekt; die Ursache bleibt
+     die test_gen-Scope-Vergabe. Ergebnis identisch (keine Tests) -- E-20
+     aeussert sich je nach plan_architect-Wurf als not_covered-Verwurf ODER
+     stiller No-op. Kandidat unveraendert (create-Semantik + Scope=tests/).
 E-21 Plan-DAG-Briefings, zwei Teilbefunde (G4 2026-07-17):
-     (a) [BEHOBEN I-E.21a, 2026-07-17] human-Pfad liess plan_design AUS --
+     (a) [BEHOBEN I-E.21a, 2026-07-17; LIVE BELEGT 2026-07-17 (G4-Wdh)]
+     human-Pfad liess plan_design AUS --
      _human_prompt (claim + /api/prompt-Vorschau,
      interfaces/webgui/routers/human.py) baute OHNE plan_design-Param,
      waehrend der LLM-Worker ihn durchreichte (worker.py; Trace
@@ -676,6 +721,11 @@ E-21 Plan-DAG-Briefings, zwei Teilbefunde (G4 2026-07-17):
      deps.node_prompt nimmt plan_design (an build_node_prompt durch), und
      _human_prompt reicht payload.plan_design; claim + Vorschau tragen den
      Geteilten Entwurf jetzt wie der Worker. +1 Test (test_webgui).
+     LIVE BELEGT 2026-07-17 (G4-Wdh): GET /api/prompt/340 (Vorschau des
+     models.py-implement-Kinds) traegt "Geteilter Entwurf des Plan-
+     Architekten (Gesamtkontext ..., setze ihn konsistent um):" mit realem
+     shared_design (Vertragssymbole kanban.models.Task) -> Human==LLM-
+     Briefing, REK.8 via REST messbar (vorher Fehlmessungs-Falle).
      (b) [TEILWEISE BEHOBEN I-E.21b, 2026-07-17] Goals tragen strukturell
      KEINEN Schritttext ({scope, task_type, depends_on}) -> Aufgabe je
      Kind = ROHER Gesamt-Intent; zusammen mit fehlender Ziel-Scope-
@@ -1116,3 +1166,118 @@ F5-Ende-zu-Ende), E-21a (Einzeiler human-Pfad), E-21b + E-10 (Briefing-
 Scope im Plan-Pfad; blockiert G4-Ausfuehrung), E-20 (test_gen im
 Greenfield). Empfehlung: I-E.12 -> E-21a -> E-10/E-21b -> dann K5
 (B4; G5 sobald rgreen5-Key liegt) + G4-Wiederholung.
+
+### Redeploy c31accc + F5-Wdh + G4-Wdh, 2026-07-17 nachmittags (Agent; die
+### vier heutigen Fixes live Ende-zu-Ende belegt; Welle 1 damit KOMPLETT live)
+
+Vorbedingungen: Redeploy c31accc (I-E.12-Kern aus 3414e70 + I-E.10/I-E.21a/
+I-E.21b aus c31accc), Container up ~3 min. Im Image verifiziert:
+patch_apply _locate_failure/_context_ends/_iter_fuzz/_place_hunk (I-E.12) +
+filter_diff_to_scope@372 + worker.py@339-Aufruf (I-E.10); human.py@152
+plan_design=payload.get(...) (I-E.21a); diff_extract@113 "NUR die Zieldatei"
+(I-E.21b). Settings unveraendert (auto_apply/test_gate/architect an, min_chars
+240). R9-Baseline test/1 = 24 .py vor F5.
+
+- **REK-F5-Wiederholung (330, impact-64b0aae6): I-E.12 VOLL BESTANDEN
+  Ende-zu-Ende -- der 2x reproduzierte Blocker der impact-Kette ist ZU.**
+  Paar identisch zu den 2 Vormittags-Fehllaeufen (nichts appliziert):
+  split_review_sections->split_result_sections UND build_result_content->
+  render_result_content. Ground-Truth vorab (grep -rnw): Union woertlich = 3
+  Dateien (review_format traegt BEIDE Symbole @131/@148 + Aufruf @156;
+  validator Import+Aufruf; worker Import+Aufruf); Zielnamen kollisionsfrei.
+  - Weiche change_op=rename; Shape exakt: EIN Erzeuger 330 -> 3 fix-Kinder
+    (impact_0=review_format, impact_1=validator, impact_2=worker per
+    /api/task/{id}) + 3 lint_gates + EIN Sammel-test_gate (impact_test),
+    KEIN G3 (3<5). Invariante 4 gemessen (Snapshot 11:55:34Z nur 330 running).
+  - E-19 Beleg #4 + Heilung: Reaper-Log "[worker] Reaper: Expansion-Re-Fire
+    Task 330 (impact-64b0aae6/n1), Versuch 1" -- der Startup-Race traf den
+    ERSTEN impact-Erzeuger nach Recreate erneut (~5 min nach Start), der
+    Reaper holte den Fan-out nach (Kinder erschienen idempotent, keine
+    Duplikate), DAG lief normal weiter (ohne Reaper waere es der 4. verlorene
+    Lauf gewesen).
+  - I-E.12 KERN-BELEG: impact_0 (review_format.py) = die grosse Multi-Hunk-
+    305-Klasse, die in BEIDEN Vormittags-Laeufen terminal failte, appliziert
+    JETZT bei att=0. DB-Artefakt 2251 zeigt die fabrizierten Hunk-Header
+    (@@ -146 @@ def _normalize_heading, @@ -162, @@ -169 -- real steht
+    split_review_sections@131, _normalize_heading NICHT als umgebender
+    Kontext): der Kontext-Fuzz verwarf den fabrizierten Rand-Kontext und
+    verankerte jeden Hunk an der verbatim vorhandenen Minus-Zeile. worker-Kind
+    att=1 (Modellvarianz, kleiner Diff, re_act konvergierte), validator att=0.
+  - Auto-Apply atomar, Log woertlich: "[worker] Auto-Apply (Sammel,
+    file:minicore/review_format.py): 3 Scope(s) -> 3 Patch(es) angewandt +
+    re-ingestiert" (KEIN No-op -- alle 3 echt; Kontrast F4-Wdh mit 1 No-op).
+  - R9 STRENG: md5-Diff = GENAU 3 Dateien (review_format/validator/worker),
+    die uebrigen 21 byte-identisch. review_format.py: die Umbenennung sitzt an
+    Zeilen 131/148/156 (def split_result_sections, def render_result_content,
+    interner Aufruf) = EXAKT die Offline-Vorhersage des I-E.12-Tests. R7
+    doppelt: /api/patches verified=true fuer alle 3 (patch-gekoppelt, E-14) +
+    58 Tests real im Workspace gruen. Beide Altnamen weg (grep leer).
+  - Timing 330 POST 11:55:07Z -> alle 8 done 11:57:22Z (~2:15).
+  - Fazit: I-E.12 live Ende-zu-Ende; die koordinierte Mehrfach-Ziel-Op
+    (REK.13) ist damit anwenderfaehig. Die whole-file-Rewrite-Sprosse bleibt
+    (evidenzgetrieben) zurueckgestellt -- der Fuzz loeste den Live-Fall bei
+    att=0, kein Fall ueberlebte ihn.
+
+- **REK-G4-Wiederholung (Intent 2269 -> plan_architect 338 -> Plan 2271 ->
+  confirm -> DAG e6275d73, 21 Knoten; Key rgreen4): I-E.10 + I-E.21a VOLL
+  BESTANDEN; Anwender-Ergebnis ehrlich TEILWEISE (Residuen E-9/E-2/E-20,
+  NICHT die heutigen Fixes). Aus dem Vormittags-Kaskadenkollaps wird eine
+  saubere Vollausfuehrung.**
+  - Zerlegung: 7 Goals (5 implement + 2 test_gen), large=true, architecting=
+    true. plan_architect 338 in <35 s done. Revidierter Plan 2271: 7 Goals,
+    not_covered LEER -- E-20 diesmal NICHT ausgeloest: plan_architect scopte
+    die 2 test_gen-Goals auf die MODUL-Dateien (kanban/board_ops.py,
+    kanban/storage.py) statt tests/* (Modellvarianz gegenueber dem Vormittag,
+    wo beide in not_covered landeten; legaler R8-Zweig). confirm -> DAG 21
+    Knoten (je Goal index -> implement/test_gen -> lint_gate; KEINE test_gates
+    = E-2-Muster; keine Detail-architects).
+  - **I-E.10 KERN-BELEG (Kollision aufgeloest, der Filter WIRKT nachweisbar):**
+    das models.py-implement (Task 340, g0_n2, att=0) emittierte WEITER den
+    kompletten 9-Datei-Gesamtprojekt-Diff -- input_hash 63e989f9... IDENTISCH
+    zu den 3 Vormittags-Fehlversuchen (Artefakte 2230/2232/2234, 10:19-10:21,
+    je 8-9 diff-Sektionen: __init__/models/storage/board_ops/render/cli/
+    tests...), aber filter_diff_to_scope trimmte den GESPEICHERTEN Patch (2297,
+    superseded=f) auf 1 Sektion (NUR kanban/models.py). Gleiche Modell-Ausgabe,
+    anderer gespeicherter Patch -> der Filter, nicht das Modell, rettet den
+    Lauf. Alle 5 implement-Goals done att=0, je genau 1 Scope-Datei; KEINE
+    create-Kollision, KEIN Kaskadenkollaps (Vormittag: Goal 0 baute alles ->
+    12 Knoten ewig pending). Alle 21 Knoten done.
+  - **I-E.21a KERN-BELEG:** GET /api/prompt/340 (Human-Pfad-VORSCHAU) traegt
+    jetzt "Geteilter Entwurf des Plan-Architekten (Gesamtkontext des Vorhabens,
+    setze ihn konsistent um):" mit realem shared_design (Vertragssymbole
+    kanban.models.Task dataclass id/title/status usw.). Vor dem Fix liessen
+    /api/prompt + claim ihn aus (nur der Worker-Trace trug ihn = die
+    Fehlmessungs-Falle vom Vormittag) -> Human sieht jetzt dasselbe Briefing
+    wie der LLM. REK.8 damit via REST messbar.
+  - R7/R9: Workspace rgreen4/5 = GENAU 5 Modul-Dateien (kein tests/, keine
+    Nachbarn); py_compile ALL OK, alle 5 importierbar (IMPORT_OK); cross-file-
+    Vertrag konsistent gebunden (storage/board_ops/render/cli binden alle auf
+    kanban.models -- shared_design-Wirkung via I-E.21a). CLI --help sauber
+    (add/move/done/list). ABER funktionaler Probe (kanban add) failt zur
+    Laufzeit: TypeError Task.__init__() missing 'id' (board_ops.add_task ruft
+    Task(title=,status=) ohne id) + storage.load_board->list[Task] vs cli
+    erwartet Board.tasks. = E-9-Klasse Kohaerenz-Luecke ZWISCHEN Goals,
+    ungefangen weil E-2 (kein test_gate im Greenfield) UND die test_gen-Goals
+    lieferten keine Tests.
+  - **E-20/E-10-Verzahnung (neu praezisiert):** die 2 test_gen-Goals (356/359)
+    done att=0, aber KEIN Test entstand und KEIN eigenes Patch-Artefakt
+    (board_ops.py/storage.py tragen nur ihre implement-Patches 2319/2305):
+    plan_architect scopte sie auf die Modul-Dateien, das Modell schrieb aber
+    separate tests/*.py, der I-E.10-Filter strich die scope-fremden Sektionen
+    -> leerer Diff -> No-op. Der Filter tut korrekt seinen Job; die Ursache ist
+    die test_gen-Scope-Vergabe upstream. E-20 aeussert sich also je nach
+    plan_architect-Wurf anders (not_covered-Verwurf ODER stiller No-op), das
+    Resultat ist dasselbe: keine Tests -> E-2/E-9 bleiben ungefangen.
+  - Timing: confirm 12:03:03Z -> alle 21 done wenige Minuten spaeter.
+  - Fazit: die beiden Fixes wandeln den Vormittags-Kaskadenkollaps in eine
+    SAUBERE Vollausfuehrung mit strukturell kohaerentem Projekt; das Rest-Delta
+    ist praezise auf Testdeckung/Laufzeit-Kohaerenz (E-2/E-9/E-20) isoliert,
+    NICHT mehr auf Scope-Verschmutzung (E-10). R10-konform (System-Mechanik
+    PASS, Anwender-Ergebnis ehrlich teilweise, Residuen benannt).
+
+Lauf-Fazit: alle vier heutigen Fixes live Ende-zu-Ende belegt (I-E.12 + I-E.10
++ I-E.21a jetzt; I-E.19 + I-E.11 bereits am 122fd68-Redeploy). Welle 1 der
+E-Haertung ist damit KOMPLETT live (einzig die whole-file-Sprosse von I-E.12
+bleibt evidenzgetrieben zurueckgestellt). Messengpaesse E-8 (Gate-Fail-Gruende
+weiter nur via docker logs) + E-7 (kein Cancel) unveraendert offen; naechstes
+unit-schliessbares Haeppchen: I-E.8.
