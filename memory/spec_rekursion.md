@@ -1010,8 +1010,13 @@ Hunk-Shape, Sicherheit reine Einfuegung, Feedback-Fenster), 1333 gruen, ruff
 clean. REAL-BELEG (staerkster Nachweis): der ECHTE 305-Diff (in Produktion 2x
 "Kontext passt nicht") gegen die ECHTE review_format.py mit dem neuen Applier ->
 ok=True, GENAU 3 Zeilen umbenannt (131/148/156), Datei sonst byte-gleich, beide
-Altnamen im Code weg. Live-Beleg Ende-zu-Ende (F5-Wdh bis Auto-Apply) nach dem
-naechsten Redeploy.
+Altnamen im Code weg. LIVE BELEGT Ende-zu-Ende 2026-07-17 (Redeploy c31accc,
+F5-Wiederholung impact-64b0aae6): das review_format-Kind (die 305-Multi-Hunk-
+Klasse) appliziert bei att=0 (DB-Artefakt 2251 mit fabrizierten Hunk-Headern
+@146/@162/@169, real @131 -- Fuzz verankert an den verbatim Minus-Zeilen),
+Auto-Apply atomar "3 Scope(s) -> 3 Patch(es) angewandt", R9 genau 3 Dateien,
+58 Tests real gruen. Kein Fall ueberlebte den Fuzz -> whole-file-Sprosse bleibt
+offen. Details `ops_rekursionstests` (Redeploy-c31accc-Lauf).
 
 ## I-E.10 + I-E.21a/b: Plan-Pfad-Scope + Briefing-Durchstich (2026-07-17)
 
@@ -1042,9 +1047,40 @@ strukturell. Drei det Fixes, alle unit-belegt (LIVE nach Redeploy):
   E-10 auf Briefing-Qualitaet entwertet, zurueckgestellt.
 
 Akzeptanz: +8 Tests (6 filter_diff_to_scope inkl. Header-Fallen-/Round-Trip, 1
-Human-plan_design, 1 Prompt-Schaerfung), 1341 gruen, ruff clean. LIVE Ende-zu-Ende
-(G4-Wiederholung: je Goal genau EINE Datei, keine Kollision) nach dem naechsten
-Redeploy.
+Human-plan_design, 1 Prompt-Schaerfung), 1341 gruen, ruff clean. LIVE BELEGT
+2026-07-17 (Redeploy c31accc, G4-Wiederholung DAG e6275d73): das models.py-Kind
+emittierte WEITER den 9-Datei-Gesamtprojekt-Diff (input_hash identisch zu den 3
+Vormittags-Fehlversuchen), der Filter trimmte den gespeicherten Patch auf 1
+Sektion -> alle 5 implement-Goals att=0, KEINE Kollision, alle 21 Knoten done
+(Vormittag: Kaskadenkollaps); /api/prompt-Vorschau traegt den Geteilten Entwurf
+(I-E.21a). Details `ops_rekursionstests` (Redeploy-c31accc-Lauf).
+
+## I-E.8: Gate-Reports via /api/result (2026-07-17, fertig)
+
+Befund E-8 (`ops_rekursionstests`): GET /api/result/{id} eines DONE lint_gate/
+test_gate-Knotens lieferte 404 "Kein Ergebnis verfuegbar", obwohl der
+lint_report/test_report als current in der DB lag -- der Anwender sah den
+Gate-Ausgang (passed/summary/commands) nur via `docker logs`. Ursache:
+`get_task_result` (interfaces/webgui/routers/observability.py) leitet den
+artifact_type aus der EINEN Quelle `TASK_TYPE_TO_ARTIFACT_TYPE` (core/router.py)
+ab, und die trug keine Gate-Eintraege -> `.get(...)` None -> 404.
+
+FIX (rein additiv, EIN Ort): zwei Map-Eintraege in `TASK_TYPE_TO_ARTIFACT_TYPE`
+-- `lint_gate -> lint_report`, `test_gate -> test_report`. Sicher, weil die
+Gate-Worker (`lint_gate.py`/`test_gate.py` `_store_report`) ihre Reports DIREKT
+unter diesen artifact_types ablegen, NICHT ueber die Map -- der Store-Pfad
+bleibt unberuehrt, nur der LESEpfad (/api/result) findet den Report jetzt via
+`get_current(scope, artifact_type)`. Der Report-Content (passed/applied/summary/
+commands) macht den Fail-Grund ohne docker logs sichtbar. Scope-Alignment: der
+Gate-Knoten legt seinen Report unter demselben scope ab, unter dem
+`get_task_result` ihn liest (wie apply_gate seit E-14) -- fuer die Blatt-Kette
+(implement->lint_gate->test_gate) die Zieldatei.
+
+Akzeptanz: +2 Tests (test_webgui: lint_gate->lint_report mit passed=False +
+sichtbarer F401-summary; test_gate->test_report), 1343 gruen, ruff clean. LIVE
+nach dem naechsten Redeploy (GET /api/result eines Gate-Knotens -> Report statt
+404). OFFEN: das Dashboard/Frontend zeigt den Gate-Report noch nicht eigens an
+(REST-Vertrag steht; UI-Anzeige separat).
 
 ## Handoff-Konvention je Paket
 

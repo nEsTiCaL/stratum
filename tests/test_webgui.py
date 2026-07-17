@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from core.ingest import ingest_content
 from core.models.provenance_schema import Provenance
+from core.models.result_det_schema import ResultDet
 from core.models.result_prob_schema import ResultProb
 from core.patch_apply import diff_hash
 from core.queue import Queue
@@ -92,6 +93,22 @@ def _dag(dag_id: str = "d1", task_type: str = "summarize") -> TaskDag:
                 flags=frozenset(),
             )
         ],
+    )
+
+
+def _det_prov(artifact_type: str, scope: str = "file:core/queue.py") -> Provenance:
+    """Minimal-Provenance fuer ein seed-bares det-Artefakt (lint_report/
+    test_report) in den /api/result-Gate-Tests (E-8)."""
+    return Provenance(
+        schema_version="1",
+        source_hash="h",
+        input_hash="i",
+        producer="verify-worker",
+        producer_version="1",
+        producer_class="det",
+        timestamp="2026-07-17T00:00:00+00:00",
+        artifact_type=artifact_type,
+        scope=scope,
     )
 
 
@@ -1035,6 +1052,64 @@ class TestResultEndpoint:
             res = c.get(f"/api/result/{item_id}", headers=AUTH)
             assert res.status_code == 200
             assert res.json()["artifact_type"] == "review_findings"
+
+    def test_result_resolves_lint_gate_report(self, conn):
+        # E-8: /api/result eines done lint_gate-Knotens lieferte 404, obwohl der
+        # lint_report als current in der DB liegt -- die Map trug lint_gate nicht,
+        # der Anwender sah den Gate-Fail-Grund nur via docker logs. Jetzt gemappt.
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="lint_gate"), model="det", owner=TEST_OWNER
+        )
+        queue.complete(item_id)
+        repo.put_artifact(
+            ResultDet(
+                artifact_type="lint_report",
+                scope="file:core/queue.py",
+                content={
+                    "passed": False,
+                    "applied": True,
+                    "summary": "ruff: F401 'os' imported but unused",
+                    "commands": ["ruff check"],
+                },
+                provenance=_det_prov("lint_report"),
+            )
+        )
+        with TestClient(create_app(queue, repo)) as c:
+            res = c.get(f"/api/result/{item_id}", headers=AUTH)
+            assert res.status_code == 200
+            body = res.json()
+            assert body["artifact_type"] == "lint_report"
+            # der Anwender sieht jetzt WARUM das Gate rot war (ohne docker logs)
+            assert body["content"]["passed"] is False
+            assert "F401" in body["content"]["summary"]
+
+    def test_result_resolves_test_gate_report(self, conn):
+        # E-8, Gegenstueck: test_gate -> test_report.
+        queue = Queue(conn)
+        repo = Repository(conn)
+        (item_id,) = queue.enqueue(
+            _dag(task_type="test_gate"), model="det", owner=TEST_OWNER
+        )
+        queue.complete(item_id)
+        repo.put_artifact(
+            ResultDet(
+                artifact_type="test_report",
+                scope="file:core/queue.py",
+                content={
+                    "passed": True,
+                    "applied": True,
+                    "summary": "3 passed in 0.10s",
+                    "commands": ["python -m pytest"],
+                },
+                provenance=_det_prov("test_report"),
+            )
+        )
+        with TestClient(create_app(queue, repo)) as c:
+            res = c.get(f"/api/result/{item_id}", headers=AUTH)
+            assert res.status_code == 200
+            assert res.json()["artifact_type"] == "test_report"
 
 
 class TestCreateTaskEndpoint:

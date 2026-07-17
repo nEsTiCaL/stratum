@@ -425,6 +425,13 @@ TASK_TYPE_TO_ARTIFACT_TYPE: dict[TaskType, str] = {
     TaskType.plan_architect: "design",
     TaskType.implement: "patch",
     TaskType.fix: "patch",
+    # Gate-Knoten legen ihre det-Reports direkt ab (lint_gate.py/test_gate.py),
+    # nicht ueber diese Map -- die Eintraege sind daher nur fuer den LESEpfad
+    # (/api/result), damit der Anwender den Gate-Ausgang (passed/summary/
+    # feedback) sieht statt 404 "Kein Ergebnis" und in docker logs suchen zu
+    # muessen (E-8).
+    TaskType.lint_gate: "lint_report",
+    TaskType.test_gate: "test_report",
 }
 
 # Confidence-Proxy aus dem Modell-Tier (ersetzt LLM-Selbsteinschaetzung).

@@ -376,7 +376,7 @@ I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: K
          Formatwechsel-Sprosse)                                          Umgebungszeilen   fertig+LIVE 2026-07-17 (F5-Wdh Ende-zu-Ende bis Auto-Apply); whole-file-Sprosse evidenzgetrieben offen
 I-E.19   Expansion-Reaper (Hook-Nachholer)        det  I-E.1      2      E-19: missed_expansions + Re-Fire im Worker-
                                                                          Tick (60s, Kappung 3; Startup-Race 2x belegt)   fertig 2026-07-17 + LIVE gleicher Tag (No-Op 285 + Heilung 296 in +19 ms)
-I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen
+I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen   fertig 2026-07-17 (LIVE nach Redeploy)
 I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET   fertig 2026-07-17 + LIVE gleicher Tag (alle R6-Polls blindfrei)
 I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar
          DAG-Abbruch
@@ -410,10 +410,14 @@ auf kanban.models), ABER Laufzeit-Vertrag-Bugs zwischen Goals (E-9-Klasse)
 ungefangen, weil E-2 (kein test_gate im Greenfield) + test_gen-Goals lieferten
 keine Tests (E-20 zweite Auspraegung: Modul-Scope -> I-E.10-Filter -> No-op).
 Das Rest-Delta ist damit praezise auf Testdeckung/Kohaerenz (E-2/E-9/E-20)
-isoliert, NICHT mehr auf Scope-Verschmutzung. NAECHSTES: I-E.8 (Gate-Reports
-via /api/result, unit-schliessbar -- behebt, dass Gate-Fail-Gruende nur via
-docker logs sichtbar sind; Welle 2), dann K5 (B4; G5 sobald rgreen5-Key liegt),
-danach Testuser-Uebergabe vorbereiten.
+isoliert, NICHT mehr auf Scope-Verschmutzung. I-E.8 FERTIG (2026-07-17,
+Welle 2): GET /api/result mappt jetzt lint_gate->lint_report + test_gate->
+test_report (2 additive Eintraege in TASK_TYPE_TO_ARTIFACT_TYPE, EIN Ort;
+Gate-Worker legen direkt ab, nur der Lesepfad war blind) -> Gate-Fail-Gruende
+via REST statt nur docker logs; +2 Tests, 1343 gruen, ruff clean, LIVE nach
+Redeploy. NAECHSTES (Nutzer-Entscheid via arbeitsplan): weitere Welle-2-
+Haeppchen (I-E.7 Cancel, I-E.13 Task-History, I-E.4 Key-Admin) ODER K5 (B4;
+G5 sobald rgreen5-Key liegt), danach Testuser-Uebergabe vorbereiten.
 
 ## Status
 

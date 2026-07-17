@@ -404,13 +404,24 @@ E-7  Kein Task-/DAG-Abbruch-Endpoint: DAG 177-180 (E-6-Opfer) haengt fuer
      lint_gate-Terminal-Fail ewig pending (303 nach 3 h gemessen); G4
      laesst 12 von 15 Knoten ewig pending (g1-g4 komplett), weil Goal 0
      terminal failte -- ohne Cancel sammelt sich toter Queue-Bestand.
-E-8  GET /api/result/{id} fuer done-Gate-Knoten -> 404 "Kein Ergebnis
+E-8  [BEHOBEN I-E.8, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
+     GET /api/result/{id} fuer done-Gate-Knoten -> 404 "Kein Ergebnis
      verfuegbar", obwohl lint_report/test_report als current in der DB
      liegen -> Endpoint mappt task_type lint_gate/test_gate nicht auf ihren
      Report-Typ. Anwender sieht NIE, warum ein Gate gruen/rot war.
      (Verallgemeinert den A-Lauf-Altbefund "failed-verify ohne Report".)
      Weitere Belege 2026-07-17: Fail-Gruende der Gates 300/308/315 nur via
      docker logs lesbar (Diagnose erneut ausserhalb der Anwender-API).
+     FIX (I-E.8, core/router.py): 2 additive Eintraege in
+     TASK_TYPE_TO_ARTIFACT_TYPE -- lint_gate->lint_report, test_gate->
+     test_report. Der Store-Pfad bleibt unberuehrt (die Gate-Worker legen
+     ihre Reports direkt unter diesen artifact_types ab, nie ueber die Map);
+     nur der Lesepfad get_task_result (observability.py) findet den Report
+     jetzt via get_current(scope, artifact_type). Report-Content (passed/
+     applied/summary/commands) zeigt den Fail-Grund ohne docker logs. +2
+     Tests (test_webgui), 1343 gruen, ruff clean. Details `spec_rekursion`
+     I-E.8. Live-Erwartung nach Redeploy: GET /api/result eines der heutigen
+     Gate-Knoten (z.B. F5-Wdh 334-337) -> Report statt 404.
 E-9  Kohaerenz gekoppelter Scopes bei SMALL plans: jedes Goal hat seinen
      eigenen architect, KEIN geteiltes Design (REK.8-Mechanik greift erst ab
      large>=5) -> Tests (Goal 3) erwarten andere API als Impl (Goal 1)
