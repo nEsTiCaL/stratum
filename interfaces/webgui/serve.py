@@ -46,7 +46,7 @@ from core.settings import RuntimeSettings
 from core.task_routing import CONFIRM_MODEL, auto_capable_task_types, claim_model
 from core.template_registry import DagNode, TaskDag, decompose
 from core.test_gate import TestGateWorker, workspace_has_tests
-from core.worker import DetWorker, LlmWorker, WorkerLoop
+from core.worker import REAP_INTERVAL_SECS, DetWorker, LlmWorker, WorkerLoop
 from core.workspace import resolve_base, workspace_root
 from interfaces.webgui.app import create_app
 
@@ -478,7 +478,16 @@ def _make_worker_loop(
 
 
 def _run_worker(loop: WorkerLoop, models: list[str]) -> None:
-    """Laeuft als Daemon-Thread: claim -> process -> repeat."""
+    """Laeuft als Daemon-Thread: claim -> process -> repeat.
+
+    Nebenher tickt der Expansion-Reaper (I-E.19): alle REAP_INTERVAL_SECS holt
+    er verpasste Completion-Hook-Feuerungen nach (Befund E-19: der erste
+    impact-Erzeuger nach Container-Start wurde 2x still done ohne Kinder).
+    Er laeuft im SELBEN Thread wie step() -- kein Race mit der synchronen
+    Feuerung; der erste Tick faellt auf den Start (raeumt Alt-Leichen),
+    die Versuchs-Kappung im Loop sorgt dafuer, dass spaetere Ticks ein evtl.
+    selbst vom Startup-Race getroffenes Re-Fire wiederholen."""
+    last_reap = float("-inf")
     while True:
         did_work = False
         for model in models:
@@ -487,6 +496,13 @@ def _run_worker(loop: WorkerLoop, models: list[str]) -> None:
                     did_work = True
             except Exception as exc:
                 print(f"[worker] Fehler bei {model}: {exc}")
+        now = time.monotonic()
+        if now - last_reap >= REAP_INTERVAL_SECS:
+            last_reap = now
+            try:
+                loop.reap_missed_expansions()
+            except Exception as exc:
+                print(f"[worker] Reaper fehlgeschlagen: {exc}")
         if not did_work:
             time.sleep(1.5)
 

@@ -418,16 +418,24 @@ E-10 implement-Patches createn NACHBARDATEIEN (A13-Muster, jetzt mit Folge-
      verbrannt). Leiter kann strukturelle Ursache nicht heilen (korrekt,
      aber teuer). Kandidat: Patch det auf den Ziel-Scope filtern (fremde
      create-Bloecke verwerfen) -> Folge-Goals EDITIEREN dann Bestand.
-E-11 /api/tasks-Fenster verliert die EIGENEN frischen done-Tasks (34er-Mix,
-     alte done bleiben drin); Query-Params dag_id/limit/status werden
-     IGNORIERT (identische Antwort); kein GET /api/task/{id}. Anwender kann
-     den Endstand seines DAGs nicht via REST verifizieren (K3-Messung nur
-     ueber DB moeglich). Kandidat: echte Filter-Params + Einzel-GET.
+E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
+     frischen done-Tasks (34er-Mix, alte done bleiben drin); Query-Params
+     dag_id/limit/status werden IGNORIERT (identische Antwort); kein GET
+     /api/task/{id}. Anwender kann den Endstand seines DAGs nicht via REST
+     verifizieren (K3-Messung nur ueber DB moeglich). Kandidat: echte
+     Filter-Params + Einzel-GET.
      VERSCHAERFT 2026-07-17 (F4-Wiederholung): Fenster verlor den
      KOMPLETTEN frischen DAG (10 Knoten, davon 6 noch offen!) ~70 s nach
      Anlage auf einen Schlag -- danach 38er-Mix NUR aus Alt-Tasks, nicht
-     mal der neueste Task blieb sichtbar. R6-Polling ab Phase 3 blind,
-     Endzustand/Gates NUR via DB messbar.
+     mal der neueste Task blieb sichtbar (Ursache: mark_applied markiert
+     alle done-Tasks je (owner,scope) -> der Sammel-Apply blendet den
+     ganzen DAG aus). R6-Polling ab Phase 3 blind, Endzustand/Gates NUR
+     via DB messbar. FIX: GET /api/tasks?dag_id= (ALLE Status inkl.
+     done/superseded, chronologisch, applied-Feld je Zeile statt
+     Ausblendung) + ?status=a,b + ?limit=N; GET /api/task/{id} mit vollem
+     Queue-Zustand (node_id, depends_on, payload, Zeitstempel); ohne
+     Params Dashboard-Verhalten unveraendert. Kuenftige R6-Polls laufen
+     auf ?dag_id=. Details `spec_rekursion` I-E.11.
 E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      auf die 10k-Datei plan_format.py reproduzierbar applied=false
      ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
@@ -478,7 +486,8 @@ E-16 task_type debug laeuft auf dem woertlichen review-Systemprompt ("Du
      widersprechen -- Antworten bleiben Review-Raster. Kandidat: eigenes
      debug-Template (Repro -> Wirkkette -> Ursache mit Dateipfad ->
      Fix-Ort), Anwender-Instruktion VOR den Quelltext.
-E-19 Einmal-Ausfall des Completion-Hooks direkt nach Container-Start
+E-19 [BEHOBEN I-E.19, 2026-07-17] Einmal-Ausfall des Completion-Hooks
+     direkt nach Container-Start
      (F5-Retry 2026-07-16 abends): architect 272 (payload impact+
      instruction korrekt) wurde ~3 min nach Recreate done, aber KEIN
      Review-/Kind-Knoten entstand; kein "[worker] Expansion-Hook
@@ -497,6 +506,16 @@ E-19 Einmal-Ausfall des Completion-Hooks direkt nach Container-Start
      Startup-Race erhaertet, trifft verlaesslich den ERSTEN impact-
      Erzeuger nach Recreate -> Reaper-Haeppchen rueckt in der
      Prioritaet hoch (jeder Redeploy-Test verbrennt sonst einen Lauf).
+     FIX (Kandidat a, Reaper): Queue.missed_expansions (done + impact-
+     Payload + kein nicht-superseded Knoten unter <node_id>/, 48h-
+     Fenster) + WorkerLoop.reap_missed_expansions (Re-Fire des
+     vorhandenen Hooks, idempotent via enqueue_children, Kappung 3
+     Versuche je Task -- KEIN Einmal-Merker, damit ein selbst vom
+     Startup-Fenster getroffenes Re-Fire wiederholt wird), getickt alle
+     60 s im Worker-Thread (kein Race mit der synchronen Feuerung).
+     Live-Erwartung nach Redeploy: erster Tick re-fired Task 285
+     (Log-Zeile; Symbol nach F4-Apply weg -> legaler No-Op ohne Kinder).
+     Details `spec_rekursion` I-E.19.
 E-17 [BEHOBEN I-E.17, 2026-07-16; LIVE BELEGT 2026-07-17 F4-Wiederholung]
      impact-Fan-out ueberinklusiv + kein
      No-op-Vertrag (F4+F5, reproduziert): users = repo.impact(def-Datei) ist

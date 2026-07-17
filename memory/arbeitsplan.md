@@ -374,8 +374,10 @@ I-E.17   No-op-Vertrag + engere Enumeration       gem  I-E.1      1      E-17: K
                                                                          Patch) + det-Textvorfilter je Kind   fertig 2026-07-16 + LIVE 2026-07-17
 I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: git-apply-Toleranz, Fail-Feedback
          Formatwechsel-Sprosse)                                          mit echten Umgebungszeilen, whole-file vor re_design
+I-E.19   Expansion-Reaper (Hook-Nachholer)        det  I-E.1      2      E-19: missed_expansions + Re-Fire im Worker-
+                                                                         Tick (60s, Kappung 3; Startup-Race 2x belegt)   fertig 2026-07-17
 I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen
-I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET
+I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET   fertig 2026-07-17
 I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar
          DAG-Abbruch
 I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar

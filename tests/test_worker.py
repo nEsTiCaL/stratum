@@ -13,6 +13,9 @@ Confidence kommt aus dem Modell-Tier (TIER_CONFIDENCE), nicht vom LLM.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -24,7 +27,7 @@ from core.validator import (
     ReplayModel,
     TransientModelError,
 )
-from core.worker import DetWorker, LlmWorker, WorkerLoop
+from core.worker import REAP_MAX_ATTEMPTS, DetWorker, LlmWorker, WorkerLoop
 
 # ---------------------------------------------------------------------------
 # Hilfsfunktionen / Fixtures
@@ -721,6 +724,104 @@ class TestCompletionHook:
         queue = loop.queue
         assert loop.step("tree-sitter") is True
         assert queue.completed == [item.id]  # trotzdem abgeschlossen
+
+
+# ---------------------------------------------------------------------------
+# WorkerLoop: Expansion-Reaper (I-E.19)
+# ---------------------------------------------------------------------------
+
+
+class _ReaperQueue(_FakeQueue):
+    """Fake mit missed_expansions-Primitiv (liefert stets dieselben Items --
+    der Loop-Zaehler, nicht die Query, kappt die Wiederholung)."""
+
+    def __init__(self, missed: list[QueueItem]):
+        super().__init__(None)
+        self.missed = missed
+        self.reap_queries: list[int] = []
+
+    def missed_expansions(self, *, max_age_hours: int = 48) -> list[QueueItem]:
+        self.reap_queries.append(max_age_hours)
+        return list(self.missed)
+
+
+class TestExpansionReaper:
+    """I-E.19 (Befund E-19): verpasste Hook-Feuerungen werden nachgeholt --
+    der Reaper ruft den vorhandenen expand_hook erneut (idempotent via
+    enqueue_children), gekappt auf REAP_MAX_ATTEMPTS je Task."""
+
+    def _loop(self, queue, hook, resolve_root=None):
+        return WorkerLoop(
+            queue=queue,
+            repo=_FakeRepo(),
+            det_worker=DetWorker(ingest_fn=lambda *_: "x"),
+            llm_worker=LlmWorker(router=Router(), model_factory=lambda n: None),
+            expand_hook=hook,
+            resolve_root=resolve_root,
+        )
+
+    def _impact_item(self, item_id: int = 7) -> QueueItem:
+        item = _item(payload={"impact": {"op": "rename", "symbol": "f"}})
+        return replace(item, id=item_id, status="done")
+
+    def test_refires_hook_for_missed_item(self):
+        calls: list = []
+        item = self._impact_item()
+        loop = self._loop(
+            _ReaperQueue([item]), lambda i, repo, root: calls.append(i.id)
+        )
+        assert loop.reap_missed_expansions() == 1
+        assert calls == [item.id]
+
+    def test_attempts_capped_per_task(self):
+        calls: list = []
+        item = self._impact_item()
+        loop = self._loop(
+            _ReaperQueue([item]), lambda i, repo, root: calls.append(i.id)
+        )
+        fired = [loop.reap_missed_expansions() for _ in range(REAP_MAX_ATTEMPTS + 2)]
+        assert fired == [1] * REAP_MAX_ATTEMPTS + [0, 0]
+        assert len(calls) == REAP_MAX_ATTEMPTS
+
+    def test_cap_is_per_task(self):
+        calls: list = []
+        first, second = self._impact_item(1), self._impact_item(2)
+        queue = _ReaperQueue([first])
+        loop = self._loop(queue, lambda i, repo, root: calls.append(i.id))
+        for _ in range(REAP_MAX_ATTEMPTS):
+            loop.reap_missed_expansions()
+        queue.missed = [first, second]  # neuer Kandidat taucht spaeter auf
+        assert loop.reap_missed_expansions() == 1  # nur der frische feuert
+        assert calls == [1] * REAP_MAX_ATTEMPTS + [2]
+
+    def test_without_hook_no_query(self):
+        queue = _ReaperQueue([self._impact_item()])
+        loop = self._loop(queue, None)
+        assert loop.reap_missed_expansions() == 0
+        assert queue.reap_queries == []  # gar nicht erst gesucht
+
+    def test_queue_without_primitive_is_noop(self):
+        # Fake-Queues ohne missed_expansions (Bestands-Doubles) -> Reaper n/a.
+        loop = self._loop(_FakeQueue(None), lambda i, repo, root: None)
+        assert loop.reap_missed_expansions() == 0
+
+    def test_root_resolved_per_item(self):
+        roots: list = []
+        loop = self._loop(
+            _ReaperQueue([self._impact_item()]),
+            lambda i, repo, root: roots.append(root),
+            resolve_root=lambda i: Path("/ws/key1"),
+        )
+        loop.reap_missed_expansions()
+        assert roots == [Path("/ws/key1")]
+
+    def test_hook_error_is_best_effort(self):
+        # _maybe_expand faengt den Fehler; der Reaper zaehlt den Versuch.
+        def boom(i, repo, root):
+            raise RuntimeError("expand kaputt")
+
+        loop = self._loop(_ReaperQueue([self._impact_item()]), boom)
+        assert loop.reap_missed_expansions() == 1
 
 
 # ---------------------------------------------------------------------------

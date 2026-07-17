@@ -874,6 +874,83 @@ verified, /api/patches kennzeichnet no_op, Apply liess die Datei
 byte-identisch; die 3 echten Patches liefen als EIN Sammel-Diff durch
 EINE Sandbox und wurden atomar geschrieben (`ops_rekursionstests`).
 
+## I-E.19: Expansion-Reaper (2026-07-17, fertig)
+
+Befund E-19 (`ops_rekursionstests`, 2x live belegt): der Completion-Hook des
+JEWEILS ERSTEN impact-Erzeugers nach Container-Start fiel still aus (done ohne
+Kinder, KEIN Fehler-Log; Verdacht Startup-Race im Worker-Thread; Folge-
+Feuerungen desselben Prozesses stets korrekt). Ein Serve-Start-Nachholer
+unterlaege demselben Race -- deshalb ein periodischer Reaper im Worker-Thread:
+
+- `Queue.missed_expansions(max_age_hours=48)` (core/queue.py): done-Tasks mit
+  ``payload ? 'impact'``, unter denen KEIN nicht-superseded Knoten haengt --
+  jede Hook-Wirkung (Kinder, Review, Redesign) erzeugt mindestens einen Knoten
+  mit node_id-Praefix ``<node_id>/``. Praefix-Vergleich via left()/length()
+  statt LIKE (node_ids tragen ``_`` = LIKE-Wildcard). Alters-Fenster gegen
+  Uralt-Leichen aus der Zeit vor I-E.1. Liefert volle QueueItems
+  (claim-Spaltenset -> _row_to_item).
+- `WorkerLoop.reap_missed_expansions()` (core/worker.py): ruft je Kandidat den
+  VORHANDENEN expand_hook via _maybe_expand (Re-Fire ist durch die
+  enqueue_children-Idempotenz dublettenfrei; root je Item via resolve_root).
+  Kappung `REAP_MAX_ATTEMPTS=3` je Task-id (prozess-lokal `_reap_attempts`):
+  ein legal wirkungsloser Hook (Symbol betrifft nichts) laeuft nicht endlos,
+  und bewusst KEIN Einmal-Merker -- steckt das Re-Fire selbst noch im
+  Startup-Fenster, wiederholen Versuch 2-3 eine bzw. zwei Minuten spaeter.
+  getattr-defensiv (Fake-Queues ohne Primitiv -> No-Op); ohne expand_hook
+  wird gar nicht erst gesucht.
+- serve._run_worker: tickt alle `REAP_INTERVAL_SECS=60` im SELBEN Thread wie
+  step() -- kein Race mit der synchronen Feuerung (die SELECT-dann-INSERT-
+  Idempotenz von enqueue_children haette bei Nebenlaeufigkeit ein Fenster,
+  es gibt keinen Unique-Index auf (dag_id, node_id)). Erster Tick beim Start
+  raeumt Alt-Leichen; Reaper-Fehler sind best-effort (Log, Loop laeuft).
+- Scope bewusst NUR impact-Payloads: der plan_architect-Hook erzeugt keine
+  Kinder (Wirkung = proposed-Plan-Artefakt), das Kinder-Kriterium greift dort
+  nicht -- ein verpasster plan_architect-Hook braucht ein eigenes Kriterium
+  (offen, bisher ohne Beleg).
+
+Akzeptanz: test_queue (missed_expansions: Kandidat/Kind/superseded/ohne
+impact/nicht-done/Alter/LIKE-Wildcard-Literal/Geschwister-Praefix/Review-
+Kette), test_worker (Re-Fire, Kappung je Task, ohne Hook keine Query, Queue
+ohne Primitiv, root-Aufloesung, best-effort), test_completion_hook E2E gegen
+echtes Postgres (done-Erzeuger ohne Kinder -> reap -> Kinder da -> kein
+Kandidat mehr, zweiter Tick 0). Live-Beleg nach Redeploy: Task 285 (E-19-
+Ausfall vom 2026-07-17 vormittags) liegt im 48h-Fenster -> der erste
+Reaper-Tick muss ihn re-firen (Log-Zeile; find_symbol('build_content')
+findet nach dem F4-Apply nichts mehr -> legaler No-Op, keine Kinder).
+
+## I-E.11: /api/tasks-Filter + GET /api/task/{id} (2026-07-17, fertig)
+
+Befund E-11 (`ops_rekursionstests`, verschaerft im F4-Wiederholungslauf): das
+/api/tasks-Fenster rotiert (offene + letzte 20 done ohne applied); mark_applied
+markiert ALLE done-Tasks eines (owner, scope) -> der Sammel-Apply (I-E.1)
+blendet den KOMPLETTEN DAG auf einen Schlag aus. Query-Params wurden ignoriert,
+kein Einzel-GET -- Endzustaende waren nur per DB messbar.
+
+- `Queue.list_tasks` nimmt `dag_id=` und liefert je Zeile zusaetzlich
+  `node_id` + `applied` (COALESCE aus payload.applied; additiv, das Dashboard
+  ignoriert unbekannte Felder).
+- GET /api/tasks (routers/observability.py): OHNE Params byte-gleich das
+  Bestandsverhalten (Dashboard-Polling). MIT Params ehrliche Filterung ohne
+  applied-Ausblendung: `dag_id` -> alle Statuswerte inkl. done/superseded,
+  chronologisch (DAG-Endzustand samt Belegkette -- deckt einen Teil des
+  E-13-Bedarfs); `status` -> kommagetrennte Werte gegen die 5 legalen
+  validiert (sonst 400); `limit` (>=1, sonst 400) -> ohne dag_id neueste
+  zuerst ("letzte N"). Progress-Augment wie gehabt.
+- GET /api/task/{id}: `Queue.get_task_detail` (volle Zeile: dag_id, node_id,
+  depends_on, attempts, payload, created_at/claimed_at; get_task_info bleibt
+  unveraendert fuer den Human-Pfad). 403 fremder Owner / 404 unbekannt
+  (Semantik wie check_task_owner); capability_id wird nicht exponiert.
+  payload bewusst KOMPLETT (applied/applied_diff_hash, gate_scopes,
+  no_change_ok, verify_feedback, redesign_stage -- das Warum eines Knotens),
+  Kuratieren wuerde jedes neue Feld verlieren.
+
+Akzeptanz: test_queue (dag-Filter je Status/Owner, node_id+applied-Felder,
+get_task_detail voll/done/None), test_webgui (dag_id inkl. applied+superseded,
+Owner-Scoping, status-Kombis+limit, 400-Faelle, Einzel-GET 200/403/404/401;
+Bestandsverhalten ohne Params durch TestTasksEndpoint unveraendert gedeckt).
+R6-Polling kuenftiger REK-Laeufe kann damit auf `?dag_id=` laufen (E-11-
+Messluecke zu); Belegketten-Detail (Task-History) bleibt E-13.
+
 ## Handoff-Konvention je Paket
 
 Abschluss = Suite gruen + ruff check/format gruen + arbeitsplan-Status +

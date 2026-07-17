@@ -8,6 +8,7 @@ Akzeptanz (DoD):
 
 from __future__ import annotations
 
+import json
 import threading
 
 import psycopg
@@ -586,3 +587,180 @@ class TestMarkApplied:
             )
         }
         assert done_id not in hidden
+
+
+# ---------------------------------------------------------------------------
+# I-E.11: list_tasks(dag_id=) + get_task_detail | I-E.19: missed_expansions
+# ---------------------------------------------------------------------------
+
+
+def _insert_raw(
+    conn,
+    *,
+    dag_id: str,
+    node_id: str,
+    status: str = "done",
+    payload: dict | None = None,
+    task_type: str = "architect",
+    scope: str = "file:a.py",
+    owner: str = "test",
+    claimed_days_ago: float = 0.0,
+) -> int:
+    """Direkter Zeilen-Insert fuer Zustands-Fixturen (done/superseded mit
+    payload + claimed_at), die ueber die enqueue-API nur umstaendlich zu
+    erzeugen waeren."""
+    row = conn.execute(
+        "INSERT INTO queue (dag_id, node_id, task_type, scope, model, status, "
+        "payload, owner, claimed_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, "
+        "now() - %s * interval '1 day') RETURNING id",
+        (
+            dag_id,
+            node_id,
+            task_type,
+            scope,
+            "phi4-mini",
+            status,
+            json.dumps(payload or {}),
+            owner,
+            claimed_days_ago,
+        ),
+    ).fetchone()
+    return row[0]
+
+
+_IMPACT = {"impact": {"op": "rename", "symbol": "f"}, "instruction": "x"}
+
+
+class TestListTasksDagFilter:
+    """I-E.11 (Befund E-11): der DAG-Endzustand ist gezielt abfragbar, statt im
+    rotierenden Uebersichts-Fenster verloren zu gehen."""
+
+    _ALL = ("pending", "running", "done", "failed", "superseded")
+
+    def test_dag_filter_returns_only_that_dag(self, conn):
+        a = _insert_raw(conn, dag_id="dag-a", node_id="n1", status="done")
+        _insert_raw(conn, dag_id="dag-b", node_id="n1", status="done")
+        rows = Queue(conn).list_tasks(dag_id="dag-a", statuses=self._ALL)
+        assert [r["id"] for r in rows] == [a]
+
+    def test_dag_filter_spans_all_statuses(self, conn):
+        ids = {
+            status: _insert_raw(
+                conn, dag_id="dag-a", node_id=f"n-{status}", status=status
+            )
+            for status in ("done", "failed", "superseded")
+        }
+        rows = Queue(conn).list_tasks(dag_id="dag-a", statuses=self._ALL)
+        assert {r["id"] for r in rows} == set(ids.values())
+
+    def test_rows_carry_node_id_and_applied(self, conn):
+        _insert_raw(
+            conn,
+            dag_id="dag-a",
+            node_id="n1/impact_0",
+            status="done",
+            payload={"applied": True},
+        )
+        _insert_raw(conn, dag_id="dag-a", node_id="n1", status="done")
+        rows = Queue(conn).list_tasks(dag_id="dag-a", statuses=self._ALL)
+        by_node = {r["node_id"]: r for r in rows}
+        assert by_node["n1/impact_0"]["applied"] is True
+        assert by_node["n1"]["applied"] is False
+
+    def test_dag_filter_respects_owner(self, conn):
+        _insert_raw(conn, dag_id="dag-a", node_id="n1", owner="alice")
+        rows = Queue(conn).list_tasks(dag_id="dag-a", owner="bob", statuses=self._ALL)
+        assert rows == []
+
+
+class TestGetTaskDetail:
+    """I-E.11: Einzel-GET mit vollem Queue-Zustand (auch done/superseded)."""
+
+    def test_full_row(self, conn):
+        q = Queue(conn)
+        dag = TaskDag(
+            dag_id="dag-d",
+            nodes=[_node("n1"), _node("n2", depends_on=("n1",))],
+        )
+        ids = q.enqueue(dag, model="phi4-mini", owner="alice")
+        detail = q.get_task_detail(ids[1])
+        assert detail is not None
+        assert detail["dag_id"] == "dag-d"
+        assert detail["node_id"] == "n2"
+        assert detail["depends_on"] == ["n1"]
+        assert detail["status"] == "pending"
+        assert detail["owner"] == "alice"
+        assert detail["payload"] == {}
+        assert "created_at" in detail and "claimed_at" in detail
+
+    def test_done_task_with_payload(self, conn):
+        tid = _insert_raw(
+            conn, dag_id="d", node_id="n1", payload={"applied": True, "depth": 1}
+        )
+        detail = Queue(conn).get_task_detail(tid)
+        assert detail is not None
+        assert detail["status"] == "done"
+        assert detail["payload"]["applied"] is True
+
+    def test_unknown_id_returns_none(self, conn):
+        assert Queue(conn).get_task_detail(999_999) is None
+
+
+class TestMissedExpansions:
+    """I-E.19 (Befund E-19): done-Tasks mit impact-Payload, unter denen kein
+    nicht-superseded Knoten haengt = verpasste Completion-Hook-Feuerungen."""
+
+    def test_done_impact_without_children_is_candidate(self, conn):
+        tid = _insert_raw(conn, dag_id="d1", node_id="n1", payload=_IMPACT)
+        items = Queue(conn).missed_expansions()
+        assert [i.id for i in items] == [tid]
+        # Volles QueueItem: der Reaper reicht es unveraendert an den Hook.
+        assert items[0].payload["impact"]["op"] == "rename"
+        assert items[0].node_id == "n1"
+
+    def test_existing_child_suppresses(self, conn):
+        _insert_raw(conn, dag_id="d1", node_id="n1", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n1/impact_0", status="pending")
+        assert Queue(conn).missed_expansions() == []
+
+    def test_superseded_child_does_not_suppress(self, conn):
+        tid = _insert_raw(conn, dag_id="d1", node_id="n1", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n1/impact_0", status="superseded")
+        assert [i.id for i in Queue(conn).missed_expansions()] == [tid]
+
+    def test_without_impact_payload_ignored(self, conn):
+        _insert_raw(conn, dag_id="d1", node_id="n1", payload={"instruction": "x"})
+        assert Queue(conn).missed_expansions() == []
+
+    def test_non_done_ignored(self, conn):
+        _insert_raw(conn, dag_id="d1", node_id="n1", status="pending", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d2", node_id="n1", status="failed", payload=_IMPACT)
+        assert Queue(conn).missed_expansions() == []
+
+    def test_old_tasks_age_out(self, conn):
+        _insert_raw(
+            conn, dag_id="d1", node_id="n1", payload=_IMPACT, claimed_days_ago=3
+        )
+        assert Queue(conn).missed_expansions(max_age_hours=48) == []
+
+    def test_like_wildcard_in_node_id_is_literal(self, conn):
+        # 'n1/impact_0' traegt '_' (LIKE-Wildcard). 'n1/impactX0/k' darf NICHT
+        # als Kind durchgehen (left()/length()-Vergleich statt LIKE).
+        tid = _insert_raw(conn, dag_id="d1", node_id="n1/impact_0", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n1/impactX0/k", status="pending")
+        assert [i.id for i in Queue(conn).missed_expansions()] == [tid]
+
+    def test_sibling_name_prefix_is_not_a_child(self, conn):
+        # 'n10' beginnt mit 'n1', haengt aber nicht unter n1 (kein '/').
+        tid = _insert_raw(conn, dag_id="d1", node_id="n1", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n10", status="pending")
+        assert [i.id for i in Queue(conn).missed_expansions()] == [tid]
+
+    def test_review_refire_case_child_under_review(self, conn):
+        # Der Review-Knoten traegt selbst impact-Payload (Re-Fire-Vertrag);
+        # haengen unter IHM Kinder, ist er versorgt -- der Erzeuger dadurch auch.
+        _insert_raw(conn, dag_id="d1", node_id="n1", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n1/review", payload=_IMPACT)
+        _insert_raw(conn, dag_id="d1", node_id="n1/review/impact_0", status="pending")
+        assert Queue(conn).missed_expansions() == []

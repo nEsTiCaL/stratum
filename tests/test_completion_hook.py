@@ -14,6 +14,8 @@ die Rekursion (der Hook ruft expand(..., depth+1)).
 
 from __future__ import annotations
 
+import json
+
 from core.queue import Queue
 from core.router import Router
 from core.subtree import NODE_ID_SEP, make_expansion_hook, prepare_children
@@ -191,3 +193,42 @@ class TestPayloadFor:
         assert fix_payload["instruction"] == "Basis"  # None -> base_payload
         assert gate_payload["gate_scopes"] == ["file:a.py"]
         assert "instruction" not in gate_payload
+
+
+class TestExpansionReaperEndToEnd:
+    """I-E.19 (Befund E-19): ein done-Erzeuger mit impact-Payload OHNE Kinder
+    (= verpasste Hook-Feuerung) wird vom Reaper nachversorgt -- und ist danach
+    kein Kandidat mehr; das Re-Fire bleibt via enqueue_children idempotent."""
+
+    def test_missed_expansion_reaped_then_settled(self, conn):
+        q = Queue(conn)
+        (tid,) = q.enqueue(_producer_dag("dr"), model="tree-sitter")
+        conn.execute(
+            "UPDATE queue SET payload = %s WHERE id = %s",
+            (json.dumps({"impact": {"op": "rename", "symbol": "f"}}), tid),
+        )
+        parent = q.claim("tree-sitter")
+        assert parent is not None
+        q.complete(parent.id)  # done, aber KEIN Hook gefeuert = E-19-Zustand
+
+        [missed] = q.missed_expansions()
+        assert missed.id == tid
+
+        def hook(item, repo, root):  # noqa: ARG001 - reiht wie der impact-Hook Kinder ein
+            child = DagNode(
+                id=f"{item.node_id}{NODE_ID_SEP}impact_0",
+                task_type="fix",
+                scope="file:child.py",
+                depends_on=(),
+                status="pending",
+                flags=frozenset(),
+            )
+            q.enqueue_children(item, [child])
+
+        loop = _worker_loop(q, hook)
+        assert loop.reap_missed_expansions() == 1
+        rows = conn.execute("SELECT node_id FROM queue WHERE dag_id='dr'").fetchall()
+        assert f"n1{NODE_ID_SEP}impact_0" in {r[0] for r in rows}
+        assert q.missed_expansions() == []  # versorgt -> kein Kandidat mehr
+        # Zweiter Tick: nichts zu tun (nicht Kappung, sondern kein Kandidat).
+        assert loop.reap_missed_expansions() == 0

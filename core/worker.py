@@ -40,6 +40,16 @@ from core.secret_scan import EgressPolicy, Sensitivity
 from core.test_gate import feedback_text as test_feedback_text
 from core.validator import EscalationLoop, EscalationOutcome, Validator
 
+# I-E.19 Expansion-Reaper (Befund E-19): verpasste Completion-Hook-Feuerungen
+# nachholen. Intervall = Abstand der Reap-Laeufe im Worker-Thread; die Kappung
+# begrenzt Re-Fires JE TASK (ein legaler No-Op-Erzeuger bleibt sonst ewig
+# Kandidat), UND sie ueberdauert das Startup-Fenster: schlaegt das Race auch
+# den ersten Reap-Versuch, sitzen Versuch 2-3 eine bzw. zwei Minuten spaeter
+# sicher ausserhalb. Alters-Fenster: nur frische Leichen anfassen.
+REAP_INTERVAL_SECS = 60.0
+REAP_MAX_ATTEMPTS = 3
+REAP_MAX_AGE_HOURS = 48
+
 
 @dataclass
 class DetWorker:
@@ -376,6 +386,9 @@ class WorkerLoop:
     # Kinder werden weiterhin vorab beim Enqueue materialisiert). Best-effort:
     # ein Hook-Fehler kippt das done des Erzeugers nicht.
     expand_hook: Callable[[QueueItem, Repository, Path | None], None] | None = None
+    # I-E.19: Re-Fire-Zaehler des Expansion-Reapers je Task-id (prozess-lokal;
+    # nach Neustart darf erneut probiert werden -- der Hook ist idempotent).
+    _reap_attempts: dict[int, int] = field(default_factory=dict)
 
     def _fail(self, item: QueueItem, reason: str) -> None:
         self.queue.fail(item.id)
@@ -636,6 +649,40 @@ class WorkerLoop:
             self.expand_hook(item, self.repo, root)
         except Exception as exc:  # noqa: BLE001 - Expansion ist Beiwerk zum done
             print(f"[worker] Expansion-Hook fehlgeschlagen ({item.scope}): {exc}")
+
+    def reap_missed_expansions(self) -> int:
+        """Expansion-Reaper (I-E.19, Befund E-19): Re-Fire verpasster Hooks.
+
+        Der Completion-Hook kann still ausfallen (2x live belegt, jeweils der
+        ERSTE impact-Erzeuger nach Container-Start: done ohne Kinder, ohne
+        Fehler-Log). Der Reaper laeuft IM Worker-Thread (kein Race mit der
+        synchronen Feuerung in step()) und ruft den vorhandenen Hook auf jedem
+        done-Task mit impact-Payload, unter dem kein Knoten haengt --
+        enqueue_children ist idempotent, ein Doppel-Feuern erzeugt keine
+        Dubletten. Kappung REAP_MAX_ATTEMPTS je Task: ein legal wirkungsloser
+        Hook (Symbol betrifft nichts) wird nicht endlos wiederholt; bewusst
+        KEIN Einmal-Merker, damit ein Re-Fire, der selbst noch im
+        Startup-Fenster steckt, spaeter erneut versucht wird. Gibt die Zahl
+        der Re-Fires zurueck."""
+        if self.expand_hook is None:
+            return 0
+        finder = getattr(self.queue, "missed_expansions", None)
+        if finder is None:  # Fake-Queues ohne das Primitiv: Reaper n/a
+            return 0
+        fired = 0
+        for item in finder(max_age_hours=REAP_MAX_AGE_HOURS):
+            attempts = self._reap_attempts.get(item.id, 0)
+            if attempts >= REAP_MAX_ATTEMPTS:
+                continue
+            self._reap_attempts[item.id] = attempts + 1
+            root = self.resolve_root(item) if self.resolve_root else None
+            print(
+                f"[worker] Reaper: Expansion-Re-Fire Task {item.id} "
+                f"({item.dag_id}/{item.node_id}), Versuch {attempts + 1}"
+            )
+            self._maybe_expand(item, root)
+            fired += 1
+        return fired
 
     def step(self, model: str) -> bool:
         """Beansprucht einen Job, verarbeitet ihn, gibt False zurueck wenn leer."""

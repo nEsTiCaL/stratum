@@ -617,6 +617,133 @@ class TestTasksEndpoint:
         assert tasks[0]["status"] == "done"
 
 
+def _insert_task_row(
+    conn,
+    *,
+    dag_id: str,
+    node_id: str,
+    status: str = "done",
+    payload: dict | None = None,
+    owner: str = TEST_OWNER,
+    task_type: str = "fix",
+) -> int:
+    """Roh-Insert fuer Endzustands-Fixturen (done/superseded + payload), die
+    die enqueue-API nicht direkt herstellt (I-E.11-Tests)."""
+    row = conn.execute(
+        "INSERT INTO queue (dag_id, node_id, task_type, scope, model, status, "
+        "payload, owner, claimed_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s, now()) "
+        "RETURNING id",
+        (
+            dag_id,
+            node_id,
+            task_type,
+            "file:core/queue.py",
+            "phi4-mini",
+            status,
+            json.dumps(payload or {}),
+            owner,
+        ),
+    ).fetchone()
+    return row[0]
+
+
+class TestTasksFilterAndSingleGet:
+    """I-E.11 (Befund E-11): /api/tasks?dag_id/status/limit filtern ehrlich
+    (statt des rotierenden Fensters), GET /api/task/{id} liefert den vollen
+    Einzel-Zustand. Ohne Params bleibt das Dashboard-Verhalten unveraendert
+    (TestTasksEndpoint deckt es)."""
+
+    def test_dag_id_returns_full_dag_incl_applied(self, conn):
+        done = _insert_task_row(
+            conn, dag_id="impact-x", node_id="n1", payload={"applied": True}
+        )
+        failed = _insert_task_row(
+            conn, dag_id="impact-x", node_id="n1/impact_0", status="failed"
+        )
+        _insert_task_row(conn, dag_id="anderer-dag", node_id="n1")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            tasks = c.get("/api/tasks?dag_id=impact-x", headers=AUTH).json()
+        assert [t["id"] for t in tasks] == [done, failed]  # chronologisch
+        assert tasks[0]["node_id"] == "n1"
+        assert tasks[0]["applied"] is True  # trotz mark_applied-Muster sichtbar
+        assert tasks[1]["status"] == "failed"
+
+    def test_dag_id_includes_superseded(self, conn):
+        _insert_task_row(conn, dag_id="impact-x", node_id="n1")
+        sup = _insert_task_row(
+            conn, dag_id="impact-x", node_id="n1/impact_0~r1", status="superseded"
+        )
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            tasks = c.get("/api/tasks?dag_id=impact-x", headers=AUTH).json()
+        assert sup in {t["id"] for t in tasks}
+
+    def test_dag_id_scoped_to_owner(self, conn):
+        _insert_task_row(conn, dag_id="impact-x", node_id="n1", owner="fremd")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            tasks = c.get("/api/tasks?dag_id=impact-x", headers=AUTH).json()
+        assert tasks == []
+
+    def test_status_filter_and_limit(self, conn):
+        _insert_task_row(conn, dag_id="d1", node_id="n1", status="failed")
+        newest = _insert_task_row(conn, dag_id="d2", node_id="n1", status="done")
+        _insert_task_row(conn, dag_id="d3", node_id="n1", status="pending")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            done_only = c.get("/api/tasks?status=done", headers=AUTH).json()
+            assert {t["status"] for t in done_only} == {"done"}
+            combo = c.get("/api/tasks?status=done,failed", headers=AUTH).json()
+            assert {t["status"] for t in combo} == {"done", "failed"}
+            limited = c.get("/api/tasks?status=done,failed&limit=1", headers=AUTH)
+            assert [t["id"] for t in limited.json()] == [newest]  # neueste zuerst
+
+    def test_unknown_status_400(self, conn):
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            r = c.get("/api/tasks?status=quatsch", headers=AUTH)
+            assert r.status_code == 400
+            r = c.get("/api/tasks?limit=0", headers=AUTH)
+            assert r.status_code == 400
+
+    def test_single_get_full_state(self, conn):
+        tid = _insert_task_row(
+            conn,
+            dag_id="impact-x",
+            node_id="n1/impact_1",
+            payload={"applied": True, "gate_scopes": ["file:a.py"]},
+        )
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            r = c.get(f"/api/task/{tid}", headers=AUTH)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["dag_id"] == "impact-x"
+        assert body["node_id"] == "n1/impact_1"
+        assert body["status"] == "done"
+        assert body["payload"]["gate_scopes"] == ["file:a.py"]
+        assert body["depends_on"] == []
+        assert "capability_id" not in body  # interner Schluessel, nicht exponiert
+        assert "created_at" in body and "claimed_at" in body
+
+    def test_single_get_foreign_owner_403(self, conn):
+        tid = _insert_task_row(conn, dag_id="d", node_id="n1", owner="fremd")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.get(f"/api/task/{tid}", headers=AUTH).status_code == 403
+
+    def test_single_get_unknown_404(self, conn):
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.get("/api/task/999999", headers=AUTH).status_code == 404
+
+    def test_single_get_requires_auth(self, conn):
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.get("/api/task/1").status_code == 401
+
+
 class TestSettingsEndpoint:
     _DEFAULTS = {
         "auto_apply": True,

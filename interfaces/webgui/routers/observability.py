@@ -97,27 +97,92 @@ async def whoami(owner: str = Depends(require_owner)) -> dict[str, str]:
     return {"owner": owner}
 
 
+_TASK_STATUSES = ("pending", "running", "done", "failed", "superseded")
+
+
 @router.get("/api/tasks")
 async def get_tasks(
+    dag_id: str | None = None,
+    status: str | None = None,
+    limit: int | None = None,
     owner: str = Depends(require_owner),
     deps: AppDeps = Depends(get_deps),
 ) -> list[dict[str, Any]]:
-    """Offene Tasks (pending/running/failed) + eine kurze Liste der zuletzt
-    ABGESCHLOSSENEN (done). Frueher fielen done-Tasks voellig raus -> ein fertiger
-    implement-Task verschwand kommentarlos aus der Uebersicht, statt als 'fertig'
-    (ggf. mit Ergebnis/Apply) sichtbar zu bleiben (Schritt 7). done ist auf die
-    letzten `_DONE_LIMIT` begrenzt, damit die Historie die Uebersicht nicht flutet."""
-    active = deps.queue.list_tasks(owner=owner)
-    if deps.progress_store:
-        active = _augment_progress(active, deps.progress_store)
-    done = deps.queue.list_tasks(
+    """Task-Uebersicht (Polling) bzw. gefilterte Task-Abfrage (I-E.11).
+
+    OHNE Query-Params (Dashboard-Verhalten, unveraendert): offene Tasks
+    (pending/running/failed) + eine kurze Liste der zuletzt ABGESCHLOSSENEN
+    (done, ohne bereits angewandte). Dieses Fenster rotiert -- der Endzustand
+    eines DAGs ist darin NICHT verlaesslich sichtbar (Befund E-11: mark_applied
+    blendet nach einem Sammel-Apply den kompletten DAG aus).
+
+    MIT Params wird ehrlich gefiltert statt gefenstert:
+      dag_id  -> alle Tasks dieses DAGs (Default: ALLE Statuswerte inkl. done/
+                 superseded, chronologisch -- der DAG-Endzustand samt
+                 Belegkette), applied-Ausblendung AUS (das Feld `applied`
+                 steht je Zeile in der Antwort).
+      status  -> kommagetrennte Statuswerte (pending,running,done,failed,
+                 superseded); unbekannter Wert -> 400.
+      limit   -> begrenzt die Zeilenzahl; ohne dag_id neueste zuerst
+                 ("die letzten N"), mit dag_id chronologisch."""
+    if dag_id is None and status is None and limit is None:
+        active = deps.queue.list_tasks(owner=owner)
+        if deps.progress_store:
+            active = _augment_progress(active, deps.progress_store)
+        done = deps.queue.list_tasks(
+            owner=owner,
+            statuses=("done",),
+            limit=_DONE_LIMIT,
+            newest_first=True,
+            exclude_applied=True,
+        )
+        return active + done
+    if status is not None:
+        statuses = tuple(s.strip() for s in status.split(",") if s.strip())
+        unknown = [s for s in statuses if s not in _TASK_STATUSES]
+        if unknown or not statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unbekannter status-Wert {unknown or status!r} "
+                f"(erlaubt: {', '.join(_TASK_STATUSES)})",
+            )
+    else:
+        statuses = _TASK_STATUSES
+    if limit is not None and limit < 1:
+        raise HTTPException(status_code=400, detail="limit muss >= 1 sein")
+    tasks = deps.queue.list_tasks(
         owner=owner,
-        statuses=("done",),
-        limit=_DONE_LIMIT,
-        newest_first=True,
-        exclude_applied=True,
+        dag_id=dag_id,
+        statuses=statuses,
+        limit=limit,
+        newest_first=dag_id is None,
     )
-    return active + done
+    if deps.progress_store:
+        tasks = _augment_progress(tasks, deps.progress_store)
+    return tasks
+
+
+@router.get("/api/task/{task_id}")
+async def get_task(
+    task_id: int,
+    owner: str = Depends(require_owner),
+    deps: AppDeps = Depends(get_deps),
+) -> dict[str, Any]:
+    """Einzel-GET eines Tasks mit vollem Queue-Zustand (I-E.11, Befund E-11).
+
+    Liefert auch done/failed/superseded (list_tasks-Fenster zeigt die nicht
+    verlaesslich): dag_id, node_id, depends_on, attempts, Zeitstempel und das
+    payload (dort liegen applied/applied_diff_hash, gate_scopes, no_change_ok,
+    verify_feedback, redesign_stage -- der Anwender sieht, WARUM ein Knoten
+    haengt oder was er getragen hat). 403 bei fremdem Owner (wie
+    check_task_owner), 404 bei unbekannter id."""
+    detail = deps.queue.get_task_detail(task_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Task nicht gefunden")
+    if detail["owner"] != owner:
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
+    detail.pop("capability_id", None)  # interner Workspace-Schluessel
+    return detail
 
 
 def _settings_state(deps: AppDeps) -> dict[str, Any]:

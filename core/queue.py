@@ -787,11 +787,81 @@ class Queue:
             "capability_id": row[7],
         }
 
+    def get_task_detail(self, item_id: int) -> dict[str, Any] | None:
+        """Volle Queue-Zeile eines Tasks fuer GET /api/task/{id} (I-E.11).
+
+        Ergaenzt get_task_info um dag_id, node_id, depends_on, attempts und die
+        Zeitstempel -- der Anwender sieht damit via REST, WO ein Knoten im DAG
+        haengt (depends_on auf failed?) und ob sein Patch angewendet wurde
+        (payload.applied), statt dafuer in die DB zu muessen (Befund E-11)."""
+        row = self._conn.execute(
+            "SELECT id, dag_id, node_id, task_type, scope, model, status, "
+            "attempts, depends_on, payload, owner, capability_id, "
+            "created_at, claimed_at FROM queue WHERE id = %s",
+            (item_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "dag_id": row[1],
+            "node_id": row[2],
+            "task_type": row[3],
+            "scope": row[4],
+            "model": row[5],
+            "status": row[6],
+            "attempts": row[7],
+            "depends_on": list(row[8]) if row[8] else [],
+            "payload": row[9] or {},
+            "owner": row[10],
+            "capability_id": row[11],
+            "created_at": row[12],
+            "claimed_at": row[13],
+        }
+
+    def missed_expansions(self, *, max_age_hours: int = 48) -> list[QueueItem]:
+        """Kandidaten fuer den Expansion-Reaper (I-E.19, Befund E-19).
+
+        Ein Completion-Hook kann still ausfallen (2x belegt: der ERSTE
+        impact-Erzeuger nach Container-Start wurde done, ohne dass Kinder
+        entstanden -- kein Fehler-Log, Verdacht Startup-Race im Worker-Thread).
+        Kriterium fuer "Feuerung verpasst": done-Task MIT impact-Payload, unter
+        dem KEIN nicht-superseded Knoten haengt (jede Hook-Wirkung -- Kinder,
+        Review, Redesign -- erzeugt mindestens einen Knoten mit node_id-Praefix
+        '<node_id>/'). Der Praefix-Vergleich laeuft ueber left()/length() statt
+        LIKE, damit LIKE-Wildcards in node_ids (impact_0 traegt '_') nicht
+        mitmustern. max_age_hours begrenzt auf frische Leichen -- Alt-Erzeuger
+        aus der Zeit vor der Gate-Kette (I-E.1) sollen nicht ewig Kandidat
+        bleiben. Ein legaler No-Op-Erzeuger (Symbol betrifft nichts) bleibt
+        Kandidat; die Wiederhol-Kappung liegt beim Rufer (WorkerLoop)."""
+        rows = self._conn.execute(
+            """
+            SELECT id, dag_id, node_id, task_type, scope, model,
+                   depends_on, flags, payload, attempts, status,
+                   owner, capability_id
+            FROM queue t
+            WHERE t.status = 'done'
+              AND t.payload ? 'impact'
+              AND t.claimed_at > now() - %s * interval '1 hour'
+              AND NOT EXISTS (
+                  SELECT 1 FROM queue c
+                  WHERE c.dag_id = t.dag_id
+                    AND c.status != 'superseded'
+                    AND left(c.node_id, length(t.node_id) + 1)
+                        = t.node_id || '/'
+              )
+            ORDER BY t.id
+            """,
+            (max_age_hours,),
+        ).fetchall()
+        return [_row_to_item(row) for row in rows]
+
     def list_tasks(
         self,
         *,
         statuses: tuple[str, ...] = ("pending", "running", "failed"),
         owner: str | None = None,
+        dag_id: str | None = None,
         limit: int | None = None,
         newest_first: bool = False,
         exclude_applied: bool = False,
@@ -799,12 +869,16 @@ class Queue:
         """Listet Tasks fuer das Dashboard (read-only, kein Locking).
 
         Default: pending, running und failed (done ausgeblendet). Mit owner-Filter
-        nur Tasks dieses Owners. Reihenfolge created_at asc (newest_first=True ->
-        desc, fuer die begrenzte done-Liste). limit begrenzt die Zeilenzahl -- so
-        laesst sich eine kurze Liste zuletzt abgeschlossener Tasks holen, ohne die
-        Uebersicht mit der gesamten Historie zu fluten. exclude_applied=True
-        blendet Tasks aus, deren Patch schon angewendet wurde (payload.applied) --
-        die abgeschlossene, angewandte Arbeit verschwindet dann aus der Uebersicht.
+        nur Tasks dieses Owners; mit dag_id-Filter nur Tasks dieses DAGs (I-E.11:
+        der Anwender kann den Endzustand seines DAGs abfragen, statt ihn im
+        rotierenden Uebersichts-Fenster zu verlieren). Reihenfolge created_at asc
+        (newest_first=True -> desc, fuer die begrenzte done-Liste). limit begrenzt
+        die Zeilenzahl -- so laesst sich eine kurze Liste zuletzt abgeschlossener
+        Tasks holen, ohne die Uebersicht mit der gesamten Historie zu fluten.
+        exclude_applied=True blendet Tasks aus, deren Patch schon angewendet wurde
+        (payload.applied) -- die abgeschlossene, angewandte Arbeit verschwindet
+        dann aus der Uebersicht. Jede Zeile traegt node_id + applied (I-E.11:
+        DAG-Struktur und Apply-Stand sichtbar, statt nur in der DB).
         """
         placeholders = ",".join(["%s"] * len(statuses))
         params: list[Any] = list(statuses)
@@ -812,6 +886,10 @@ class Queue:
         if owner is not None:
             owner_clause = " AND owner = %s"
             params.append(owner)
+        dag_clause = ""
+        if dag_id is not None:
+            dag_clause = " AND dag_id = %s"
+            params.append(dag_id)
         applied_clause = ""
         if exclude_applied:
             applied_clause = " AND NOT COALESCE((payload->>'applied')::boolean, false)"
@@ -821,16 +899,18 @@ class Queue:
             limit_clause = " LIMIT %s"
             params.append(limit)
         rows = self._conn.execute(
-            f"SELECT id, dag_id, task_type, scope, model, status, "
-            f"attempts, created_at, claimed_at "
+            f"SELECT id, dag_id, node_id, task_type, scope, model, status, "
+            f"attempts, created_at, claimed_at, "
+            f"COALESCE((payload->>'applied')::boolean, false) "
             f"FROM queue WHERE status IN ({placeholders}){owner_clause}"
-            f"{applied_clause} "
+            f"{dag_clause}{applied_clause} "
             f"ORDER BY created_at {order}{limit_clause}",
             params,
         ).fetchall()
         keys = (
             "id",
             "dag_id",
+            "node_id",
             "task_type",
             "scope",
             "model",
@@ -838,6 +918,7 @@ class Queue:
             "attempts",
             "created_at",
             "claimed_at",
+            "applied",
         )
         return [dict(zip(keys, row, strict=True)) for row in rows]
 

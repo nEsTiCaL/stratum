@@ -28,7 +28,19 @@ GET  /                    -> index.html (Dashboard, kein Auth)
 GET  /api/status          -> {"status":"ok"} (Health-Check, kein Auth)
 GET  /api/whoami          -> {"owner":"..."} (Key-Validierung)
 POST /api/task            -> Task einreihen -> {"id": N} (Details unten)
-GET  /api/tasks           -> Owner-gefilterte Task-Liste (Polling-Basis, inkl. Progress)
+GET  /api/tasks           -> Owner-gefilterte Task-Liste (Polling-Basis, inkl. Progress).
+                             I-E.11: ?dag_id=X (ALLE Status des DAGs inkl. done/
+                             superseded, chronologisch), ?status=done,failed
+                             (kommagetrennt; unbekannt -> 400), ?limit=N (ohne
+                             dag_id: neueste zuerst). Ohne Params: Dashboard-
+                             Fenster (offene + letzte 20 done ohne applied) --
+                             fuer DAG-Endzustaende IMMER dag_id nutzen (E-11:
+                             das Fenster rotiert, mark_applied blendet aus).
+                             Zeilen tragen node_id + applied.
+GET  /api/task/{id}       -> Einzel-GET voller Queue-Zustand (I-E.11): dag_id,
+                             node_id, depends_on, attempts, payload (applied,
+                             gate_scopes, verify_feedback, ...), Zeitstempel;
+                             403 fremder Owner, 404 unbekannt
 GET  /api/result/{id}     -> Artefakt eines done-Tasks (I-REST.1, Details unten)
 GET  /api/prompt/{id}     -> Prompt eines Tasks (Owner-Check)
 POST /api/claim/{id}      -> Task claimen (Owner-Check) -> EIN kombiniertes Feld `prompt`
