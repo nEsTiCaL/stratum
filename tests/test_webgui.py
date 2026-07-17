@@ -761,6 +761,74 @@ class TestTasksFilterAndSingleGet:
             assert c.get("/api/task/1").status_code == 401
 
 
+class TestCancelEndpoint:
+    """I-E.7 (Befund E-7): POST /api/task/{id}/cancel bricht den ganzen DAG ab,
+    zu dem der Task gehoert -- offene Knoten (pending/running) -> cancelled, loest
+    die ewig-pending-Nachfolger eines terminal gefailten Knotens. done/failed
+    bleiben Belegkette. Auth/404/403 wie GET /api/task/{id}."""
+
+    def test_cancel_clears_open_nodes(self, conn):
+        root = _insert_task_row(conn, dag_id="cx", node_id="n1", status="done")
+        _insert_task_row(conn, dag_id="cx", node_id="n2", status="failed")
+        _insert_task_row(conn, dag_id="cx", node_id="n3", status="pending")
+        _insert_task_row(conn, dag_id="cx", node_id="n4", status="running")
+        _insert_task_row(conn, dag_id="anderer", node_id="m1", status="pending")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            # Abbruch ueber IRGENDEINEN Knoten des DAG (hier den done-Wurzelknoten):
+            resp = c.post(f"/api/task/{root}/cancel", headers=AUTH)
+            assert resp.status_code == 200
+            assert resp.json() == {"dag_id": "cx", "cancelled": 2}
+            by_node = {
+                t["node_id"]: t["status"]
+                for t in c.get("/api/tasks?dag_id=cx", headers=AUTH).json()
+            }
+            other = c.get("/api/tasks?dag_id=anderer", headers=AUTH).json()
+        assert by_node["n3"] == "cancelled"
+        assert by_node["n4"] == "cancelled"
+        assert by_node["n1"] == "done"  # Belegkette
+        assert by_node["n2"] == "failed"  # Belegkette
+        assert other[0]["status"] == "pending"  # anderer DAG unberuehrt
+
+    def test_cancel_idempotent(self, conn):
+        root = _insert_task_row(conn, dag_id="cx", node_id="n1", status="pending")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.post(f"/api/task/{root}/cancel", headers=AUTH).json() == {
+                "dag_id": "cx",
+                "cancelled": 1,
+            }
+            assert c.post(f"/api/task/{root}/cancel", headers=AUTH).json() == {
+                "dag_id": "cx",
+                "cancelled": 0,
+            }
+
+    def test_cancelled_status_filter(self, conn):
+        # 'cancelled' ist ein gueltiger Filterwert (History-Sicht, I-E.13-Vorlauf).
+        _insert_task_row(conn, dag_id="cx", node_id="n1", status="cancelled")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            r = c.get("/api/tasks?status=cancelled", headers=AUTH)
+            assert r.status_code == 200
+            assert {t["status"] for t in r.json()} == {"cancelled"}
+
+    def test_cancel_foreign_owner_403(self, conn):
+        tid = _insert_task_row(conn, dag_id="d", node_id="n1", owner="fremd")
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.post(f"/api/task/{tid}/cancel", headers=AUTH).status_code == 403
+
+    def test_cancel_unknown_404(self, conn):
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.post("/api/task/999999/cancel", headers=AUTH).status_code == 404
+
+    def test_cancel_requires_auth(self, conn):
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            assert c.post("/api/task/1/cancel").status_code == 401
+
+
 class TestSettingsEndpoint:
     _DEFAULTS = {
         "auto_apply": True,

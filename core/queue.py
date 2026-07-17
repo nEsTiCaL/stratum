@@ -659,6 +659,36 @@ class Queue:
                 )
                 return cur.rowcount
 
+    def cancel_dag(self, dag_id: str) -> int:
+        """Bricht einen ganzen DAG ab (I-E.7, Befund E-7): alle OFFENEN Knoten
+        (pending/running) des `dag_id` werden auf status='cancelled' gesetzt und
+        sind nicht mehr claimbar (claim() sieht nur 'pending'). done/failed/
+        superseded bleiben als Belegkette stehen -- Zustand markieren statt Zeilen
+        loeschen (im Geist der I-6-Versionierung).
+
+        Motivation: ein terminal gefailter Knoten liess seine depends_on-Nachfolger
+        (Geschwister-Goals, Sammel-Gate) fuer immer 'pending' haengen -- toter
+        Queue-Bestand ohne REST-Weg zum Aufraeumen (E-7). cancel_dag ist dieser Weg.
+
+        Abgrenzung: discard_dag LOESCHT alle Zeilen (Plan-Discard, verwirft die
+        Belegkette); supersede_subtree betrifft nur EINEN Teilbaum und nutzt den
+        Status 'superseded' fuer System-Ersatz-Ketten (re-expand). cancel_dag ist
+        DAG-weit, terminal-erhaltend und der Anwender-Abbruch.
+
+        Ein evtl. gerade laufender Worker aktualisiert seine (jetzt 'cancelled')
+        'running'-Zeile spaeter noch (harmlos: seine ebenfalls stornierten
+        Nachfolger sind nicht mehr claimbar). Gibt die Zahl stornierter Zeilen
+        zurueck; idempotent (ein bereits terminaler DAG -> 0).
+        """
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE queue SET status = 'cancelled', claimed_at = NULL "
+                    "WHERE dag_id = %s AND status IN ('pending', 'running')",
+                    (dag_id,),
+                )
+                return cur.rowcount
+
     def is_terminal_gate(self, item: QueueItem) -> bool:
         """True, wenn KEIN weiteres Gate im selben DAG (direkt) auf `item` haengt
         (I-REK.4). Der Auto-Apply-Nachlauf darf erst nach dem LETZTEN gruenen Gate

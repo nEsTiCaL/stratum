@@ -41,6 +41,14 @@ GET  /api/task/{id}       -> Einzel-GET voller Queue-Zustand (I-E.11): dag_id,
                              node_id, depends_on, attempts, payload (applied,
                              gate_scopes, verify_feedback, ...), Zeitstempel;
                              403 fremder Owner, 404 unbekannt
+POST /api/task/{id}/cancel -> DAG-Abbruch (I-E.7, Befund E-7): alle OFFENEN
+                             Knoten (pending/running) des DAG zu {id} -> Status
+                             'cancelled' (nicht claimbar); done/failed/superseded
+                             bleiben Belegkette. Abbruch ueber IRGENDEINEN Knoten
+                             des DAG (dag_id wird aufgeloest). -> {dag_id,
+                             cancelled:N}; idempotent (terminaler DAG -> 0), 403
+                             fremder Owner, 404 unbekannt. ('cancelled' ist auch
+                             ein gueltiger ?status=-Filterwert.)
 GET  /api/result/{id}     -> Artefakt eines done-Tasks (I-REST.1, Details unten)
 GET  /api/prompt/{id}     -> Prompt eines Tasks (Owner-Check)
 POST /api/claim/{id}      -> Task claimen (Owner-Check) -> EIN kombiniertes Feld `prompt`

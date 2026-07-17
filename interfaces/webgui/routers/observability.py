@@ -97,7 +97,7 @@ async def whoami(owner: str = Depends(require_owner)) -> dict[str, str]:
     return {"owner": owner}
 
 
-_TASK_STATUSES = ("pending", "running", "done", "failed", "superseded")
+_TASK_STATUSES = ("pending", "running", "done", "failed", "superseded", "cancelled")
 
 
 @router.get("/api/tasks")
@@ -122,7 +122,7 @@ async def get_tasks(
                  Belegkette), applied-Ausblendung AUS (das Feld `applied`
                  steht je Zeile in der Antwort).
       status  -> kommagetrennte Statuswerte (pending,running,done,failed,
-                 superseded); unbekannter Wert -> 400.
+                 superseded,cancelled); unbekannter Wert -> 400.
       limit   -> begrenzt die Zeilenzahl; ohne dag_id neueste zuerst
                  ("die letzten N"), mit dag_id chronologisch."""
     if dag_id is None and status is None and limit is None:
@@ -183,6 +183,31 @@ async def get_task(
         raise HTTPException(status_code=403, detail="Kein Zugriff")
     detail.pop("capability_id", None)  # interner Workspace-Schluessel
     return detail
+
+
+@router.post("/api/task/{task_id}/cancel")
+async def cancel_task(
+    task_id: int,
+    owner: str = Depends(require_owner),
+    deps: AppDeps = Depends(get_deps),
+) -> dict[str, Any]:
+    """Bricht den ganzen DAG ab, zu dem `task_id` gehoert (I-E.7, Befund E-7).
+
+    Alle OFFENEN Knoten (pending/running) des DAG werden auf 'cancelled' gesetzt
+    und sind nicht mehr claimbar; done/failed/superseded bleiben als Belegkette.
+    Loest die ewig-pending-Nachfolger eines terminal gefailten Knotens auf -- ein
+    gefailtes Goal liess bisher Geschwister + Sammel-Gate fuer immer pending
+    haengen (toter Queue-Bestand ohne REST-Weg zum Aufraeumen). Der Abbruch geht
+    ueber IRGENDEINEN Knoten des DAG (auch einen bereits terminalen); die dag_id
+    wird daraus aufgeloest. Idempotent: ein bereits terminaler DAG -> cancelled=0.
+    403 bei fremdem Owner, 404 bei unbekannter id (wie GET /api/task/{id})."""
+    detail = deps.queue.get_task_detail(task_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Task nicht gefunden")
+    if detail["owner"] != owner:
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
+    cancelled = deps.queue.cancel_dag(detail["dag_id"])
+    return {"dag_id": detail["dag_id"], "cancelled": cancelled}
 
 
 def _settings_state(deps: AppDeps) -> dict[str, Any]:

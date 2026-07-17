@@ -397,13 +397,18 @@ E-6  Race ensure_indexed (create_task, synchron) <-> DetWorker-index-Knoten:
      Rest-DAG haengt. Nicht deterministisch (Retry lief durch; Standalone-
      index idempotent-gruen). Kandidat: put_artifact supersede-or-skip
      (upsert) ODER Hash-Skip unmittelbar vor dem Write im det-Pfad.
-E-7  Kein Task-/DAG-Abbruch-Endpoint: DAG 177-180 (E-6-Opfer) haengt fuer
+E-7  [BEHOBEN I-E.7, 2026-07-17; +13 Tests, 1356 gruen, LIVE offen bis Redeploy]
+     Kein Task-/DAG-Abbruch-Endpoint: DAG 177-180 (E-6-Opfer) haengt fuer
      immer pending (depends_on auf failed). Anwender kann via REST nicht
      aufraeumen. Kandidat: POST /api/task/{id}/cancel bzw. DAG-Abbruch.
      Belege #2/#3 (2026-07-17): F5-Wdh-Sammel-Gates 303/311 haengen nach
      lint_gate-Terminal-Fail ewig pending (303 nach 3 h gemessen); G4
      laesst 12 von 15 Knoten ewig pending (g1-g4 komplett), weil Goal 0
      terminal failte -- ohne Cancel sammelt sich toter Queue-Bestand.
+     FIX (I-E.7): POST /api/task/{id}/cancel -> queue.cancel_dag(dag_id) setzt
+     alle OFFENEN Knoten des DAG auf 'cancelled' (Migration 0013, eigener Status
+     != 'superseded'); done/failed bleiben Belegkette; idempotent; 403/404 wie
+     GET /api/task/{id}. _TASK_STATUSES += cancelled (Filter/History).
 E-8  [BEHOBEN I-E.8, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
      GET /api/result/{id} fuer done-Gate-Knoten -> 404 "Kein Ergebnis
      verfuegbar", obwohl lint_report/test_report als current in der DB

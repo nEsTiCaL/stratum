@@ -378,7 +378,7 @@ I-E.19   Expansion-Reaper (Hook-Nachholer)        det  I-E.1      2      E-19: m
                                                                          Tick (60s, Kappung 3; Startup-Race 2x belegt)   fertig 2026-07-17 + LIVE gleicher Tag (No-Op 285 + Heilung 296 in +19 ms)
 I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen   fertig 2026-07-17 (LIVE nach Redeploy)
 I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET   fertig 2026-07-17 + LIVE gleicher Tag (alle R6-Polls blindfrei)
-I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar
+I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar   fertig 2026-07-17 (LIVE nach Redeploy + migrate 0013)
          DAG-Abbruch
 I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar
 I-E.4    Key-/Owner-Admin-Endpoint                gem  -          2      E-4: REST statt CLI (entsperrt auch agentische
@@ -415,9 +415,19 @@ Welle 2): GET /api/result mappt jetzt lint_gate->lint_report + test_gate->
 test_report (2 additive Eintraege in TASK_TYPE_TO_ARTIFACT_TYPE, EIN Ort;
 Gate-Worker legen direkt ab, nur der Lesepfad war blind) -> Gate-Fail-Gruende
 via REST statt nur docker logs; +2 Tests, 1343 gruen, ruff clean, LIVE nach
-Redeploy. NAECHSTES (Nutzer-Entscheid via arbeitsplan): weitere Welle-2-
-Haeppchen (I-E.7 Cancel, I-E.13 Task-History, I-E.4 Key-Admin) ODER K5 (B4;
-G5 sobald rgreen5-Key liegt), danach Testuser-Uebergabe vorbereiten.
+Redeploy. I-E.7 FERTIG (2026-07-17, Welle 2): POST /api/task/{id}/cancel ->
+queue.cancel_dag(dag_id) setzt alle OFFENEN Knoten (pending/running) des DAG auf
+den NEUEN terminalen Status 'cancelled' (Migration 0013; bewusst != 'superseded',
+der bleibt der Eskalations-/Ersatz-Kette -> Belegkette I-E.13 ehrlich), done/
+failed/superseded bleiben Historie; loest die ewig-pending-Nachfolger eines
+terminal gefailten Knotens (Belege: Sammel-Gates 303/311, 12 Knoten bei 314/315).
+Abbruch ueber irgendeinen DAG-Knoten (dag_id via get_task_detail), idempotent,
+403/404 wie GET /api/task/{id}; _TASK_STATUSES += cancelled. Abgrenzung:
+discard_dag LOESCHT (Plan-Discard), supersede_subtree nur Teilbaum. +13 Tests,
+1356 gruen, ruff clean, LIVE nach Redeploy (+ migrate 0013). NAECHSTES
+(Nutzer-Entscheid via arbeitsplan): Rest Welle 2 (I-E.13 Task-History, I-E.4
+Key-Admin) ODER K5 (B4; G5 sobald rgreen5-Key liegt), danach Testuser-Uebergabe
+vorbereiten.
 
 ## Status
 

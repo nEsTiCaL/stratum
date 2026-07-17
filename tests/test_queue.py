@@ -481,6 +481,88 @@ class TestSupersedeSubtree:
         assert q.supersede_subtree("d", "does-not-exist") == 0
 
 
+class TestCancelDag:
+    """I-E.7 (Befund E-7): cancel_dag bricht einen ganzen DAG ab -- alle OFFENEN
+    Knoten (pending/running) -> 'cancelled'. done/failed/superseded bleiben als
+    Belegkette. Loest die ewig-pending-Nachfolger eines terminal gefailten Knotens
+    (Geschwister-Goals + Sammel-Gate), fuer die es bisher keinen REST-Weg zum
+    Aufraeumen gab. Anders als discard_dag (loescht Zeilen, Plan-Discard) und
+    supersede_subtree (nur Teilbaum, Status 'superseded' fuer Ersatz-Ketten)."""
+
+    def _dag_stuck(self, conn):
+        # Reproduziert den E-7-Fall exakt: n2 failt terminal -> n3/n4 (depends_on
+        # n2) werden NIE ready (claim verlangt alle deps 'done') und haengen ewig
+        # pending. n1 ist done (Belegkette).
+        q = Queue(conn)
+        ids = q.enqueue(
+            _dag(
+                "d",
+                [
+                    _node("n1"),
+                    _node("n2", depends_on=("n1",)),
+                    _node("n3", depends_on=("n2",)),
+                    _node("n4", depends_on=("n2",)),
+                ],
+            ),
+            model="phi4-mini",
+        )
+        first = q.claim("phi4-mini")
+        assert first is not None
+        q.complete(first.id)  # n1 -> done
+        second = q.claim("phi4-mini")
+        assert second is not None
+        q.fail(second.id)  # n2 -> failed
+        assert q.claim("phi4-mini") is None  # n3/n4 haengen (dep auf failed)
+        return q, ids
+
+    def test_cancels_open_nodes(self, conn):
+        q, ids = self._dag_stuck(conn)
+        assert q.cancel_dag("d") == 2  # die zwei ewig-pending Nachfolger
+        cancelled = [i for i in ids if q.get_status(i) == "cancelled"]
+        assert len(cancelled) == 2
+
+    def test_terminal_nodes_left_as_history(self, conn):
+        q, ids = self._dag_stuck(conn)
+        q.cancel_dag("d")
+        assert sorted(q.get_status(i) for i in ids) == [
+            "cancelled",
+            "cancelled",
+            "done",
+            "failed",
+        ]
+
+    def test_cancelled_not_claimable(self, conn):
+        q, _ = self._dag_stuck(conn)
+        q.cancel_dag("d")
+        assert q.claim("phi4-mini") is None
+
+    def test_idempotent(self, conn):
+        q, _ = self._dag_stuck(conn)
+        assert q.cancel_dag("d") == 2
+        assert q.cancel_dag("d") == 0  # nichts mehr offen
+
+    def test_running_node_cancelled(self, conn):
+        # Auch ein geclaimter (running) Knoten wird storniert (best-effort:
+        # ein evtl. laufender Worker aktualisiert die Zeile danach noch, harmlos).
+        q = Queue(conn)
+        (nid,) = q.enqueue(_dag("d", [_node("n1")]), model="phi4-mini")
+        assert q.claim("phi4-mini") is not None  # n1 -> running
+        assert q.cancel_dag("d") == 1
+        assert q.get_status(nid) == "cancelled"
+
+    def test_other_dag_untouched(self, conn):
+        q, _ = self._dag_stuck(conn)
+        (other,) = q.enqueue(
+            _dag("e", [_node("m1", scope="file:b.py")]), model="phi4-mini"
+        )
+        q.cancel_dag("d")
+        assert q.get_status(other) == "pending"  # nur der genannte DAG
+
+    def test_unknown_dag_zero(self, conn):
+        q, _ = self._dag_stuck(conn)
+        assert q.cancel_dag("does-not-exist") == 0
+
+
 class TestGetTaskInfoPayload:
     """get_task_info liefert payload -> Anzeige-Endpoints lesen den echten Prompt."""
 
