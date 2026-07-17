@@ -372,8 +372,8 @@ I-E.1    Gate-Kette + Apply hinter impact-        gem  I-E.18     1      E-1: li
          Kindern (Sammel-Abschluss)                                      + atomarer Sammel-Apply (rename-Konsistenz!)   fertig 2026-07-16 + LIVE 2026-07-17
 I-E.17   No-op-Vertrag + engere Enumeration       gem  I-E.1      1      E-17: KEINE_AENDERUNG legal (done ohne
                                                                          Patch) + det-Textvorfilter je Kind   fertig 2026-07-16 + LIVE 2026-07-17
-I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: git-apply-Toleranz, Fail-Feedback
-         Formatwechsel-Sprosse)                                          mit echten Umgebungszeilen, whole-file vor re_design
+I-E.12   Patch-Apply-Robustheit (fuzzy/Feedback/  gem  I-E.1      1      E-12: Kontext-Fuzz + Fail-Feedback mit echten
+         Formatwechsel-Sprosse)                                          Umgebungszeilen   fertig 2026-07-17 (305-Diff appliziert real); whole-file-Sprosse evidenzgetrieben offen
 I-E.19   Expansion-Reaper (Hook-Nachholer)        det  I-E.1      2      E-19: missed_expansions + Re-Fire im Worker-
                                                                          Tick (60s, Kappung 3; Startup-Race 2x belegt)   fertig 2026-07-17 + LIVE gleicher Tag (No-Op 285 + Heilung 296 in +19 ms)
 I-E.8    Gate-Reports via /api/result             det  -          2      E-8: lint_gate/test_gate -> Report-Typ mappen
@@ -393,14 +393,17 @@ I-E.6    put_artifact upsert (Index-Race)         det  -          4      E-6: su
 I-E.3    Settings-Feld review_radius              det  -          4      E-3: DEFAULT_REVIEW_RADIUS tunable via API
 ```
 
-Nach Welle 1 (Stand 2026-07-17 mittags): G4 + Q1 GEFAHREN -- Q1 bestanden
+Nach Welle 1 (Stand 2026-07-17 nachmittags): G4 + Q1 GEFAHREN -- Q1 bestanden
 (REK.2 live); G4 REK.8-Mechanik bestanden, Ausfuehrung failt an E-10 + E-21
 (neu: Briefing-Scope im Plan-Pfad), test_gen-Verlust = E-20 (neu). F5-Wdh
-2x an E-12 -> I-E.12 ist der Blocker der impact-Kette und zieht VOR K5;
-danach E-21a (Einzeiler human-Pfad) + E-10/E-21b, dann K5 (B4; G5 sobald
-rgreen5-Key liegt) + G4-Wiederholung, dann Testuser-Uebergabe vorbereiten.
-Grenzbefunde je Fix in `ops_rekursionstests` (E-Liste) nachziehen (Status
-BEHOBEN + Beleg).
+2x an E-12 -> I-E.12-KERN (Kontext-Fuzz + Feedback) FERTIG + real belegt (der
+2x gescheiterte 305-Diff appliziert jetzt), Welle 1 damit vollstaendig bis auf
+die evidenzgetrieben zurueckgestellte whole-file-Sprosse. NAECHSTES (unit-
+schliessbar, kein Redeploy noetig): E-21a (Einzeiler human-Pfad plan_design) +
+E-10/E-21b (Ziel-Scope-Filter + Goal-Schritttext). Dann Redeploy -> F5-Wdh +
+G4-Wdh live nachweisen, dann K5 (B4; G5 im rgreen4-Workspace, ist leer). Danach
+Testuser-Uebergabe vorbereiten. Grenzbefunde je Fix in `ops_rekursionstests`
+(E-Liste) nachziehen (Status BEHOBEN + Beleg).
 
 ## Status
 

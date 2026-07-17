@@ -11,17 +11,25 @@ RESULTIERENDEN Inhalte, schreibt aber nichts. Der Aufrufer entscheidet, wohin
 (Verify: Temp-File + Lint; Apply-Gate: echter Tree). Sprachagnostisch -- ein
 Unified-Diff ist reine Zeilenlogik, kein Zielsprachen-Parser.
 
-Semantik: EXAKTER Kontext-Match bei POSITIONS-Fuzz (E4). Der Kontext (Kontext-
-und Minus-Zeilen eines Hunks) muss verbatim im Working Tree stehen -- KEIN
-Reinraten in fremden Kontext. ABER die deklarierte Zeilennummer (@@ -N) wird
-NICHT vertraut: LLM-Diffs setzen sie notorisch falsch (Symptom "Kontext passt
-nicht bei Zeile N"). Darum wird das Hunk-Vorbild (die erwartete zusammenhaengende
-Zeilenfolge) im Datei-Inhalt GESUCHT -- die Fundstelle am naechsten zur
-deklarierten Zeile gewinnt. Findet sich der Kontext nirgends, -> ok=False
-(echter Verify-fail). Das repariert die haeufigste LLM-Patch-Untreue (richtiger
-Kontext, falsche Zeile), ohne die Anwendung in falschen Kontext zu erlauben.
+Semantik: Kontext-Match bei POSITIONS-Fuzz (E4) UND KONTEXT-Fuzz (I-E.12). Das
+Hunk-Vorbild (die erwartete zusammenhaengende Zeilenfolge aus Kontext- und
+Minus-Zeilen) wird im Datei-Inhalt GESUCHT -- die deklarierte Zeilennummer (@@ -N)
+wird NICHT vertraut (LLM-Diffs setzen sie notorisch falsch); die Fundstelle am
+naechsten zur deklarierten Zeile gewinnt.
 
-Eine zweite Toleranz betrifft die Hunk-Kopf-Zaehlung: folgen nach erschoepfter
+Kontext-Fuzz (I-E.12, Befund E-12): LLM-Diffs fabrizieren zusaetzlich die
+KONTEXTZEILEN selbst -- sie kollabieren Leerzeilen/Rumpf oder paraphrasieren, so
+dass das volle Vorbild nirgends verbatim steht, obwohl die Aenderung eindeutig
+ist. Wie patch(1) werden darum reine Kontextzeilen (' ') an den Hunk-RAENDERN
+schrittweise verworfen, bis das (verkuerzte) Vorbild sich verankert -- am
+wenigsten Trimmen zuerst (mehr Kontext = sicherer). Die MINUS-Zeilen ('-') werden
+NIE weggefuzzt: sie sind der last-tragende Anker und muessen verbatim stehen. Eine
+reine Einfuegung ohne jede passende Kontextzeile bleibt damit ein Fehler (kein
+Reinraten in fremden Kontext). Findet sich auch getrimmt nichts, -> ok=False; der
+reason zeigt dann den TATSAECHLICHEN Datei-Inhalt um die deklarierte Stelle
+(Re-Anker-Hilfe fuers naechste Modell-Briefing).
+
+Eine dritte Toleranz betrifft die Hunk-Kopf-Zaehlung: folgen nach erschoepfter
 deklarierter Zeilenzahl weitere +/- Zeilen (und kein Struktur-Header), gehoeren
 sie noch zum Hunk -- Inhalt schlaegt Zaehlung.
 """
@@ -146,7 +154,7 @@ def _parse(diff: str) -> list[_FileDiff]:
                     # (und KEIN Struktur-Header), gehoeren sie noch zum Hunk --
                     # Inhalt schlaegt Zaehlung. Sonst wuerde der Rest still
                     # verworfen und die Datei trunkiert appliziert.
-                    if tag in "+-" and not _STRUCTURAL.match(body):
+                    if tag in ("+", "-") and not _STRUCTURAL.match(body):
                         hunk.lines.append(body)
                         i += 1
                         continue
@@ -167,18 +175,114 @@ def _parse(diff: str) -> list[_FileDiff]:
     return files
 
 
-def _mismatch(path: str, hunk_start: int, cursor: int, cur: list[str], want: str):
-    got = cur[cursor] if cursor < len(cur) else "<EOF>"
+def _locate_failure(path: str, hunk: _Hunk, cur_lines: list[str]) -> str:
+    """Reason, wenn ein Hunk sich (auch mit Fuzz) nicht platzieren liess. Zeigt
+    die erwartete Anker-Zeile UND den TATSAECHLICHEN Datei-Inhalt um die
+    deklarierte Stelle -- so kann das naechste Modell-Briefing re-ankern statt am
+    knappen "erwartet X, gefunden <Datei-Anfang>" zu scheitern (I-E.12 Feedback)."""
+    image = _old_image(hunk.lines)
+    first = image[0] if image else ""
+    declared = hunk.old_start
+    lo = max(0, declared - 4)
+    hi = min(len(cur_lines), declared + 3)
+    if lo < hi:
+        window = "\n".join(f"  {i + 1}: {cur_lines[i]}" for i in range(lo, hi))
+    else:
+        window = "  (Datei leer)"
     return (
-        f"{path}: Kontext passt nicht bei Zeile {cursor + 1} (Hunk @{hunk_start}); "
-        f"erwartet {want!r}, gefunden {got!r}"
+        f"{path}: Kontext passt nicht (Hunk @{declared}) -- erwartete Zeile "
+        f"{first!r} liess sich nicht im passenden Kontext verankern. "
+        f"Tatsaechlicher Datei-Inhalt um Zeile {declared}:\n{window}"
     )
 
 
-def _old_image(hunk: _Hunk) -> list[str]:
+def _old_image(lines: list[str]) -> list[str]:
     """Die Zeilen, die VOR dem Hunk im Working Tree stehen muessen (Kontext ' '
     + entfernte '-', in Reihenfolge; '+' und '\\' zaehlen nicht zum Vorbild)."""
-    return [bl[1:] for bl in hunk.lines if bl[:1] in (" ", "-")]
+    return [bl[1:] for bl in lines if bl[:1] in (" ", "-")]
+
+
+def _context_ends(lines: list[str]) -> tuple[int, int]:
+    """Laenge des fuehrenden und abschliessenden reinen Kontext-Laufs (' '). Nur
+    diese Raender duerfen weggefuzzt werden. Ein '\\'-Marker (No-newline) am Ende
+    ist kein Kontext und sperrt das Trailing-Trimmen (Newline-Semantik bleibt)."""
+    lead = 0
+    for bl in lines:
+        if bl[:1] == " ":
+            lead += 1
+        else:
+            break
+    trail = 0
+    for bl in reversed(lines):
+        if bl[:1] == " ":
+            trail += 1
+        else:
+            break
+    return lead, trail
+
+
+def _iter_fuzz(lead: int, trail: int):
+    """(drop_lead, drop_trail)-Paare in aufsteigender Trim-Summe -- (0,0) zuerst,
+    dann so wenig Kontext-Verlust wie moeglich (mehr Kontext = staerkerer Anker)."""
+    seen: set[tuple[int, int]] = set()
+    for total in range(lead + trail + 1):
+        for dl in range(min(total, lead) + 1):
+            dt = total - dl
+            if dt > trail or (dl, dt) in seen:
+                continue
+            seen.add((dl, dt))
+            yield dl, dt
+
+
+def _emit_hunk(
+    cur_lines: list[str], lines: list[str], start: int, cursor: int
+) -> tuple[list[str], int, bool]:
+    """Wendet einen (ggf. getrimmten) Hunk an der gefundenen Position `start` an.
+    Setzt voraus, dass das Vorbild dort matcht (via _find_hunk_pos verifiziert) --
+    gibt die zu emittierenden Zeilen (inkl. unveraendertem Vorlauf), den neuen
+    Cursor und das No-newline-Flag zurueck."""
+    out = list(cur_lines[cursor:start])
+    c = start
+    no_newline = False
+    prev = ""
+    for bl in lines:
+        tag, text = bl[:1], bl[1:]
+        if tag == "\\":
+            if prev in (" ", "+"):
+                no_newline = True
+            continue
+        if tag == " ":
+            out.append(text)
+            c += 1
+        elif tag == "-":
+            c += 1
+        elif tag == "+":
+            out.append(text)
+        prev = tag
+    return out, c, no_newline
+
+
+def _place_hunk(
+    cur_lines: list[str], hunk: _Hunk, cursor: int
+) -> tuple[list[str], int, bool] | None:
+    """Platziert einen Hunk mit Positions- UND Kontext-Fuzz. Probiert die
+    Trim-Stufen aus _iter_fuzz (wenig Trimmen zuerst); die erste, deren getrimmtes
+    Vorbild sich verankert, gewinnt. None = keine Stufe platzierbar."""
+    declared = hunk.old_start - 1 if hunk.old_start > 0 else 0
+    lead, trail = _context_ends(hunk.lines)
+    for dl, dt in _iter_fuzz(lead, trail):
+        end = len(hunk.lines) - dt if dt else len(hunk.lines)
+        trimmed = hunk.lines[dl:end]
+        image = _old_image(trimmed)
+        # Getrimmt auf ein leeres Vorbild -> kein Anker mehr: nur zulaessig, wenn
+        # der Hunk ORIGINAL schon kontextlos war (reine Einfuegung an @@-Stelle).
+        if not image and (dl or dt):
+            continue
+        start = _find_hunk_pos(cur_lines, image, declared + dl, cursor)
+        if start is None:
+            continue
+        return _emit_hunk(cur_lines, trimmed, start, cursor)
+    return None
 
 
 def _find_hunk_pos(
@@ -225,36 +329,15 @@ def _apply_one(fd: _FileDiff, read_current: ReadCurrent) -> FileChange | str:
     cursor = 0
     new_no_newline = False
     for hunk in fd.hunks:
-        declared = hunk.old_start - 1 if hunk.old_start > 0 else 0
-        # Positions-Fuzz: den Hunk-Kontext suchen statt der deklarierten Zeile
-        # zu trauen (LLM-Diffs zaehlen falsch). Suche ab cursor -> Hunks bleiben
-        # geordnet und ueberlappungsfrei.
-        image = _old_image(hunk)
-        start = _find_hunk_pos(cur_lines, image, declared, cursor)
-        if start is None:
-            first = image[0] if image else ""
-            return _mismatch(path, hunk.old_start, cursor, cur_lines, first)
-        out.extend(cur_lines[cursor:start])
-        cursor = start
-        prev = ""
-        for bl in hunk.lines:
-            tag, text = bl[:1], bl[1:]
-            if tag == "\\":
-                if prev in (" ", "+"):
-                    new_no_newline = True
-                continue
-            if tag == " ":
-                if cursor >= len(cur_lines) or cur_lines[cursor] != text:
-                    return _mismatch(path, hunk.old_start, cursor, cur_lines, text)
-                out.append(text)
-                cursor += 1
-            elif tag == "-":
-                if cursor >= len(cur_lines) or cur_lines[cursor] != text:
-                    return _mismatch(path, hunk.old_start, cursor, cur_lines, text)
-                cursor += 1
-            elif tag == "+":
-                out.append(text)
-            prev = tag
+        # Positions- + Kontext-Fuzz: den Hunk-Kontext suchen (getrimmt, falls das
+        # volle Vorbild fabriziert ist) statt der deklarierten Zeile zu trauen.
+        # Suche ab cursor -> Hunks bleiben geordnet und ueberlappungsfrei.
+        placed = _place_hunk(cur_lines, hunk, cursor)
+        if placed is None:
+            return _locate_failure(path, hunk, cur_lines)
+        emitted, cursor, no_newline = placed
+        out.extend(emitted)
+        new_no_newline = new_no_newline or no_newline
     out.extend(cur_lines[cursor:])
 
     if delete:

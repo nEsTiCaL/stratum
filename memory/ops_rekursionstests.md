@@ -455,7 +455,10 @@ E-11 [BEHOBEN I-E.11, 2026-07-17] /api/tasks-Fenster verliert die EIGENEN
      /api/task/{id} lieferte payload-Detail (impact.symbols, no_change_ok,
      verify_feedback) fuer jede Diagnose; ?status=quatsch -> 400. Der
      K4-Mess-Engpass (Endzustand nur via DB) ist zu.
-E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
+E-12 [KERN BEHOBEN I-E.12, 2026-07-17; REAL BELEGT (305-Diff appliziert),
+     LIVE Ende-zu-Ende offen bis Redeploy; whole-file-Sprosse
+     evidenzgetrieben zurueckgestellt]
+     Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      auf die 10k-Datei plan_format.py reproduzierbar applied=false
      ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
      das knappe Rueckkanten-Feedback reicht dem Modell NICHT zur Reparatur
@@ -478,6 +481,24 @@ E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      Minus-Zeilen sind im File EINDEUTIG). Kleine Kinder (validator/
      worker, je 2 Zeilen) applizieren nach 0-1 Retries. I-E.12 ist das
      LETZTE offene Welle-1-Haeppchen und rueckt VOR K5.
+     FIX (I-E.12, core/patch_apply.py): Kontext-Fuzz im Stil von patch(1) --
+     reine Kontextzeilen (' ') an den Hunk-RAENDERN schrittweise verwerfen
+     (wenig zuerst), bis das getrimmte Vorbild sich verankert; Minus-Zeilen
+     werden NIE getrimmt (last-Anker, verbatim). So platziert sich ein Hunk,
+     dessen Rand-Kontext qwen fabriziert hat, an der verbatim vorhandenen
+     Minus-Zeile; die weggefuzzten Zeilen bleiben der echte Datei-Inhalt
+     (kein Reinraten -- reine Einfuegung ohne passenden Kontext bleibt
+     Fehler). Zusaetzlich _locate_failure: der Fail-Grund zeigt den ECHTEN
+     Datei-Inhalt um die deklarierte Zeile (+/-3, nummeriert) statt
+     "gefunden <Datei-Anfang>" -> re_act kann re-ankern. Parse-Fix nebenbei:
+     Overflow-Zweig `tag in "+-"` matchte das Schluss-'' aus split("\n")
+     (`'' in "+-"` ist True) -> exakte Membership. REAL BELEGT: der ECHTE
+     305-Diff (2x "Kontext passt nicht") appliziert jetzt gegen die ECHTE
+     review_format.py -> GENAU 3 Zeilen (131/148/156) umbenannt, sonst
+     byte-gleich, beide Altnamen weg. +6 Tests, 1333 gruen, ruff clean.
+     Details `spec_rekursion` I-E.12. OFFEN: die whole-file-Rewrite-Sprosse
+     VOR re_design (3. Kandidat) -- Fuzz loest alle bekannten E-12-Faelle;
+     Sprosse erst nachziehen, wenn ein Live-Fall den Fuzz ueberlebt.
 E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
      TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
      die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.

@@ -966,6 +966,53 @@ Lauf 1+2, G4) ohne einen blinden Poll; /api/task/{id} lieferte die Diagnose-
 Payloads (impact.symbols, no_change_ok, verify_feedback) je Knoten;
 ?status=quatsch -> 400 live. Details `ops_rekursionstests`.
 
+## I-E.12: Patch-Apply-Robustheit -- Kontext-Fuzz + Feedback (2026-07-17, fertig)
+
+Befund E-12 (`ops_rekursionstests`, F5-Wiederholung 2x reproduziert = Blocker der
+impact-Kette): qwen-Diffs FABRIZIEREN die Kontextzeilen eines Hunks (kollabieren
+Leerzeilen/Rumpf, paraphrasieren), die ENTFERNTE Zeile stimmt aber. Der Applier
+suchte das volle Vorbild verbatim -> nicht gefunden -> "Kontext passt nicht" ->
+Kappung -> lint_gate terminal, Sammel-Gate haengt. Der FINALE Patch war jeweils
+semantisch perfekt; nur die Anwendung scheiterte auf der FORMATebene.
+
+- **Kontext-Fuzz** (core/patch_apply.py): der bestehende Positions-Fuzz (Vorbild
+  suchen statt @@-Zeile trauen) wird um patch(1)-Stil-Trimmen ergaenzt. Pro Hunk
+  probiert `_place_hunk` die Trim-Stufen aus `_iter_fuzz(lead, trail)` -- reine
+  Kontextzeilen (' ') an den RAENDERN schrittweise verwerfen, WENIG Trimmen
+  zuerst (mehr Kontext = staerkerer Anker). Die MINUS-Zeilen ('-') werden NIE
+  getrimmt (last-tragender Anker, muss verbatim stehen). `_context_ends` misst
+  die fuehrenden/abschliessenden ' '-Laeufe; `_emit_hunk` wendet den getrimmten
+  Hunk an der gefundenen Stelle an (die weggefuzzten Rand-Kontextzeilen bleiben
+  der ECHTE Datei-Inhalt, qwens Fabrikation wird verworfen). Sicherheit:
+  getrimmt auf ein LEERES Vorbild (nur bei reiner Einfuegung ohne jede passende
+  Kontextzeile) -> uebersprungen, KEIN Reinraten. Invariante "kein Apply in
+  fremden Kontext" bleibt: nur reine Rand-Kontextzeilen fallen, interner Kontext
+  bei den Aenderungen und alle Minus-Zeilen muessen verbatim matchen.
+- **Feedback mit echten Umgebungszeilen** (`_locate_failure`): laesst sich ein
+  Hunk auch getrimmt nicht platzieren, zeigt der reason jetzt den TATSAECHLICHEN
+  Datei-Inhalt um die deklarierte Zeile (+/-3, mit Nummern) statt "erwartet X,
+  gefunden <Datei-Anfang>". Das naechste re_act-Briefing kann so re-ankern. Der
+  reason traegt weiter "Kontext passt nicht" (Bestandsvertrag).
+- **Parse-Fix nebenbei**: der Overflow-Zweig pruefte `tag in "+-"`; fuer die
+  Schluss-Leerzeile aus `diff.split("\n")` ist `'' in "+-"` in Python True ->
+  ein Geister-'' wurde ans Hunk-Ende gehaengt (der alte Walk ignorierte es, der
+  Trailing-Fuzz nicht). Jetzt exakte Membership `tag in ("+", "-")`.
+
+Nicht in diesem Paket (evidenzgetrieben zurueckgestellt, "messen vor optimieren"):
+die **whole-file-Rewrite-Sprosse VOR re_design** (dritter E-12-Kandidat). Der
+Kontext-Fuzz loest ALLE bekannten E-12-Faelle (F5-Wdh real belegt, s.u.); die
+Format-Sprosse ist Versicherung gegen strukturell kaputte Diffs (falsche
+Minus-Zeilen, Trunkierung), fuer die es bisher KEINEN Live-Beleg nach dem Fuzz
+gibt. Erst nachziehen, wenn ein Live-Fall den Fuzz ueberlebt.
+
+Akzeptanz: +6 test_patch_apply (Leading-/Trailing-/All-Kontext-Fuzz, F5-Multi-
+Hunk-Shape, Sicherheit reine Einfuegung, Feedback-Fenster), 1333 gruen, ruff
+clean. REAL-BELEG (staerkster Nachweis): der ECHTE 305-Diff (in Produktion 2x
+"Kontext passt nicht") gegen die ECHTE review_format.py mit dem neuen Applier ->
+ok=True, GENAU 3 Zeilen umbenannt (131/148/156), Datei sonst byte-gleich, beide
+Altnamen im Code weg. Live-Beleg Ende-zu-Ende (F5-Wdh bis Auto-Apply) nach dem
+naechsten Redeploy.
+
 ## Handoff-Konvention je Paket
 
 Abschluss = Suite gruen + ruff check/format gruen + arbeitsplan-Status +

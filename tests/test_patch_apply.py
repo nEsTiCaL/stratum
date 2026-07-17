@@ -201,3 +201,135 @@ class TestFuzzyPosition:
         assert r.ok
         # Einfuegung nach dem 'p' bei Zeile 5 (naechstes zur Deklaration).
         assert r.changes[0].new_content == "p\nx\np\nx\np\nQ\nx\n"
+
+
+class TestFuzzContext:
+    """I-E.12: Kontext-Fuzz. LLM-Diffs fabrizieren die Kontextzeilen eines Hunks
+    (kollabieren Leerzeilen/Rumpf, paraphrasieren) -- die ENTFERNTE Zeile ('-')
+    stimmt, aber das volle Kontext-Bild steht so nirgends im File. patch-Stil-Fuzz:
+    reine Kontextzeilen ('` `') an den Hunk-RAENDERN verwerfen, bis die Aenderungs-
+    zeilen verankert sind. Minus-Zeilen werden NIE weggefuzzt (last-Anker)."""
+
+    def test_leading_context_collapsed_applies(self):
+        # qwen-Muster: 2 fabrizierte Kontextzeilen VOR der Minus-Zeile (im File
+        # liegen dazwischen Rumpf + Leerzeilen). Trailing-Kontext passt.
+        content = (
+            "def _normalize_heading(line):\n"
+            '    """Reduziert."""\n'
+            "    x = line.strip()\n"
+            "    return x\n"
+            "\n"
+            "\n"
+            "def split_review_sections(text):\n"
+            '    """Teilt."""\n'
+            "    return {}\n"
+        )
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n@@ -1,4 +1,4 @@\n"
+            " def _normalize_heading(line):\n"
+            '     """Reduziert."""\n'
+            "-def split_review_sections(text):\n"
+            "+def split_result_sections(text):\n"
+            '     """Teilt."""\n'
+        )
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert r.ok, r.reason
+        assert "def split_result_sections(text):" in r.changes[0].new_content
+        assert "split_review_sections" not in r.changes[0].new_content
+        # NUR die Def-Zeile geaendert -- Rumpf/Leerzeilen unversehrt.
+        assert r.changes[0].new_content == content.replace(
+            "def split_review_sections", "def split_result_sections"
+        )
+
+    def test_trailing_context_fabricated_applies(self):
+        # Leading-Kontext passt, das nachgestellte Kontext-Bild ist erfunden.
+        content = "a\nb\nTARGET\nc\nd\n"
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n@@ -1,3 +1,3 @@\n"
+            " b\n-TARGET\n+CHANGED\n erfundene_zeile\n"
+        )
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert r.ok, r.reason
+        assert r.changes[0].new_content == "a\nb\nCHANGED\nc\nd\n"
+
+    def test_all_context_fabricated_minus_anchors(self):
+        # Nur die Minus-Zeile stimmt; beide Kontextseiten sind erfunden -> die
+        # verbatim vorhandene Minus-Zeile traegt den Anker.
+        content = "eins\nzwei\nZIEL = 1\ndrei\nvier\n"
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n@@ -1,3 +1,3 @@\n"
+            " quatsch_oben\n-ZIEL = 1\n+ZIEL = 2\n quatsch_unten\n"
+        )
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert r.ok, r.reason
+        assert r.changes[0].new_content == "eins\nzwei\nZIEL = 2\ndrei\nvier\n"
+
+    def test_multi_hunk_mixed_fuzz_and_exact(self):
+        # Reproduktion der F5-Wdh-Shape (Task 305): Hunk 1+2 brauchen Fuzz
+        # (kollabierter Leading-Kontext), Hunk 3 matcht exakt. Alle drei zusammen.
+        content = (
+            "def _normalize_heading(line):\n"
+            '    """Reduziert."""\n'
+            "    return line\n"
+            "\n"
+            "\n"
+            "def split_review_sections(text):\n"
+            '    """Teilt."""\n'
+            "    return {}\n"
+            "\n"
+            "\n"
+            "def build_result_content(response):\n"
+            '    """Baut."""\n'
+            "    text = strip(response)\n"
+            "    sections = split_review_sections(text)\n"
+            "    return sections\n"
+        )
+        diff = (
+            "--- a/x.py\n+++ b/x.py\n"
+            "@@ -1,4 +1,4 @@\n"
+            " def _normalize_heading(line):\n"
+            '     """Reduziert."""\n'
+            "-def split_review_sections(text):\n"
+            "+def split_result_sections(text):\n"
+            '     """Teilt."""\n'
+            "@@ -6,4 +6,4 @@\n"
+            "     return {}\n"
+            "-def build_result_content(response):\n"
+            "+def render_result_content(response):\n"
+            '     """Baut."""\n'
+            "@@ -13,3 +13,3 @@\n"
+            "     text = strip(response)\n"
+            "-    sections = split_review_sections(text)\n"
+            "+    sections = split_result_sections(text)\n"
+            "     return sections\n"
+        )
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert r.ok, r.reason
+        got = r.changes[0].new_content
+        assert "split_review_sections" not in got  # def + call beide um
+        assert "build_result_content" not in got
+        assert "def split_result_sections(text):" in got
+        assert "def render_result_content(response):" in got
+        assert "    sections = split_result_sections(text)" in got
+
+    def test_fuzz_does_not_blindly_insert_pure_insertion(self):
+        # Reine Einfuegung mit erfundenem Kontext (keine Minus-Zeile) -> KEIN
+        # Anker -> darf NICHT ins Blaue eingefuegt werden (Sicherheit vor Toleranz).
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,3 @@\n gibtsnicht\n+NEU\n"
+        r = apply_diff(diff, _reader({"x.py": "a\nb\nc\n"}))
+        assert not r.ok
+        assert "Kontext passt nicht" in r.reason
+
+    def test_failure_feedback_shows_real_file_window(self):
+        # I-E.12 Feedback: bei nicht-platzierbarem Hunk nennt der Grund den
+        # TATSAECHLICHEN Datei-Inhalt um die deklarierte Stelle (Re-Anker-Hilfe),
+        # nicht nur "gefunden <Datei-Anfang>".
+        content = "zeile1\nzeile2\nzeile3\nGESUCHT\nzeile5\n"
+        # Minus-Zeile 'FEHLT' existiert nirgends -> nicht platzierbar.
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -3,2 +3,2 @@\n zeile3\n-FEHLT\n+NEU\n"
+        r = apply_diff(diff, _reader({"x.py": content}))
+        assert not r.ok
+        assert "Kontext passt nicht" in r.reason
+        # Das Feedback zeigt die echten Zeilen um Zeile 3 (mit Nummer).
+        assert "GESUCHT" in r.reason
+        assert "3:" in r.reason
