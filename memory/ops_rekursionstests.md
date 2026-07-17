@@ -347,7 +347,8 @@ Befunde im Abschnitt "Ergebnisse" festhalten (append-only).
 
 Kandidaten E-1..E-4 vorab, E-5..E-10 aus dem Smoke-Lauf 2026-07-16:
 ```
-E-1  [BEHOBEN I-E.1, 2026-07-16] impact-Kinder ohne Gate-Kette/Auto-Apply:
+E-1  [BEHOBEN I-E.1, 2026-07-16; LIVE BELEGT 2026-07-17 F4-Wiederholung]
+     impact-Kinder ohne Gate-Kette/Auto-Apply:
      Patches endeten als Artefakte ohne eigenen Report (wegen E-14 nicht mal
      manuell anwendbar), kein Auto-Apply. FIX (Design K4-Diskussion: lint je
      Kind, EIN Test-/Apply-Moment fuer den Fan-out -- Kind-fuer-Kind waere
@@ -368,8 +369,14 @@ E-1  [BEHOBEN I-E.1, 2026-07-16] impact-Kinder ohne Gate-Kette/Auto-Apply:
      still-letzte-gewinnt. ERWARTET bis I-E.17: No-op-Kinder (E-17) machen
      ihr lint_gate rot ("kein anwendbarer Hunk") -> nach re_act-Kappung
      terminal failed -> Sammel-Gate haengt pending, KEIN Apply (ehrlich,
-     aber der F4-Fall schliesst erst mit dem No-op-Vertrag ab). Live ab
-     naechstem Image-Build.
+     aber der F4-Fall schliesst erst mit dem No-op-Vertrag ab). Der
+     ERWARTET-Fall trat live nie ein: I-E.17 kam im selben Build, das
+     einzige Treffer-freie Kind (plan_format-Kommentar) nahm den No-op-Pfad.
+     LIVE BELEGT 2026-07-17 (F4-Wiederholung impact-4c7ca993): 4 Kinder +
+     4 lint_gates + EIN Sammel-test_gate (gate_scopes=touched), alle done
+     att=0; Auto-Apply-Log woertlich "4 Scope(s) -> 3 Patch(es) angewandt
+     + re-ingestiert (1 No-op uebersprungen)"; R9 exakt (md5: GENAU die 3
+     Patch-Dateien geaendert), 58 Tests real gruen.
 E-2  Greenfield ohne test_gate (has_tests zur Enqueue-Zeit=leer) -- BESTAETIGT
      im G2-Lauf (Endergebnis 4/6 Tests rot, alle Knoten "gruen"). Kandidat:
      test_gate-Entscheid zur Claim-Zeit des Gate-Knotens.
@@ -416,6 +423,11 @@ E-11 /api/tasks-Fenster verliert die EIGENEN frischen done-Tasks (34er-Mix,
      IGNORIERT (identische Antwort); kein GET /api/task/{id}. Anwender kann
      den Endstand seines DAGs nicht via REST verifizieren (K3-Messung nur
      ueber DB moeglich). Kandidat: echte Filter-Params + Einzel-GET.
+     VERSCHAERFT 2026-07-17 (F4-Wiederholung): Fenster verlor den
+     KOMPLETTEN frischen DAG (10 Knoten, davon 6 noch offen!) ~70 s nach
+     Anlage auf einen Schlag -- danach 38er-Mix NUR aus Alt-Tasks, nicht
+     mal der neueste Task blieb sichtbar. R6-Polling ab Phase 3 blind,
+     Endzustand/Gates NUR via DB messbar.
 E-12 Patch-Apply-Wand (B2, 2x Leiter bis unresolved): qwen-Multi-Hunk-Diffs
      auf die 10k-Datei plan_format.py reproduzierbar applied=false
      ("Kontext passt nicht bei Zeile N" -- Zeilennummern/Kontext-Drift);
@@ -478,7 +490,15 @@ E-19 Einmal-Ausfall des Completion-Hooks direkt nach Container-Start
      Startup-Race im Worker-Thread. Kandidaten: Hook-Nachholer (Reaper:
      done-Erzeuger mit impact-Payload ohne nicht-superseded Kinder ->
      Re-Fire) ODER Hook-Feuerung vor complete-Persistenz haengen.
-E-17 [BEHOBEN I-E.17, 2026-07-16] impact-Fan-out ueberinklusiv + kein
+     REPRODUZIERT 2026-07-17 (Beleg #2, F4-Wiederholung nach Redeploy
+     00e81c0): Task 285 (impact-6ceadccc) ~4 min nach Container-Start
+     still done ohne Kinder, wieder KEIN Fehler-Log; identischer Retry
+     286 mit warmem Worker (~3 min spaeter) lief fehlerfrei durch.
+     Startup-Race erhaertet, trifft verlaesslich den ERSTEN impact-
+     Erzeuger nach Recreate -> Reaper-Haeppchen rueckt in der
+     Prioritaet hoch (jeder Redeploy-Test verbrennt sonst einen Lauf).
+E-17 [BEHOBEN I-E.17, 2026-07-16; LIVE BELEGT 2026-07-17 F4-Wiederholung]
+     impact-Fan-out ueberinklusiv + kein
      No-op-Vertrag (F4+F5, reproduziert): users = repo.impact(def-Datei) ist
      die TRANSITIVE DATEI-Huelle -> Kinder auch fuer Dateien ohne jedes
      Symbol-Vorkommen (F4: 5 von 9); "nichts zu tun" hatte ZWEI inkonsistente
@@ -497,8 +517,15 @@ E-17 [BEHOBEN I-E.17, 2026-07-16] impact-Fan-out ueberinklusiv + kein
      No-op -> patch{diff:"",no_op:true}, lint_gate neutral-gruen (Report
      diff_hash("") -> verified), Sammel-test_gate ueberspringt ihn (alle
      No-op -> neutral ohne Sandbox), Apply ehrlich ohne Schreibzugriff
-     (written=false; /api/patches kennzeichnet no_op). Live ab naechstem
-     Image-Build.
+     (written=false; /api/patches kennzeichnet no_op).
+     LIVE BELEGT 2026-07-17 (F4-Wiederholung): Vorfilter touched=4 statt 9
+     (nur woertliche Treffer; die 5 Treffer-freien inkl. des 2x-Fail-Kinds
+     tests/test_plan_format existieren gar nicht mehr) -> 4 < 5 = KEIN
+     G3-Review noetig (der ehrliche Wirkradius aendert die Shape);
+     plan_format (nur Doku-Kommentar) antwortete KEINE_AENDERUNG ->
+     lint_report "keine Aenderung noetig (No-op)" mit input_hash=
+     sha256("") = patch-gekoppelt verified, /api/patches no_op:true,
+     Apply ehrlich ohne Schreibzugriff (Datei byte-identisch, R9).
 E-18 [BEHOBEN I-E.18, 2026-07-16; LIVE BELEGT gleicher Abend, F5-Retry
      DAG impact-70cd1122: Review-Prompt 275 traegt Absicht-Block + BEIDE
      Zielnamen + Abdeckungs-Leitfrage; Kinder-Prompts 276/284 Absicht +
@@ -777,3 +804,69 @@ Empfehlung vor K5/Testusern: E-18 (det-Durchreichung, billig+kritisch) ->
 E-1 (Gate-Kette hinter impact-Kinder = macht E-17-Pseudo-Diffs auch
 sichtbar/filterbar) -> E-17 (symbol-basierte users ODER No-op-Vertrag) ->
 dann G4 nachfahren + K5.
+
+### F4-Wiederholung 2026-07-17 vormittags (Agent; Live-Beleg I-E.1+I-E.17
+### Ende-zu-Ende nach Redeploy 00e81c0)
+
+Vorbedingungen: Redeploy 00e81c0 (I-E.1+I-E.17 im Container verifiziert:
+impact_expand read_scope/no_change_ok/build_impact_gates, test_gate
+gate_scopes, serve _auto_apply_fanout); pytest 9.1.1 + ruff IM Image OHNE
+Workaround (I-E.5 uebersteht den Recreate -- E-5 endgueltig zu). Settings
+unveraendert (auto_apply/test_gate/architect an). Workspace-Ground-Truth
+frisch verifiziert: woertliches build_content (Wortgrenze) in GENAU 4
+Quelldateien (review_format=def Z.148, validator Import+Aufruf, worker
+Import+Aufruf, plan_format NUR Doku-Kommentar Z.210). R9-Referenz als
+md5-Snapshot VOR dem Lauf (24 Projektdateien ohne Caches).
+
+- **E-19 Beleg #2 (Erstlauf 285, impact-6ceadccc): Hook-Ausfall
+  reproduziert.** POST 07:08:02 (~3,5 min nach Container-Start), Antwort
+  change_op=rename korrekt, architect 285 done -- aber KEINE Kinder, KEIN
+  Fehler-Log (exakt das 272-Muster vom 16.07.). Als Evidenz stehen
+  gelassen; Details E-19-Eintrag.
+- **REK-F4-Wiederholung (Retry 286, impact-4c7ca993, 286-295): BESTANDEN
+  Ende-zu-Ende -- I-E.1+I-E.17+I-E.18 in EINEM Lauf live.**
+  - Shape (R6): EIN Erzeuger 286 (n1, architect auf Def-Scope); nach done
+    DIREKT 9 Knoten: 4 fix-Kinder n1/impact_0..3 (Scopes exakt die
+    GEFILTERTE touched-Menge sortiert: plan_format, review_format,
+    validator, worker -- Vorfilter 4 statt 9, das 2x-Fail-Kind
+    tests/test_plan_format existiert nicht mehr) + je Kind ein lint_gate
+    (n1/impact_N_lint, scope=Kind-Datei) + EIN Sammel-test_gate
+    n1/impact_test (scope=Anker, payload.gate_scopes=touched). KEIN
+    review-Knoten: 4 < 5 -- der ehrliche Wirkradius nach Vorfilter
+    aendert die G3-Shape (legaler Policy-Zweig, vorab notiert).
+  - Alle Kinder payload.no_change_ok=true; Kinder-Briefing traegt
+    Absicht-Block mit Zielname (I-E.18) + woertlich die Marker-Zeile
+    ("Ist in DIESER Datei nichts anzupassen, antworte NUR mit der Zeile
+    `KEINE_AENDERUNG` (kein Diff).") + Architekten-Entwurf (REK.1).
+  - No-op-Pfad live: plan_format-Kind 287 antwortete KEINE_AENDERUNG ->
+    lint_report "keine Aenderung noetig (No-op)", commands leer (keine
+    Sandbox), input_hash=e3b0c442...=sha256("") -> patch-gekoppelt
+    verified (E-14-Wahrheit); /api/patches: no_op:true+verified:true.
+  - Sammel-Gate live: test_report am Anker-Scope "Tests gruen"
+    (pytest exit 0, applied=true -- die 3 ECHTEN Patches als EIN
+    Multi-File-Diff in EINER Sandbox; pytest aus dem Image, I-E.5).
+  - Atomarer Auto-Apply live, Log woertlich: "[worker] Auto-Apply
+    (Sammel, file:minicore/review_format.py): 4 Scope(s) -> 3 Patch(es)
+    angewandt + re-ingestiert (1 No-op uebersprungen)".
+  - Ergebnis: alle 6 Code-Vorkommen koordiniert umbenannt (def+2x2
+    Import/Aufruf); build_content verbleibt NUR im plan_format-Kommentar
+    (No-op -- vertretbar, Kind entschied "kein Nutzer"). Alle 10 Knoten
+    done, attempts=0, DAG-Laufzeit ~70 s (claim 05:11:15Z -> Gates
+    05:12:21Z).
+  - R9 STRENG: md5-Diff = GENAU die 3 Patch-Dateien geaendert;
+    plan_format + alle uebrigen 21 byte-identisch (No-op-Ehrlichkeit
+    dateisystem-belegt). R7 doppelt: Sammel-Report gruen + 58 Tests
+    real im Workspace gruen.
+  - Messnotizen: (a) E-11 VERSCHAERFT -- /api/tasks verlor den kompletten
+    frischen DAG ~70 s nach Anlage (Polling ab Phase 3 blind, Endzustand
+    via DB); (b) E-8 unveraendert (/api/result/295 -> 404); (c) Phase-1-
+    Fenster diesmal <35 s (architect schneller als Poll-Anlauf) --
+    Invariante 4 fuer diese Shape bereits im K4-Lauf gemessen.
+
+F4-Wiederholungs-Fazit: Welle-1-Kern (I-E.18/I-E.5/I-E.1/I-E.17) live
+und zusammenwirkend belegt; die impact-Kette ist jetzt Ende-zu-Ende
+anwenderfaehig (Design -> gefilterter Fan-out -> Gates -> atomarer Apply
+-> Workspace konsistent). Aus Welle 1 offen: NUR I-E.12 (Patch-Apply-
+Robustheit). Dringlichster Neubefund: E-19 (Beleg #2, trifft verlaesslich
+den ersten impact-Erzeuger nach jedem Recreate) -> Reaper als Haeppchen-
+Kandidat VOR G4/K5 empfohlen; E-11 bleibt der Mess-Engpass.

@@ -816,8 +816,11 @@ Akzeptanz: +20 Tests (impact_expand Gate-Struktur/Payloads/Radius-Zaehlung,
 test_gate Sammel-Modus inkl. Kollisionsfall, apply_gate Atomaritaet je
 Verletzungsart, patch_apply Doppel-Sektion, completion_hook payload_for,
 escalation Leiter-Guard; gate_policy-Asserts an die neue Knotenmenge
-angepasst). 1271 gruen, ruff check+format clean. Offen: Live-Beleg
-(F4-Wiederholung Ende-zu-Ende bis Apply) nach Redeploy. E-19 (Hook-Einmal-
+angepasst). 1271 gruen, ruff check+format clean. Live-Beleg 2026-07-17:
+F4-Wiederholung Ende-zu-Ende BESTANDEN (impact-4c7ca993: 4 Kinder + 4
+lint_gates + Sammel-Gate alle done att=0; Auto-Apply atomar "3 Patch(es)
+angewandt, 1 No-op uebersprungen"; R9 md5-exakt, 58 Tests real gruen --
+`ops_rekursionstests` F4-Wiederholung). E-19 (Hook-Einmal-
 Ausfall nach Container-Start) bewusst NICHT hier: ein Startup-Reaper braucht
 eigenes Timing-Design (der naive Serve-Start-Nachholer unterlaege demselben
 Startup-Race) -- eigenes Haeppchen; I-E.1 verbaut ihm nichts (Hook bleibt
@@ -862,10 +865,14 @@ Akzeptanz: +23 Tests (is_no_change-Toleranz/Diff-gewinnt, Validator mit/ohne
 Vertrag, LlmWorker no_op-Artefakt vs. unresolved, lint_gate neutral,
 test_gate Sammel-Ausschluss + alle-No-op, apply beide Pfade, Prefilter
 Wortgrenze/defs/unlesbar/Kommentar, Instruktions-Marker, Vertrag nur am
-fix-Kind). 1294 gruen, ruff check+format clean. Offen: Live-Beleg -- die
-F4-Wiederholung nach Redeploy belegt I-E.1+I-E.17 zusammen (erwartet:
-weniger/keine No-op-Kinder dank Vorfilter, Rest KEINE_AENDERUNG, Sammel-Gate
-gruen, atomarer Auto-Apply schreibt die echten Patches).
+fix-Kind). 1294 gruen, ruff check+format clean. Live-Beleg 2026-07-17:
+F4-Wiederholung BESTANDEN -- Vorfilter touched=4 statt 9 (4 < 5: KEIN
+G3-Review mehr noetig, der ehrliche Wirkradius aendert die Shape);
+plan_format-Kind (nur Doku-Kommentar) antwortete KEINE_AENDERUNG ->
+no_op-Patch, lint_report neutral-gruen mit input_hash=sha256("") =
+verified, /api/patches kennzeichnet no_op, Apply liess die Datei
+byte-identisch; die 3 echten Patches liefen als EIN Sammel-Diff durch
+EINE Sandbox und wurden atomar geschrieben (`ops_rekursionstests`).
 
 ## Handoff-Konvention je Paket
 
