@@ -558,8 +558,10 @@ E-12 [KERN BEHOBEN I-E.12, 2026-07-17; LIVE BELEGT Ende-zu-Ende 2026-07-17
      angewandt" (kein No-op), R9 GENAU 3 Dateien geaendert (review_format-
      Zeilen 131/148/156 = exakte Offline-Vorhersage), 58 Tests real gruen.
      Kein Fall ueberlebte den Fuzz -> whole-file-Sprosse bleibt offen.
-E-13 [BEHOBEN I-E.13, 2026-07-18; +10 Tests, 1366 gruen, LIVE nach Redeploy
-     (keine Migration)] superseded-Belegkette nicht via REST einsehbar:
+E-13 [BEHOBEN I-E.13, 2026-07-18; +10 Tests, 1366 gruen, LIVE belegt 2026-07-18
+     (read: base_node_id-Ketten + verify_feedback/escalation_stage an
+     fix-99698f9c; write: frischer fix-Fail 361 -> payload.fail_reason via
+     ?dag_id=)] superseded-Belegkette nicht via REST einsehbar:
      /api/history ist eine TAGES-Statistik (day/cost/escalations/tasks), keine
      Task-History -- die Testplan-Referenz "via /api/history sichtbar" lief ins
      Leere. FIX (Nutzer-Entscheid: ?dag_id=-Sicht anreichern + Fail-Reason

@@ -380,7 +380,7 @@ I-E.8    Gate-Reports via /api/result             det  -          2      E-8: li
 I-E.11   /api/tasks-Filter + GET /api/task/{id}   det  -          2      E-11: dag_id/limit/status wirksam + Einzel-GET   fertig 2026-07-17 + LIVE gleicher Tag (alle R6-Polls blindfrei)
 I-E.7    Cancel: POST /api/task/{id}/cancel +     det  -          2      E-7: DAG-Abbruch, haengende pending aufloesbar   fertig 2026-07-17 + LIVE-belegt gleicher Tag (migrate 0013 appliziert; G4 cancelled:3 + Sammel-Gate 303 cancelled:1, done/failed unberuehrt, idempotent 0, 404, DAG-scoped)
          DAG-Abbruch
-I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar   fertig 2026-07-18 (list_tasks +fail_reason/verify_feedback/escalation_stage/base_node_id; fail() persistiert Grund in payload; +10 Tests, 1366 gruen, ruff clean); LIVE nach Redeploy (keine Migration)
+I-E.13   Task-/DAG-History (supersede-Ketten)     det  -          2      E-13: Belegketten via REST einsehbar   fertig 2026-07-18 (list_tasks +fail_reason/verify_feedback/escalation_stage/base_node_id; fail() persistiert Grund in payload; +10 Tests, 1366 gruen, ruff clean) + LIVE-belegt 2026-07-18 (read: base_node_id gruppiert n3/n4/n5~r2-Ketten in fix-99698f9c + verify_feedback/escalation_stage real; write: frischer fix-Fail 361 -> payload.fail_reason via GET /api/task/361 + ?dag_id=)
 I-E.4    Key-/Owner-Admin-Endpoint                gem  -          2      E-4: REST statt CLI (entsperrt auch agentische
                                                                          Testlaeufe; Classifier blockt core.auth create)
 I-E.10   Patch det auf Ziel-Scope filtern         det  -          3      E-10: fremde create-Bloecke verwerfen   fertig+LIVE 2026-07-17 (G4-Wdh: 9-Datei-Diff -> 1 Sektion, kein Kollaps)
@@ -445,7 +445,11 @@ entfernt -> n5 und n5~r2 = eine Kette, gruppierbar); GET /api/tasks reicht die
 Felder durch (I-E.11-Passthrough). Bewusste Grenze: redesign_stage (impact-
 Review) bleibt nur im payload (GET /api/task/{id}); Alt-Knoten vor I-E.13 haben
 kein fail_reason (nur neue fails schreiben). +10 Tests (queue 9, webgui 1),
-1366 gruen, ruff clean, LIVE nach Redeploy (keine Migration).
+1366 gruen, ruff clean, LIVE-belegt 2026-07-18 (Redeploy f5804c3): read-Pfad an
+fix-99698f9c (base_node_id gruppiert n3/n4/n5~r2-Ketten, verify_feedback +
+escalation_stage=2 real sichtbar); write-Pfad frisch bewiesen -- fix-Task 361
+via /api/submit invalid -> 422 patch_parse_fail -> payload.fail_reason in GET
+/api/task/361 UND ?dag_id= (danach cancel_dag = E-7-Cleanup der 3 Nachfolger).
 
 ## Status
 
