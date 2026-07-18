@@ -218,7 +218,7 @@ class _FakeQueue:
     def complete(self, item_id):
         self.completed.append(item_id)
 
-    def fail(self, item_id):
+    def fail(self, item_id, reason=None):
         self.failed.append(item_id)
 
     def reopen_after_verify(self, item, *, feedback, max_attempts):

@@ -91,6 +91,7 @@ class _FakeQueue:
         self._item = item
         self.completed: list[int] = []
         self.failed: list[int] = []
+        self.fail_reasons: list[str | None] = []
 
     def claim(self, model: str) -> QueueItem | None:
         return self._item
@@ -98,8 +99,9 @@ class _FakeQueue:
     def complete(self, item_id: int) -> None:
         self.completed.append(item_id)
 
-    def fail(self, item_id: int) -> None:
+    def fail(self, item_id: int, reason: str | None = None) -> None:
         self.failed.append(item_id)
+        self.fail_reasons.append(reason)
 
 
 class _FakeRepo:
@@ -576,6 +578,9 @@ class TestWorkerLoop:
         assert queue.failed == [1]
         assert len(reasons) == 1
         assert "prob_schema_fail" in reasons[0]
+        # I-E.13: derselbe Grund geht auch an queue.fail (Persistenz in payload),
+        # nicht nur an on_item_fail (stdout).
+        assert queue.fail_reasons == reasons
 
     def test_det_task_calls_complete(self):
         det_item = _item(task_type="index", scope="file:core/router.py")

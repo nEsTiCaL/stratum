@@ -397,7 +397,7 @@ class WorkerLoop:
     _reap_attempts: dict[int, int] = field(default_factory=dict)
 
     def _fail(self, item: QueueItem, reason: str) -> None:
-        self.queue.fail(item.id)
+        self.queue.fail(item.id, reason)  # I-E.13: Grund atomar in payload persistieren
         if self.on_item_fail is not None:
             self.on_item_fail(item, reason)
 

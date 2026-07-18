@@ -256,10 +256,10 @@ async def submit_task(
 
     validation = Validator().validate(body.response, task_type, producer_class="prob")
     if not validation.passed:
-        deps.queue.fail(task_id)
         msg = f"Validierung fehlgeschlagen: {validation.trigger}"
         if validation.detail:
             msg += f" — {validation.detail}"
+        deps.queue.fail(task_id, msg)  # I-E.13: Fail-Grund in payload persistieren
         raise HTTPException(status_code=422, detail=msg)
 
     try:
@@ -272,17 +272,15 @@ async def submit_task(
         )
     except ValueError as exc:
         # Format nicht verwertbar — verstaendliche Meldung an den Nutzer.
-        deps.queue.fail(task_id)
+        deps.queue.fail(task_id, f"Format nicht verwertbar: {exc}")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        deps.queue.fail(task_id)
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Antwort konnte nicht verarbeitet werden "
-                f"({type(exc).__name__}: {exc}). Bitte Format pruefen."
-            ),
-        ) from exc
+        detail = (
+            f"Antwort konnte nicht verarbeitet werden "
+            f"({type(exc).__name__}: {exc}). Bitte Format pruefen."
+        )
+        deps.queue.fail(task_id, detail)
+        raise HTTPException(status_code=422, detail=detail) from exc
 
     deps.repo.put_artifact(result_obj)
     deps.queue.complete(task_id)

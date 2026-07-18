@@ -13,7 +13,7 @@ import threading
 
 import psycopg
 
-from core.queue import Queue, QueueItem
+from core.queue import Queue, QueueItem, _base_node_id
 from core.template_registry import DagNode, TaskDag
 
 # ---------------------------------------------------------------------------
@@ -229,6 +229,30 @@ class TestCompleteAndFail:
         assert len(failed) == 1
         assert failed[0]["status"] == "failed"
         assert failed[0]["attempts"] == 1
+
+    def test_fail_persists_reason(self, conn):
+        # I-E.13 (Befund E-13): fail(reason=) legt den terminalen Grund ATOMAR in
+        # payload.fail_reason ab -> via REST lesbar statt nur in docker logs.
+        reason = "verify unresolved: re_act -> re_design -> re_expand"
+        q = Queue(conn)
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
+        assert item is not None
+        q.fail(item.id, reason)
+        (row,) = [t for t in q.list_tasks() if t["id"] == item.id]
+        assert row["status"] == "failed"
+        assert row["fail_reason"] == reason
+
+    def test_fail_without_reason_leaves_payload(self, conn):
+        # Rueckwaertskompatibel: fail() ohne Grund veraendert das payload nicht.
+        q = Queue(conn)
+        q.enqueue(_dag(), model="phi4-mini")
+        item = q.claim("phi4-mini")
+        assert item is not None
+        q.fail(item.id)
+        (row,) = [t for t in q.list_tasks() if t["id"] == item.id]
+        assert row["status"] == "failed"
+        assert row["fail_reason"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -754,6 +778,81 @@ class TestListTasksDagFilter:
         _insert_raw(conn, dag_id="dag-a", node_id="n1", owner="alice")
         rows = Queue(conn).list_tasks(dag_id="dag-a", owner="bob", statuses=self._ALL)
         assert rows == []
+
+
+class TestBaseNodeId:
+    """I-E.13: der ~r<stufe>-Suffix (re-expand, I-REK.11) wird fuer die
+    Ketten-Gruppierung entfernt; nur am Kettenende, mehrfach kollabierend."""
+
+    def test_strips_single_suffix(self):
+        assert _base_node_id("n5~r2") == "n5"
+
+    def test_strips_chained_suffix(self):
+        assert _base_node_id("n5~r1~r2") == "n5"
+
+    def test_plain_unchanged(self):
+        assert _base_node_id("n1/impact_0") == "n1/impact_0"
+
+    def test_only_trailing_suffix_counts(self):
+        # ein ~r mitten im Pfad ist kein Ketten-Suffix (Anker $): unveraendert.
+        assert _base_node_id("a~r1/b") == "a~r1/b"
+
+
+class TestListTasksReasonFields:
+    """I-E.13 (Befund E-13): die DAG-Sicht traegt die 'Warum'-Felder der
+    supersede-/Eskalations-Kette (fail_reason, verify_feedback, escalation_stage)
+    + base_node_id -- die Belegkette via REST lesbar statt nur in docker logs.
+    Rein additiv zur I-E.11-Sicht."""
+
+    _ALL = ("pending", "running", "done", "failed", "superseded", "cancelled")
+
+    def test_reason_fields_exposed(self, conn):
+        _insert_raw(
+            conn,
+            dag_id="d",
+            node_id="n1",
+            status="failed",
+            payload={
+                "fail_reason": "verify unresolved: re_act -> re_design",
+                "verify_feedback": "E   assert 1 == 2",
+                "escalation_stage": 2,
+            },
+        )
+        (row,) = Queue(conn).list_tasks(dag_id="d", statuses=self._ALL)
+        assert row["fail_reason"] == "verify unresolved: re_act -> re_design"
+        assert row["verify_feedback"] == "E   assert 1 == 2"
+        assert row["escalation_stage"] == 2
+
+    def test_reason_fields_none_when_absent(self, conn):
+        _insert_raw(conn, dag_id="d", node_id="n1", status="done")
+        (row,) = Queue(conn).list_tasks(dag_id="d", statuses=self._ALL)
+        assert row["fail_reason"] is None
+        assert row["verify_feedback"] is None
+        assert row["escalation_stage"] is None
+
+    def test_base_node_id_groups_reexpand_chain(self, conn):
+        # re-expand superseded n5 und legt frische Kette n5~r2 an -- beide tragen
+        # denselben base_node_id, sind also als eine Kette gruppierbar.
+        _insert_raw(
+            conn,
+            dag_id="d",
+            node_id="n5",
+            status="superseded",
+            payload={"verify_feedback": "fail", "escalation_stage": 1},
+        )
+        _insert_raw(
+            conn,
+            dag_id="d",
+            node_id="n5~r2",
+            status="failed",
+            payload={"fail_reason": "unresolved"},
+        )
+        by_node = {
+            r["node_id"]: r
+            for r in Queue(conn).list_tasks(dag_id="d", statuses=self._ALL)
+        }
+        assert by_node["n5"]["base_node_id"] == "n5"
+        assert by_node["n5~r2"]["base_node_id"] == "n5"
 
 
 class TestGetTaskDetail:

@@ -10,6 +10,7 @@ Hinter diesem Interface kann spaeter ein NATS-Adapter folgen (R2).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -149,20 +150,36 @@ class Queue:
                     (item_id,),
                 )
 
-    def fail(self, item_id: int) -> None:
+    def fail(self, item_id: int, reason: str | None = None) -> None:
         """Markiert einen Knoten terminal als fehlgeschlagen (status='failed').
 
         Kein automatischer Retry auf Queue-Ebene — die EscalationLoop im Worker
         uebernimmt model-level Retries bereits intern. Expliziter Retry moeglich
         ueber direkte DB-Korrektur oder kuenftige retry()-Methode.
-        """
+
+        `reason` (I-E.13, Befund E-13): der terminale Fehlgrund bzw. die
+        Eskalations-Belegkette wird ATOMAR mit dem Status in payload.fail_reason
+        abgelegt. Bisher ging der Grund nur an on_item_fail -> stdout/docker-logs;
+        jetzt ist er via REST lesbar (list_tasks / GET /api/task/{id}), sodass der
+        Anwender den Fail-Grund eines Knotens nicht mehr im Container-Log suchen
+        muss (Belegkette-Sichtbarkeit). None -> Payload unberuehrt (Rueckwaerts-
+        kompatibel fuer Aufrufer ohne Grund)."""
         with self._conn.transaction():
             with self._conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE queue SET status = 'failed', attempts = attempts + 1 "
-                    "WHERE id = %s",
-                    (item_id,),
-                )
+                if reason is None:
+                    cur.execute(
+                        "UPDATE queue SET status = 'failed', "
+                        "attempts = attempts + 1 WHERE id = %s",
+                        (item_id,),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE queue SET status = 'failed', "
+                        "attempts = attempts + 1, "
+                        "payload = COALESCE(payload, '{}'::jsonb) || %s::jsonb "
+                        "WHERE id = %s",
+                        (json.dumps({"fail_reason": reason}), item_id),
+                    )
 
     def ids_for_dag(self, dag_id: str) -> list[int]:
         """Queue-ids eines DAG (created-Reihenfolge). Fuer die Idempotenz von
@@ -909,6 +926,14 @@ class Queue:
         (payload.applied) -- die abgeschlossene, angewandte Arbeit verschwindet
         dann aus der Uebersicht. Jede Zeile traegt node_id + applied (I-E.11:
         DAG-Struktur und Apply-Stand sichtbar, statt nur in der DB).
+
+        I-E.13 (Befund E-13, Belegkette via REST): jede Zeile traegt zusaetzlich
+        die "Warum"-Felder der supersede-/Eskalations-Kette -- fail_reason (der
+        terminale Fehlgrund, jetzt in der DB statt nur in docker logs),
+        verify_feedback (das Gate-Feedback, das einen Reopen ausloeste),
+        escalation_stage (die Leiter-Sprosse) und base_node_id (der ~r-Suffix
+        entfernt -> Versionen desselben Knotens gruppierbar). Alle vier sind None/
+        gleich node_id, wo nichts anliegt -- rein additiv zur I-E.11-Sicht.
         """
         placeholders = ",".join(["%s"] * len(statuses))
         params: list[Any] = list(statuses)
@@ -931,7 +956,9 @@ class Queue:
         rows = self._conn.execute(
             f"SELECT id, dag_id, node_id, task_type, scope, model, status, "
             f"attempts, created_at, claimed_at, "
-            f"COALESCE((payload->>'applied')::boolean, false) "
+            f"COALESCE((payload->>'applied')::boolean, false), "
+            f"payload->>'fail_reason', payload->>'verify_feedback', "
+            f"(payload->>'escalation_stage')::int "
             f"FROM queue WHERE status IN ({placeholders}){owner_clause}"
             f"{dag_clause}{applied_clause} "
             f"ORDER BY created_at {order}{limit_clause}",
@@ -949,8 +976,16 @@ class Queue:
             "created_at",
             "claimed_at",
             "applied",
+            "fail_reason",
+            "verify_feedback",
+            "escalation_stage",
         )
-        return [dict(zip(keys, row, strict=True)) for row in rows]
+        tasks = []
+        for row in rows:
+            task = dict(zip(keys, row, strict=True))
+            task["base_node_id"] = _base_node_id(task["node_id"])
+            tasks.append(task)
+        return tasks
 
     def live_snapshot(self) -> dict[str, Any]:
         """Polling-Snapshot des Live-Status fuers Dashboard (I-5.1, read-only).
@@ -991,6 +1026,21 @@ class Queue:
             row = cur.fetchone()
         next_batch = {"model": row[0], "pending": row[1]} if row is not None else None
         return {"queue": counts, "running": running, "next_batch": next_batch}
+
+
+_STAGE_SUFFIX = re.compile(r"(?:~r\d+)+$")
+
+
+def _base_node_id(node_id: str) -> str:
+    """Basis-node_id einer supersede-Kette (I-E.13, Befund E-13). Der re-expand-
+    Suffix ~r<stufe> (I-REK.11: reexpand_write_subdag haengt ihn an die frische
+    Knoten-Identitaet) wird entfernt, sodass alle Versionen desselben logischen
+    Knotens denselben base_node_id tragen -- z.B. n5 (superseded) und n5~r2
+    (Ersatz) -> beide 'n5'. Ohne Suffix unveraendert. Der Anwender kann die
+    DAG-History damit je logischem Knoten zu einer Kette gruppieren, statt den
+    ~r-Suffix selbst zu parsen. Mehrfach-Suffixe (n5~r1~r2) werden ganz
+    getrimmt."""
+    return _STAGE_SUFFIX.sub("", node_id)
 
 
 def _row_to_item(row: tuple[Any, ...]) -> QueueItem:

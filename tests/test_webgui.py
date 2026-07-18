@@ -696,6 +696,29 @@ class TestTasksFilterAndSingleGet:
             tasks = c.get("/api/tasks?dag_id=impact-x", headers=AUTH).json()
         assert sup in {t["id"] for t in tasks}
 
+    def test_dag_id_carries_reason_fields(self, conn):
+        # I-E.13 (Befund E-13): die DAG-Sicht traegt die Belegkette-Felder
+        # (fail_reason/verify_feedback/escalation_stage/base_node_id) -> der
+        # Fail-Grund ist via REST lesbar statt nur via docker logs.
+        _insert_task_row(
+            conn,
+            dag_id="impact-x",
+            node_id="n1/impact_0~r2",
+            status="failed",
+            payload={
+                "fail_reason": "verify unresolved: re_act -> re_design -> re_expand",
+                "verify_feedback": "E   assert 1 == 2",
+                "escalation_stage": 2,
+            },
+        )
+        app = create_app(Queue(conn), Repository(conn))
+        with TestClient(app) as c:
+            (task,) = c.get("/api/tasks?dag_id=impact-x", headers=AUTH).json()
+        assert task["fail_reason"].startswith("verify unresolved")
+        assert task["verify_feedback"] == "E   assert 1 == 2"
+        assert task["escalation_stage"] == 2
+        assert task["base_node_id"] == "n1/impact_0"  # ~r2-Suffix abgestreift
+
     def test_dag_id_scoped_to_owner(self, conn):
         _insert_task_row(conn, dag_id="impact-x", node_id="n1", owner="fremd")
         app = create_app(Queue(conn), Repository(conn))

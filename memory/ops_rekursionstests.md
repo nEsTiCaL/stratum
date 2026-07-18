@@ -397,7 +397,8 @@ E-6  Race ensure_indexed (create_task, synchron) <-> DetWorker-index-Knoten:
      Rest-DAG haengt. Nicht deterministisch (Retry lief durch; Standalone-
      index idempotent-gruen). Kandidat: put_artifact supersede-or-skip
      (upsert) ODER Hash-Skip unmittelbar vor dem Write im det-Pfad.
-E-7  [BEHOBEN I-E.7, 2026-07-17; +13 Tests, 1356 gruen, LIVE offen bis Redeploy]
+E-7  [BEHOBEN I-E.7, 2026-07-17; +13 Tests, 1356 gruen, LIVE belegt 2026-07-17
+     (migrate 0013; G4 cancelled:3, Sammel-Gate 303 cancelled:1, idempotent/404/scoped)]
      Kein Task-/DAG-Abbruch-Endpoint: DAG 177-180 (E-6-Opfer) haengt fuer
      immer pending (depends_on auf failed). Anwender kann via REST nicht
      aufraeumen. Kandidat: POST /api/task/{id}/cancel bzw. DAG-Abbruch.
@@ -409,7 +410,8 @@ E-7  [BEHOBEN I-E.7, 2026-07-17; +13 Tests, 1356 gruen, LIVE offen bis Redeploy]
      alle OFFENEN Knoten des DAG auf 'cancelled' (Migration 0013, eigener Status
      != 'superseded'); done/failed bleiben Belegkette; idempotent; 403/404 wie
      GET /api/task/{id}. _TASK_STATUSES += cancelled (Filter/History).
-E-8  [BEHOBEN I-E.8, 2026-07-17; unit-belegt, LIVE offen bis Redeploy]
+E-8  [BEHOBEN I-E.8, 2026-07-17; unit-belegt, LIVE belegt 2026-07-17
+     (GET /api/result/334 -> lint_report statt 404)]
      GET /api/result/{id} fuer done-Gate-Knoten -> 404 "Kein Ergebnis
      verfuegbar", obwohl lint_report/test_report als current in der DB
      liegen -> Endpoint mappt task_type lint_gate/test_gate nicht auf ihren
@@ -556,10 +558,17 @@ E-12 [KERN BEHOBEN I-E.12, 2026-07-17; LIVE BELEGT Ende-zu-Ende 2026-07-17
      angewandt" (kein No-op), R9 GENAU 3 Dateien geaendert (review_format-
      Zeilen 131/148/156 = exakte Offline-Vorhersage), 58 Tests real gruen.
      Kein Fall ueberlebte den Fuzz -> whole-file-Sprosse bleibt offen.
-E-13 superseded-Belegkette nicht via REST einsehbar: /api/history ist eine
-     TAGES-Statistik (day/cost/escalations/tasks), keine Task-History --
-     die Testplan-Referenz "via /api/history sichtbar" laeuft ins Leere.
-     Kandidat: Task-/DAG-History-Endpoint (supersede-Kette + Reasons).
+E-13 [BEHOBEN I-E.13, 2026-07-18; +10 Tests, 1366 gruen, LIVE nach Redeploy
+     (keine Migration)] superseded-Belegkette nicht via REST einsehbar:
+     /api/history ist eine TAGES-Statistik (day/cost/escalations/tasks), keine
+     Task-History -- die Testplan-Referenz "via /api/history sichtbar" lief ins
+     Leere. FIX (Nutzer-Entscheid: ?dag_id=-Sicht anreichern + Fail-Reason
+     persistieren): Queue.fail(reason=) legt den terminalen Grund atomar in
+     payload.fail_reason ab (jsonb-merge, keine Migration; _fail + human.py
+     reichen ihn durch -- bisher nur on_item_fail/docker logs); list_tasks
+     traegt je Zeile fail_reason/verify_feedback/escalation_stage + base_node_id
+     (~r-Suffix entfernt -> n5 & n5~r2 eine Kette). Gate-Fail-Gruende schon via
+     I-E.8. Grenze: redesign_stage nur im payload (GET /api/task/{id}).
 E-14 [BEHOBEN I-7.6, 2026-07-16] Apply-Integritaet (F3, kritisch):
      /api/patches koppelte verified an den letzten lint_report des SCOPES statt
      an das Patch-Artefakt -> nie geprueft e impact-Patches erbten fremde gruene

@@ -959,7 +959,38 @@ get_task_detail voll/done/None), test_webgui (dag_id inkl. applied+superseded,
 Owner-Scoping, status-Kombis+limit, 400-Faelle, Einzel-GET 200/403/404/401;
 Bestandsverhalten ohne Params durch TestTasksEndpoint unveraendert gedeckt).
 R6-Polling kuenftiger REK-Laeufe kann damit auf `?dag_id=` laufen (E-11-
-Messluecke zu); Belegketten-Detail (Task-History) bleibt E-13.
+Messluecke zu); Belegketten-Detail (Task-History) war E-13 -> I-E.13 (unten).
+
+## I-E.13 Task-/DAG-History: Belegkette-Felder in der DAG-Sicht (Befund E-13)
+
+E-13 blieb nach I-E.11 offen: `?dag_id=` zeigt zwar alle Knoten inkl. superseded/
+cancelled, aber OHNE Reasons und ohne Ketten-Bezug; die terminale Fail-Reason
+ging nur an on_item_fail -> stdout/docker-logs (nicht persistiert). Nutzer-
+Entscheid: (a) Form = die bestehende Filter-Sicht anreichern (KEIN neuer
+Endpoint); (b) Tiefe = die Fail-Reason AUCH persistieren.
+- Write-Pfad: `Queue.fail(item_id, reason=None)` schreibt den Grund ATOMAR mit
+  dem Status in payload.fail_reason (jsonb-merge `payload || %s`, wie
+  reopen_for_redesign verify_feedback/escalation_stage ablegt -> KEINE Migration,
+  kein neuer Spaltentyp). reason=None -> payload unberuehrt (rueckwaerts-
+  kompatibel). WorkerLoop._fail reicht seinen reason jetzt an queue.fail durch
+  (bisher NUR an on_item_fail); die 3 human.py-fail-Stellen (Validierung/Format/
+  Exception) ebenso. Test-Fakes (fail(item_id, reason=None)) nachgezogen.
+- Read-Pfad: `Queue.list_tasks` traegt je Zeile ADDITIV fail_reason,
+  verify_feedback, (payload->>'escalation_stage')::int + base_node_id. Letzterer
+  entfernt den ~r<stufe>-Suffix, den reexpand_write_subdag (I-REK.11) an die
+  frische Knoten-Identitaet haengt (Regex `(?:~r\d+)+$`, nur Kettenende,
+  mehrfach kollabierend) -> n5 (superseded) und n5~r2 (Ersatz) tragen denselben
+  base_node_id = eine Kette. Alle None bzw. = node_id, wo nichts anliegt. GET
+  /api/tasks reicht die Felder durch (I-E.11-Passthrough, unbekannte Felder
+  ignoriert das Dashboard); GET /api/task/{id} hatte payload eh komplett.
+Bewusste Grenzen: redesign_stage (impact-G3-Review, impact_expand.py) bleibt nur
+im payload sichtbar (GET /api/task/{id}); Alt-Knoten, die vor I-E.13 failten,
+haben kein fail_reason (nur neue fails schreiben es). Gate-Fail-Gruende sind
+bereits ueber I-E.8 (/api/result) lesbar.
+Akzeptanz: test_queue (fail persistiert Grund / ohne Grund unberuehrt; Reason-
+Felder exponiert bzw. None; base_node_id gruppiert reexpand-Kette; _base_node_id
+Einheit inkl. Anker/Mehrfach-Suffix), test_webgui (?dag_id= traegt die 4 Felder
+end-to-end, ~r2 abgestreift). +10 Tests, 1366 gruen, ruff clean.
 
 LIVE BELEGT 2026-07-17: ?dag_id= trug saemtliche R6-Polls des Tages (F5-Wdh
 Lauf 1+2, G4) ohne einen blinden Poll; /api/task/{id} lieferte die Diagnose-
